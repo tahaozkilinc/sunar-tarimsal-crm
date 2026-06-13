@@ -41,34 +41,43 @@ begin
   select id into v_uid from auth.users where email = v_email;
 
   if v_uid is null then
-    v_uid := gen_random_uuid();
+    -- auth.users şeması GoTrue sürümüne göre değişebilir; hata olursa
+    -- script'in geri kalanını bozmadan atla (panelden manuel oluşturulabilir).
+    begin
+      v_uid := gen_random_uuid();
 
-    insert into auth.users (
-      instance_id, id, aud, role, email, encrypted_password,
-      email_confirmed_at, created_at, updated_at,
-      raw_app_meta_data, raw_user_meta_data,
-      confirmation_token, recovery_token, email_change_token_new, email_change
-    ) values (
-      '00000000-0000-0000-0000-000000000000', v_uid, 'authenticated', 'authenticated',
-      v_email,
-      extensions.crypt('Sunar19*', extensions.gen_salt('bf')),
-      now(), now(), now(),
-      '{"provider":"email","providers":["email"]}'::jsonb,
-      jsonb_build_object('full_name', 'Taha Özkılınç', 'role', 'admin'),
-      '', '', '', ''
-    );
+      insert into auth.users (
+        instance_id, id, aud, role, email, encrypted_password,
+        email_confirmed_at, created_at, updated_at,
+        raw_app_meta_data, raw_user_meta_data,
+        confirmation_token, recovery_token, email_change_token_new, email_change
+      ) values (
+        '00000000-0000-0000-0000-000000000000', v_uid, 'authenticated', 'authenticated',
+        v_email,
+        extensions.crypt('Sunar19*', extensions.gen_salt('bf')),
+        now(), now(), now(),
+        '{"provider":"email","providers":["email"]}'::jsonb,
+        jsonb_build_object('full_name', 'Taha Özkılınç', 'role', 'admin'),
+        '', '', '', ''
+      );
 
-    insert into auth.identities (
-      provider_id, user_id, identity_data, provider, last_sign_in_at, created_at, updated_at
-    ) values (
-      v_uid::text, v_uid,
-      jsonb_build_object('sub', v_uid::text, 'email', v_email, 'email_verified', true),
-      'email', now(), now(), now()
-    );
+      insert into auth.identities (
+        provider_id, user_id, identity_data, provider, last_sign_in_at, created_at, updated_at
+      ) values (
+        v_uid::text, v_uid,
+        jsonb_build_object('sub', v_uid::text, 'email', v_email, 'email_verified', true),
+        'email', now(), now(), now()
+      );
+    exception when others then
+      raise notice 'Admin kullanıcısı SQL ile oluşturulamadı (%). Lütfen Supabase panelinden Authentication > Users > Add user ile % / Sunar19* oluşturun; sistem otomatik admin yapacaktır.', sqlerrm, v_email;
+      v_uid := null;
+    end;
   end if;
 
-  -- Profil satırını her durumda admin olarak garanti et.
-  insert into public.profiles (id, email, full_name, role)
-  values (v_uid, v_email, 'Taha Özkılınç', 'admin')
-  on conflict (id) do update set role = 'admin', is_active = true;
+  -- Kullanıcı varsa profil satırını admin olarak garanti et.
+  if v_uid is not null then
+    insert into public.profiles (id, email, full_name, role)
+    values (v_uid, v_email, 'Taha Özkılınç', 'admin')
+    on conflict (id) do update set role = 'admin', is_active = true;
+  end if;
 end $$;
