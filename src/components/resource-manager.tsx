@@ -1,0 +1,460 @@
+"use client";
+
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { createClient } from "@/lib/supabase/client";
+import {
+  Badge,
+  Button,
+  EmptyState,
+  Field,
+  Input,
+  Modal,
+  Select,
+  Spinner,
+  Textarea,
+} from "./ui";
+import { formatDate, formatNumber } from "@/lib/format";
+import type { FieldDef, ResourceConfig } from "@/lib/resources";
+import type { Role } from "@/lib/types";
+import { Eye, Pencil, Plus, Search, Trash2 } from "lucide-react";
+
+type Row = Record<string, unknown>;
+
+export function ResourceManager({
+  config,
+  role,
+  filter,
+  defaultValues,
+  title,
+}: {
+  config: ResourceConfig;
+  role: Role;
+  filter?: Record<string, string | number | boolean>;
+  defaultValues?: Record<string, unknown>;
+  title?: string;
+}) {
+  const supabase = useMemo(() => createClient(), []);
+  const [rows, setRows] = useState<Row[]>([]);
+  const [refData, setRefData] = useState<Record<string, Row[]>>({});
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editing, setEditing] = useState<Row | null>(null);
+  const [form, setForm] = useState<Row>({});
+  const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+
+  const canWrite = config.writeRoles.includes(role);
+  const filterKey = JSON.stringify({ ...(config.filter || {}), ...(filter || {}) });
+  const defaults = useMemo(
+    () => ({ ...(config.defaultValues || {}), ...(defaultValues || {}) }),
+    [config.defaultValues, defaultValues],
+  );
+
+  const fieldByName = useMemo(() => {
+    const map: Record<string, FieldDef> = {};
+    config.fields.forEach((f) => (map[f.name] = f));
+    return map;
+  }, [config.fields]);
+
+  // Referans (foreign key) seçeneklerini yükle
+  const loadRefs = useCallback(async () => {
+    const refFields = config.fields.filter((f) => f.type === "reference" && f.ref);
+    const tables = Array.from(new Set(refFields.map((f) => f.ref!.table)));
+    const result: Record<string, Row[]> = {};
+    await Promise.all(
+      tables.map(async (table) => {
+        const labels = refFields
+          .filter((f) => f.ref!.table === table)
+          .map((f) => f.ref!.labelField);
+        const cols = Array.from(new Set(["id", ...labels])).join(",");
+        const { data } = await supabase.from(table).select(cols).limit(2000);
+        result[table] = (data as unknown as Row[]) || [];
+      }),
+    );
+    setRefData(result);
+  }, [config.fields, supabase]);
+
+  const loadRows = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    let query = supabase.from(config.table).select("*");
+    const f = JSON.parse(filterKey) as Record<string, string | number | boolean>;
+    for (const [k, v] of Object.entries(f)) query = query.eq(k, v);
+    if (config.orderBy)
+      query = query.order(config.orderBy.column, {
+        ascending: config.orderBy.ascending ?? false,
+      });
+    const { data, error } = await query;
+    if (error) setError(error.message);
+    setRows((data as Row[]) || []);
+    setLoading(false);
+  }, [supabase, config.table, config.orderBy, filterKey]);
+
+  useEffect(() => {
+    loadRefs();
+  }, [loadRefs]);
+  useEffect(() => {
+    loadRows();
+  }, [loadRows]);
+
+  // --- yardımcılar ---
+  const refLabel = (field: FieldDef, value: unknown) => {
+    if (!value || !field.ref) return "-";
+    const row = (refData[field.ref.table] || []).find((r) => r.id === value);
+    const label = row?.[field.ref.labelField];
+    return (label as string) || `#${String(value).slice(0, 8)}`;
+  };
+
+  const renderCell = (field: FieldDef, row: Row) => {
+    const value = row[field.name];
+    if (value === null || value === undefined || value === "") return <span className="text-gray-400">-</span>;
+    switch (field.type) {
+      case "reference":
+        return refLabel(field, value);
+      case "select": {
+        const opt = field.options?.find((o) => o.value === value);
+        if (opt?.color) return <Badge color={opt.color}>{opt.label}</Badge>;
+        return opt?.label || String(value);
+      }
+      case "boolean":
+        return value ? <Badge color="green">Evet</Badge> : <Badge color="gray">Hayır</Badge>;
+      case "date":
+        return formatDate(value as string);
+      case "number":
+      case "money":
+        return formatNumber(value as number);
+      default:
+        return String(value);
+    }
+  };
+
+  // --- arama (istemci tarafı, anlık) ---
+  const filtered = useMemo(() => {
+    const q = search.trim().toLocaleLowerCase("tr");
+    if (!q || !config.searchFields) return rows;
+    return rows.filter((r) =>
+      config.searchFields!.some((f) =>
+        String(r[f] ?? "")
+          .toLocaleLowerCase("tr")
+          .includes(q),
+      ),
+    );
+  }, [rows, search, config.searchFields]);
+
+  // --- form ---
+  const openNew = () => {
+    const initial: Row = { ...defaults };
+    config.fields.forEach((f) => {
+      if (initial[f.name] !== undefined) return;
+      if (f.type === "select" && f.required && f.options?.length) initial[f.name] = f.options[0].value;
+      else if (f.type === "boolean") initial[f.name] = true;
+      else if (f.name === "movement_date" || (f.type === "date" && f.required))
+        initial[f.name] = new Date().toISOString().slice(0, 10);
+    });
+    setEditing(null);
+    setForm(initial);
+    setFormError(null);
+    setModalOpen(true);
+  };
+
+  const openEdit = (row: Row) => {
+    setEditing(row);
+    setForm({ ...row });
+    setFormError(null);
+    setModalOpen(true);
+  };
+
+  const setField = (name: string, value: unknown) =>
+    setForm((prev) => ({ ...prev, [name]: value }));
+
+  const save = async () => {
+    setSaving(true);
+    setFormError(null);
+    const payload: Row = { ...defaults };
+    for (const field of config.fields) {
+      let v = form[field.name];
+      if (field.type === "number" || field.type === "money") {
+        v = v === "" || v === undefined || v === null ? null : Number(v);
+      } else if (field.type === "boolean") {
+        v = !!v;
+      } else if (v === "" || v === undefined) {
+        v = null;
+      }
+      payload[field.name] = v;
+    }
+
+    const result = editing?.id
+      ? await supabase.from(config.table).update(payload).eq("id", editing.id)
+      : await supabase.from(config.table).insert(payload);
+
+    setSaving(false);
+    if (result.error) {
+      setFormError(result.error.message);
+      return;
+    }
+    setModalOpen(false);
+    loadRows();
+  };
+
+  const remove = async (row: Row) => {
+    if (!window.confirm(`"${config.singular}" kaydı silinsin mi?`)) return;
+    const { error } = await supabase.from(config.table).delete().eq("id", row.id);
+    if (error) {
+      alert("Silinemedi: " + error.message);
+      return;
+    }
+    loadRows();
+  };
+
+  const listFieldDefs = config.listFields.map((n) => fieldByName[n]).filter(Boolean);
+
+  return (
+    <div className="space-y-4">
+      {/* Üst bar */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-lg font-semibold">{title || config.title}</h1>
+        <div className="flex items-center gap-2">
+          {config.searchFields && (
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-2.5 top-2.5 h-4 w-4 text-gray-400" />
+              <Input
+                placeholder="Ara..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="w-40 pl-8 sm:w-56"
+              />
+            </div>
+          )}
+          {canWrite && (
+            <Button onClick={openNew}>
+              <Plus className="h-4 w-4" /> Yeni
+            </Button>
+          )}
+        </div>
+      </div>
+
+      {error && (
+        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          Veri yüklenemedi: {error}
+          <div className="mt-1 text-xs text-red-500">
+            Tablolar henüz oluşturulmadıysa Supabase SQL Editor&apos;de migration
+            dosyalarını çalıştırın.
+          </div>
+        </div>
+      )}
+
+      {loading ? (
+        <div className="flex justify-center py-12">
+          <Spinner />
+        </div>
+      ) : filtered.length === 0 ? (
+        <EmptyState message="Kayıt bulunamadı." />
+      ) : (
+        <>
+          {/* Masaüstü tablo */}
+          <div className="hidden overflow-x-auto rounded-xl border border-border bg-card md:block">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border bg-gray-50 text-left text-xs uppercase text-gray-500">
+                  {listFieldDefs.map((f) => (
+                    <th key={f.name} className="px-4 py-3 font-medium">
+                      {f.label}
+                    </th>
+                  ))}
+                  <th className="px-4 py-3" />
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((row) => (
+                  <tr
+                    key={String(row.id)}
+                    className="border-b border-border last:border-0 hover:bg-gray-50"
+                  >
+                    {listFieldDefs.map((f) => (
+                      <td key={f.name} className="px-4 py-3">
+                        {renderCell(f, row)}
+                      </td>
+                    ))}
+                    <td className="px-4 py-3">
+                      <div className="flex justify-end gap-1">
+                        <button
+                          onClick={() => openEdit(row)}
+                          className="rounded-lg p-1.5 text-gray-500 hover:bg-gray-100"
+                          title={canWrite ? "Düzenle" : "Görüntüle"}
+                        >
+                          {canWrite ? (
+                            <Pencil className="h-4 w-4" />
+                          ) : (
+                            <Eye className="h-4 w-4" />
+                          )}
+                        </button>
+                        {canWrite && (
+                          <button
+                            onClick={() => remove(row)}
+                            className="rounded-lg p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-600"
+                            title="Sil"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Mobil kartlar */}
+          <div className="space-y-3 md:hidden">
+            {filtered.map((row) => (
+              <div
+                key={String(row.id)}
+                className="rounded-xl border border-border bg-card p-4"
+                onClick={() => openEdit(row)}
+              >
+                {listFieldDefs.map((f, i) => (
+                  <div
+                    key={f.name}
+                    className={`flex justify-between gap-3 py-1 ${i === 0 ? "mb-1 border-b border-border pb-2" : ""}`}
+                  >
+                    <span className="text-xs text-gray-500">{f.label}</span>
+                    <span
+                      className={`text-right text-sm ${i === 0 ? "font-semibold" : ""}`}
+                    >
+                      {renderCell(f, row)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+
+      {/* Form modalı */}
+      <Modal
+        open={modalOpen}
+        onClose={() => setModalOpen(false)}
+        title={
+          !canWrite
+            ? `${config.singular} (Görüntüle)`
+            : editing
+              ? `${config.singular} Düzenle`
+              : `Yeni ${config.singular}`
+        }
+      >
+        <div className="space-y-3">
+          {config.fields
+            .filter((f) => !f.formHidden)
+            .map((f) => (
+              <Field key={f.name} label={f.label} required={f.required}>
+                {renderInput(f)}
+              </Field>
+            ))}
+
+          {formError && (
+            <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+              {formError}
+            </div>
+          )}
+
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="secondary" onClick={() => setModalOpen(false)}>
+              {canWrite ? "İptal" : "Kapat"}
+            </Button>
+            {canWrite && (
+              <Button onClick={save} disabled={saving}>
+                {saving ? (
+                  <Spinner className="h-4 w-4 border-white/40 border-t-white" />
+                ) : (
+                  "Kaydet"
+                )}
+              </Button>
+            )}
+          </div>
+        </div>
+      </Modal>
+    </div>
+  );
+
+  function renderInput(f: FieldDef) {
+    const value = form[f.name] ?? "";
+    if (f.type === "textarea")
+      return (
+        <Textarea
+          value={value as string}
+          onChange={(e) => setField(f.name, e.target.value)}
+          placeholder={f.placeholder}
+          disabled={!canWrite}
+        />
+      );
+    if (f.type === "boolean")
+      return (
+        <label className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            checked={!!form[f.name]}
+            onChange={(e) => setField(f.name, e.target.checked)}
+            disabled={!canWrite}
+            className="h-4 w-4 rounded border-border text-brand focus:ring-brand"
+          />
+          <span className="text-sm text-gray-600">Evet</span>
+        </label>
+      );
+    if (f.type === "select")
+      return (
+        <Select
+          value={value as string}
+          onChange={(e) => setField(f.name, e.target.value)}
+          disabled={!canWrite}
+        >
+          <option value="">Seçiniz...</option>
+          {f.options?.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+        </Select>
+      );
+    if (f.type === "reference")
+      return (
+        <Select
+          value={value as string}
+          onChange={(e) => setField(f.name, e.target.value)}
+          disabled={!canWrite}
+        >
+          <option value="">Seçiniz...</option>
+          {(refData[f.ref!.table] || []).map((o) => (
+            <option key={String(o.id)} value={String(o.id)}>
+              {(o[f.ref!.labelField] as string) || `#${String(o.id).slice(0, 8)}`}
+            </option>
+          ))}
+        </Select>
+      );
+    const inputType =
+      f.type === "number" || f.type === "money"
+        ? "number"
+        : f.type === "date"
+          ? "date"
+          : f.type === "email"
+            ? "email"
+            : f.type === "tel"
+              ? "tel"
+              : f.type === "url"
+                ? "url"
+                : "text";
+    return (
+      <Input
+        type={inputType}
+        step={f.type === "money" || f.type === "number" ? "any" : undefined}
+        value={value as string}
+        onChange={(e) => setField(f.name, e.target.value)}
+        placeholder={f.placeholder}
+        disabled={!canWrite}
+      />
+    );
+  }
+}
