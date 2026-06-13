@@ -1,8 +1,7 @@
 import { requireAccess } from "@/lib/auth";
-import { ResourceManager } from "@/components/resource-manager";
-import { purchaseContractsResource } from "@/lib/resources";
+import { PurchasingTabs } from "@/components/purchasing-tabs";
 
 export default async function PurchasingPage() {
   const profile = await requireAccess("/purchasing");
-  return <ResourceManager config={purchaseContractsResource} role={profile.role} />;
+  return <PurchasingTabs role={profile.role} />;
 }
