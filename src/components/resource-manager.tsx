@@ -100,12 +100,14 @@ export function ResourceManager({
   filter,
   defaultValues,
   title,
+  detailExtra,
 }: {
   config: ResourceConfig;
   role: Role;
   filter?: Record<string, string | number | boolean>;
   defaultValues?: Record<string, unknown>;
   title?: string;
+  detailExtra?: (row: Row) => React.ReactNode;
 }) {
   const supabase = useMemo(() => createClient(), []);
   const [rows, setRows] = useState<Row[]>([]);
@@ -564,6 +566,8 @@ export function ResourceManager({
                   </div>
                 ))}
             </div>
+
+            {detailExtra && detailExtra(detail)}
 
             {notesFieldName && (
               <div className="rounded-lg border border-border p-3">

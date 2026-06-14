@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { ResourceManager } from "./resource-manager";
 import { Tabs } from "./ui";
+import { CompanyReport } from "./company-report";
 import {
   activitiesResource,
   companiesResource,
@@ -37,6 +38,7 @@ export function CrmTabs({ role }: { role: Role }) {
           role={role}
           defaultValues={{ type: companyType }}
           title={companyLabel}
+          detailExtra={(row) => <CompanyReport companyId={String(row.id)} />}
         />
       )}
       {tab === "contacts" && (

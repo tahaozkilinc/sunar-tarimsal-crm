@@ -132,6 +132,7 @@ export const companiesResource: ResourceConfig = {
   writeRoles: ["admin", "purchasing", "sales"],
   orderBy: { column: "name", ascending: true },
   searchFields: ["name", "city", "phone", "email"],
+  filterFields: ["type"],
   listFields: ["name", "type", "city", "phone"],
   fields: [
     { name: "name", label: "Firma Adı", type: "text", required: true },
