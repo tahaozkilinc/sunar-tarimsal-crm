@@ -27,8 +27,8 @@ Vercel'de proje → **Settings → Environment Variables**. Şu 3 değişkeni ek
 
 | Değişken | Değer |
 |---|---|
-| `NEXT_PUBLIC_SUPABASE_URL` | `https://lkfkcgezqofnejfaegmh.supabase.co` |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | `sb_publishable_53yHzRSe_wwfsVMnENWf-A_wFJJs2dq` |
+| `NEXT_PUBLIC_SUPABASE_URL` | `https://arlwifbttpfpllgqriqa.supabase.co` |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | `sb_publishable_Dya1kG2cZPFnN5ozXbG3-w_xILimILR` |
 | `SUPABASE_SERVICE_ROLE_KEY` | *(Supabase → Settings → API → `sb_secret_...` anahtarı)* |
 
 > `SUPABASE_SERVICE_ROLE_KEY` **gizlidir**, sadece admin panelinden kullanıcı
@@ -77,7 +77,7 @@ zorunlu kılınır — yani bir satışçı API üzerinden bile satın alma fiya
 ## API ile veri transferi
 
 - **Otomatik REST API:** Supabase her tablo için otomatik REST uç noktası üretir.
-  Örn: `GET https://lkfkcgezqofnejfaegmh.supabase.co/rest/v1/purchase_contracts`
+  Örn: `GET https://arlwifbttpfpllgqriqa.supabase.co/rest/v1/purchase_contracts`
   (`apikey` başlığı + RLS kuralları geçerli). Detay: Supabase → API Docs.
 - **Sağlık kontrolü:** `GET /api/health`
 - **Kullanıcı yönetimi:** `POST /api/admin/users` (sadece admin oturumu).
