@@ -38,6 +38,7 @@ export interface FieldDef {
   required?: boolean;
   options?: SelectOption[];
   ref?: { table: string; labelField: string };
+  autofill?: Record<string, string>;
   formHidden?: boolean;
   placeholder?: string;
 }
@@ -223,7 +224,7 @@ export const stockMovementsResource: ResourceConfig = {
   listFields: ["movement_date", "contract_id", "product_id", "warehouse_id", "movement_type", "quantity"],
   fields: [
     { name: "movement_date", label: "Tarih", type: "date", required: true },
-    { name: "contract_id", label: "Kaynak Sözleşme", type: "reference", ref: { table: "purchase_contracts", labelField: "contract_no" } },
+    { name: "contract_id", label: "Kaynak Sözleşme (Gemi)", type: "reference", ref: { table: "purchase_contracts", labelField: "contract_no" }, autofill: { product_id: "product_id", unit: "unit" } },
     { name: "product_id", label: "Ürün", type: "reference", ref: { table: "products", labelField: "name" } },
     { name: "warehouse_id", label: "Depo / Fabrika", type: "reference", ref: { table: "warehouses", labelField: "name" }, required: true },
     { name: "movement_type", label: "Hareket Tipi", type: "select", options: MOVEMENT_TYPE_OPTIONS, required: true },

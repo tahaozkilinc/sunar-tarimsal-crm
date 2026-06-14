@@ -27,7 +27,7 @@ export const NAV_ITEMS: NavItem[] = [
     href: "/purchasing",
     label: "Bağlantı",
     icon: "ShoppingCart",
-    roles: ["admin", "purchasing", "operations"],
+    roles: ["admin", "purchasing"],
   },
   {
     href: "/operations",

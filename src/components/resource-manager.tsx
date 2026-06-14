@@ -147,11 +147,17 @@ export function ResourceManager({
     const result: Record<string, Row[]> = {};
     await Promise.all(
       tables.map(async (table) => {
-        const labels = refFields
+        const cols = new Set<string>(["id"]);
+        refFields
           .filter((f) => f.ref!.table === table)
-          .map((f) => f.ref!.labelField);
-        const cols = Array.from(new Set(["id", ...labels])).join(",");
-        const { data } = await supabase.from(table).select(cols).limit(2000);
+          .forEach((f) => {
+            cols.add(f.ref!.labelField);
+            if (f.autofill) Object.values(f.autofill).forEach((src) => cols.add(src));
+          });
+        const { data } = await supabase
+          .from(table)
+          .select(Array.from(cols).join(","))
+          .limit(2000);
         result[table] = (data as unknown as Row[]) || [];
       }),
     );
@@ -665,7 +671,24 @@ export function ResourceManager({
       return (
         <Select
           value={value as string}
-          onChange={(e) => setField(f.name, e.target.value)}
+          onChange={(e) => {
+            const v = e.target.value;
+            setForm((prev) => {
+              const next: Row = { ...prev, [f.name]: v };
+              if (f.autofill && v && f.ref) {
+                const refRow = (refData[f.ref.table] || []).find(
+                  (r) => String(r.id) === v,
+                );
+                if (refRow)
+                  for (const [target, src] of Object.entries(f.autofill)) {
+                    const val = refRow[src];
+                    if (val !== undefined && val !== null && val !== "")
+                      next[target] = val;
+                  }
+              }
+              return next;
+            });
+          }}
           disabled={!canWrite}
         >
           <option value="">Seçiniz...</option>

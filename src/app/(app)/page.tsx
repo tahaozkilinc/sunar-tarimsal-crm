@@ -23,7 +23,7 @@ export default async function DashboardPage() {
   const role = profile.role;
   const supabase = await createClient();
 
-  const canB = ["admin", "purchasing", "operations"].includes(role);
+  const canB = ["admin", "purchasing"].includes(role);
   const canS = ["admin", "sales"].includes(role);
   const canO = ["admin", "operations"].includes(role);
 
