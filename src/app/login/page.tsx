@@ -21,7 +21,16 @@ export default function LoginPage() {
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     setLoading(false);
     if (error) {
-      setError("Giriş başarısız. E-posta veya şifre hatalı.");
+      // Yanlış kimlik bilgisi ile yapılandırma/bağlantı hatasını ayır ki
+      // kurulum sorunları "şifre hatalı" gibi görünüp yanıltmasın.
+      const invalid =
+        error.code === "invalid_credentials" ||
+        /invalid login credentials/i.test(error.message);
+      setError(
+        invalid
+          ? "Giriş başarısız. E-posta veya şifre hatalı."
+          : `Giriş yapılamadı: ${error.message}`,
+      );
       return;
     }
     router.push("/");
