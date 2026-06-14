@@ -11,7 +11,7 @@ export function PurchasingTabs({ role }: { role: Role }) {
   const [tab, setTab] = useState("contracts");
   return (
     <div className="space-y-4">
-      <h1 className="text-xl font-bold">Satın Alma</h1>
+      <h1 className="text-xl font-bold">Bağlantı</h1>
       <Tabs
         value={tab}
         onChange={setTab}

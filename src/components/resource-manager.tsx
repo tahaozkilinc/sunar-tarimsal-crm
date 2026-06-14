@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import {
   Badge,
@@ -19,6 +19,80 @@ import type { Role } from "@/lib/types";
 import { Eye, Pencil, Plus, Search, Trash2 } from "lucide-react";
 
 type Row = Record<string, unknown>;
+
+// Ham sayıyı Türkçe binlik ayraçlı görünüme çevirir (12340 -> "12.340").
+function numberToInput(value: unknown): string {
+  if (value === "" || value === null || value === undefined) return "";
+  const n = Number(value);
+  if (Number.isNaN(n)) return "";
+  return n.toLocaleString("tr-TR", { maximumFractionDigits: 20 });
+}
+
+// Türkçe binlik ayraçlı sayı girişi (ör. 12.340 / 1.000,5).
+// Görünümde gruplar; dışarıya ham sayı (number) ya da "" verir.
+function NumberInput({
+  value,
+  onChange,
+  placeholder,
+  disabled,
+}: {
+  value: unknown;
+  onChange: (v: number | "") => void;
+  placeholder?: string;
+  disabled?: boolean;
+}) {
+  const norm = (v: unknown): number | "" =>
+    v === "" || v === null || v === undefined || Number.isNaN(Number(v))
+      ? ""
+      : Number(v);
+
+  const [text, setText] = useState<string>(() => numberToInput(value));
+  const lastRef = useRef<number | "">(norm(value));
+
+  useEffect(() => {
+    const incoming = norm(value);
+    if (incoming !== lastRef.current) {
+      lastRef.current = incoming;
+      setText(numberToInput(value));
+    }
+  }, [value]);
+
+  const handle = (raw: string) => {
+    const negative = raw.trim().startsWith("-");
+    const cleaned = raw.replace(/[^\d.,]/g, "");
+    const [intRaw = "", ...rest] = cleaned.split(",");
+    const intPart = intRaw.replace(/\./g, "");
+    const hasDecimal = rest.length > 0;
+    const decPart = rest.join("").replace(/\./g, "");
+    const groupedInt = intPart === "" ? "" : Number(intPart).toLocaleString("tr-TR");
+    const sign = negative ? "-" : "";
+
+    const display =
+      intPart === "" && !hasDecimal
+        ? sign
+        : `${sign}${hasDecimal ? `${groupedInt || "0"},${decPart}` : groupedInt}`;
+    setText(display);
+
+    let out: number | "" = "";
+    if (intPart !== "" || decPart !== "") {
+      const n = Number(`${sign}${intPart || "0"}.${decPart || "0"}`);
+      out = Number.isNaN(n) ? "" : n;
+    }
+    lastRef.current = out;
+    onChange(out);
+  };
+
+  return (
+    <Input
+      type="text"
+      inputMode="decimal"
+      value={text}
+      placeholder={placeholder}
+      disabled={disabled}
+      onChange={(e) => handle(e.target.value)}
+    />
+  );
+}
 
 export function ResourceManager({
   config,
@@ -434,22 +508,28 @@ export function ResourceManager({
           ))}
         </Select>
       );
+    if (f.type === "number" || f.type === "money")
+      return (
+        <NumberInput
+          value={form[f.name]}
+          onChange={(v) => setField(f.name, v)}
+          placeholder={f.placeholder}
+          disabled={!canWrite}
+        />
+      );
     const inputType =
-      f.type === "number" || f.type === "money"
-        ? "number"
-        : f.type === "date"
-          ? "date"
-          : f.type === "email"
-            ? "email"
-            : f.type === "tel"
-              ? "tel"
-              : f.type === "url"
-                ? "url"
-                : "text";
+      f.type === "date"
+        ? "date"
+        : f.type === "email"
+          ? "email"
+          : f.type === "tel"
+            ? "tel"
+            : f.type === "url"
+              ? "url"
+              : "text";
     return (
       <Input
         type={inputType}
-        step={f.type === "money" || f.type === "number" ? "any" : undefined}
         value={value as string}
         onChange={(e) => setField(f.name, e.target.value)}
         placeholder={f.placeholder}

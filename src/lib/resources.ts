@@ -205,7 +205,6 @@ export const purchaseContractsResource: ResourceConfig = {
     { name: "laycan_start", label: "Laycan Başlangıç", type: "date" },
     { name: "laycan_end", label: "Laycan Bitiş", type: "date" },
     { name: "status", label: "Durum", type: "select", options: CONTRACT_STATUS_OPTIONS, required: true },
-    { name: "contract_file_url", label: "Sözleşme Dosyası (Link)", type: "url", placeholder: "https://..." },
     { name: "notes", label: "Notlar", type: "textarea" },
   ],
 };
