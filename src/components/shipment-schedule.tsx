@@ -30,6 +30,11 @@ const STATUS_COLOR: Record<string, string> = {
   cancelled: "#ef4444",
 };
 const MONTHS_TR = ["Oca", "Şub", "Mar", "Nis", "May", "Haz", "Tem", "Ağu", "Eyl", "Eki", "Kas", "Ara"];
+const MONTHS_TR_FULL = [
+  "Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran",
+  "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık",
+];
+const WEEKDAYS_TR = ["Pzt", "Sal", "Çar", "Per", "Cum", "Cmt", "Paz"];
 
 function statusLabel(s: string) {
   return CONTRACT_STATUS_OPTIONS.find((o) => o.value === s)?.label || s;
@@ -44,6 +49,10 @@ export function ShipmentSchedule() {
   const [error, setError] = useState<string | null>(null);
   const [productFilter, setProductFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
+  const [calMonth, setCalMonth] = useState(() => {
+    const d = new Date();
+    return new Date(d.getFullYear(), d.getMonth(), 1);
+  });
 
   useEffect(() => {
     (async () => {
@@ -115,6 +124,26 @@ export function ShipmentSchedule() {
       .sort((a, b) => a.k.localeCompare(b.k));
   }, [rows]);
   const maxMonthTon = Math.max(1, ...byMonth.map((x) => x.ton));
+
+  // Takvim: seçili ayda ETA'sı olan sevkiyatları güne göre grupla
+  const calItems = useMemo(() => {
+    const map = new Map<string, Contract[]>();
+    rows.forEach((c) => {
+      if (!c.eta) return;
+      const d = new Date(c.eta);
+      if (isNaN(d.getTime())) return;
+      if (
+        d.getFullYear() === calMonth.getFullYear() &&
+        d.getMonth() === calMonth.getMonth()
+      ) {
+        const key = String(d.getDate());
+        const arr = map.get(key) || [];
+        arr.push(c);
+        map.set(key, arr);
+      }
+    });
+    return map;
+  }, [rows, calMonth]);
 
   // --- Gantt verisi ---
   const dated = useMemo(
@@ -294,6 +323,90 @@ export function ShipmentSchedule() {
             })}
           </div>
         )}
+      </Card>
+
+      {/* Takvim görünümü */}
+      <Card className="p-4">
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="text-sm font-semibold">Takvim — Gelecek Sevkiyatlar (ETA)</h2>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() =>
+                setCalMonth(new Date(calMonth.getFullYear(), calMonth.getMonth() - 1, 1))
+              }
+              className="rounded-lg px-2.5 py-1 text-sm hover:bg-gray-100"
+              aria-label="Önceki ay"
+            >
+              ‹
+            </button>
+            <span className="w-32 text-center text-sm font-medium">
+              {MONTHS_TR_FULL[calMonth.getMonth()]} {calMonth.getFullYear()}
+            </span>
+            <button
+              onClick={() =>
+                setCalMonth(new Date(calMonth.getFullYear(), calMonth.getMonth() + 1, 1))
+              }
+              className="rounded-lg px-2.5 py-1 text-sm hover:bg-gray-100"
+              aria-label="Sonraki ay"
+            >
+              ›
+            </button>
+          </div>
+        </div>
+        {(() => {
+          const year = calMonth.getFullYear();
+          const month = calMonth.getMonth();
+          const leading = (new Date(year, month, 1).getDay() + 6) % 7;
+          const daysInMonth = new Date(year, month + 1, 0).getDate();
+          const cells: (number | null)[] = [];
+          for (let i = 0; i < leading; i++) cells.push(null);
+          for (let d = 1; d <= daysInMonth; d++) cells.push(d);
+          while (cells.length % 7 !== 0) cells.push(null);
+          const now = new Date();
+          const todayDay =
+            now.getFullYear() === year && now.getMonth() === month ? now.getDate() : -1;
+          return (
+            <div className="grid grid-cols-7 gap-1">
+              {WEEKDAYS_TR.map((w) => (
+                <div key={w} className="pb-1 text-center text-xs font-medium text-gray-500">
+                  {w}
+                </div>
+              ))}
+              {cells.map((d, i) => {
+                if (d === null)
+                  return <div key={i} className="min-h-[72px] rounded bg-gray-50/40" />;
+                const items = calItems.get(String(d)) || [];
+                return (
+                  <div
+                    key={i}
+                    className={`min-h-[72px] rounded border p-1 ${
+                      d === todayDay ? "border-brand bg-brand/5" : "border-border"
+                    }`}
+                  >
+                    <div className="mb-0.5 text-right text-xs text-gray-400">{d}</div>
+                    <div className="space-y-0.5">
+                      {items.slice(0, 3).map((c) => (
+                        <div
+                          key={c.id}
+                          className="truncate rounded px-1 py-0.5 text-[10px] font-medium text-white"
+                          style={{ background: STATUS_COLOR[c.status] || "#6b7280" }}
+                          title={`${productName(c.product_id)} · ${formatNumber(c.quantity)} ${c.unit} · ${
+                            c.vessel || c.contract_no || ""
+                          }`}
+                        >
+                          {productName(c.product_id)} {formatNumber(c.quantity)}
+                        </div>
+                      ))}
+                      {items.length > 3 && (
+                        <div className="text-[10px] text-gray-500">+{items.length - 3} daha</div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })()}
       </Card>
 
       {/* Gantt zaman çizelgesi */}
