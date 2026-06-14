@@ -118,6 +118,10 @@ export function ResourceManager({
   const [form, setForm] = useState<Row>({});
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [detail, setDetail] = useState<Row | null>(null);
+  const [noteText, setNoteText] = useState("");
+  const [savingNote, setSavingNote] = useState(false);
+  const [filters, setFilters] = useState<Record<string, string>>({});
 
   const canWrite = config.writeRoles.includes(role);
   const filterKey = JSON.stringify({ ...(config.filter || {}), ...(filter || {}) });
@@ -204,18 +208,25 @@ export function ResourceManager({
     }
   };
 
-  // --- arama (istemci tarafı, anlık) ---
+  // --- arama + filtre (istemci tarafı, anlık) ---
   const filtered = useMemo(() => {
     const q = search.trim().toLocaleLowerCase("tr");
-    if (!q || !config.searchFields) return rows;
-    return rows.filter((r) =>
-      config.searchFields!.some((f) =>
-        String(r[f] ?? "")
-          .toLocaleLowerCase("tr")
-          .includes(q),
-      ),
-    );
-  }, [rows, search, config.searchFields]);
+    const activeFilters = Object.entries(filters).filter(([, v]) => v !== "");
+    return rows.filter((r) => {
+      for (const [k, v] of activeFilters) {
+        if (String(r[k] ?? "") !== v) return false;
+      }
+      if (q && config.searchFields) {
+        const match = config.searchFields.some((f) =>
+          String(r[f] ?? "")
+            .toLocaleLowerCase("tr")
+            .includes(q),
+        );
+        if (!match) return false;
+      }
+      return true;
+    });
+  }, [rows, search, filters, config.searchFields]);
 
   // --- form ---
   const openNew = () => {
@@ -282,32 +293,106 @@ export function ResourceManager({
     loadRows();
   };
 
+  // --- detay görünümü + kayda özel not ---
+  const notesFieldName = fieldByName["notes"]
+    ? "notes"
+    : fieldByName["description"]
+      ? "description"
+      : null;
+
+  const openDetail = (row: Row) => {
+    setDetail(row);
+    setNoteText(notesFieldName ? ((row[notesFieldName] as string) ?? "") : "");
+  };
+
+  const saveNote = async () => {
+    if (!detail || !notesFieldName) return;
+    setSavingNote(true);
+    const { error } = await supabase
+      .from(config.table)
+      .update({ [notesFieldName]: noteText === "" ? null : noteText })
+      .eq("id", detail.id);
+    setSavingNote(false);
+    if (error) {
+      alert("Not kaydedilemedi: " + error.message);
+      return;
+    }
+    setDetail({ ...detail, [notesFieldName]: noteText });
+    loadRows();
+  };
+
   const listFieldDefs = config.listFields.map((n) => fieldByName[n]).filter(Boolean);
+  const filterFieldDefs = (config.filterFields || [])
+    .map((n) => fieldByName[n])
+    .filter(Boolean);
+
+  const filterOptions = (field: FieldDef): { value: string; label: string }[] => {
+    if (field.type === "select")
+      return (field.options || []).map((o) => ({ value: o.value, label: o.label }));
+    if (field.type === "reference" && field.ref)
+      return (refData[field.ref.table] || []).map((r) => ({
+        value: String(r.id),
+        label: (r[field.ref!.labelField] as string) || `#${String(r.id).slice(0, 8)}`,
+      }));
+    if (field.type === "boolean")
+      return [
+        { value: "true", label: "Evet" },
+        { value: "false", label: "Hayır" },
+      ];
+    return [];
+  };
 
   return (
     <div className="space-y-4">
       {/* Üst bar */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <h1 className="text-lg font-semibold">{title || config.title}</h1>
         <div className="flex items-center gap-2">
           {config.searchFields && (
-            <div className="relative">
+            <div className="relative flex-1 sm:flex-none">
               <Search className="pointer-events-none absolute left-2.5 top-2.5 h-4 w-4 text-gray-400" />
               <Input
                 placeholder="Ara..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="w-40 pl-8 sm:w-56"
+                className="w-full pl-8 sm:w-56"
               />
             </div>
           )}
           {canWrite && (
-            <Button onClick={openNew}>
+            <Button onClick={openNew} className="shrink-0">
               <Plus className="h-4 w-4" /> Yeni
             </Button>
           )}
         </div>
       </div>
+
+      {filterFieldDefs.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2">
+          {filterFieldDefs.map((f) => (
+            <Select
+              key={f.name}
+              value={filters[f.name] ?? ""}
+              onChange={(e) =>
+                setFilters((prev) => ({ ...prev, [f.name]: e.target.value }))
+              }
+              className="w-auto"
+            >
+              <option value="">{f.label}: Tümü</option>
+              {filterOptions(f).map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </Select>
+          ))}
+          {Object.values(filters).some((v) => v) && (
+            <Button variant="ghost" size="sm" onClick={() => setFilters({})}>
+              Temizle
+            </Button>
+          )}
+        </div>
+      )}
 
       {error && (
         <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
@@ -344,26 +429,32 @@ export function ResourceManager({
                 {filtered.map((row) => (
                   <tr
                     key={String(row.id)}
-                    className="border-b border-border last:border-0 hover:bg-gray-50"
+                    onClick={() => openDetail(row)}
+                    className="cursor-pointer border-b border-border last:border-0 hover:bg-gray-50"
                   >
                     {listFieldDefs.map((f) => (
                       <td key={f.name} className="px-4 py-3">
                         {renderCell(f, row)}
                       </td>
                     ))}
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                       <div className="flex justify-end gap-1">
                         <button
-                          onClick={() => openEdit(row)}
+                          onClick={() => openDetail(row)}
                           className="rounded-lg p-1.5 text-gray-500 hover:bg-gray-100"
-                          title={canWrite ? "Düzenle" : "Görüntüle"}
+                          title="Detay"
                         >
-                          {canWrite ? (
-                            <Pencil className="h-4 w-4" />
-                          ) : (
-                            <Eye className="h-4 w-4" />
-                          )}
+                          <Eye className="h-4 w-4" />
                         </button>
+                        {canWrite && (
+                          <button
+                            onClick={() => openEdit(row)}
+                            className="rounded-lg p-1.5 text-gray-500 hover:bg-gray-100"
+                            title="Düzenle"
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </button>
+                        )}
                         {canWrite && (
                           <button
                             onClick={() => remove(row)}
@@ -386,8 +477,8 @@ export function ResourceManager({
             {filtered.map((row) => (
               <div
                 key={String(row.id)}
-                className="rounded-xl border border-border bg-card p-4"
-                onClick={() => openEdit(row)}
+                className="cursor-pointer rounded-xl border border-border bg-card p-4"
+                onClick={() => openDetail(row)}
               >
                 {listFieldDefs.map((f, i) => (
                   <div
@@ -450,6 +541,71 @@ export function ResourceManager({
             )}
           </div>
         </div>
+      </Modal>
+
+      {/* Detay görünümü */}
+      <Modal
+        open={!!detail}
+        onClose={() => setDetail(null)}
+        title={`${config.singular} Detayı`}
+      >
+        {detail && (
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 gap-x-4 gap-y-3 sm:grid-cols-2">
+              {config.fields
+                .filter((f) => f.name !== notesFieldName)
+                .map((f) => (
+                  <div
+                    key={f.name}
+                    className={f.type === "textarea" ? "sm:col-span-2" : ""}
+                  >
+                    <div className="text-xs text-gray-500">{f.label}</div>
+                    <div className="mt-0.5 text-sm">{renderCell(f, detail)}</div>
+                  </div>
+                ))}
+            </div>
+
+            {notesFieldName && (
+              <div className="rounded-lg border border-border p-3">
+                <div className="mb-2 text-sm font-medium">Notlar</div>
+                {canWrite ? (
+                  <>
+                    <Textarea
+                      value={noteText}
+                      onChange={(e) => setNoteText(e.target.value)}
+                      placeholder={`Bu ${config.singular.toLocaleLowerCase("tr")} için not yazın...`}
+                    />
+                    <div className="mt-2 flex justify-end">
+                      <Button size="sm" onClick={saveNote} disabled={savingNote}>
+                        {savingNote ? "Kaydediliyor..." : "Notu Kaydet"}
+                      </Button>
+                    </div>
+                  </>
+                ) : (
+                  <div className="whitespace-pre-wrap text-sm text-gray-700">
+                    {(detail[notesFieldName] as string) || "-"}
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className="flex justify-end gap-2 border-t border-border pt-3">
+              {canWrite && (
+                <Button
+                  variant="secondary"
+                  onClick={() => {
+                    const r = detail;
+                    setDetail(null);
+                    openEdit(r);
+                  }}
+                >
+                  <Pencil className="h-4 w-4" /> Düzenle
+                </Button>
+              )}
+              <Button onClick={() => setDetail(null)}>Kapat</Button>
+            </div>
+          </div>
+        )}
       </Modal>
     </div>
   );

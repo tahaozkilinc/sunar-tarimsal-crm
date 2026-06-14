@@ -50,6 +50,7 @@ export interface ResourceConfig {
   fields: FieldDef[];
   listFields: string[];
   searchFields?: string[];
+  filterFields?: string[];
   orderBy?: { column: string; ascending?: boolean };
   filter?: Record<string, string | number | boolean>;
   defaultValues?: Record<string, unknown>;
@@ -189,6 +190,7 @@ export const purchaseContractsResource: ResourceConfig = {
   defaultValues: { unit: "ton", currency: "USD" },
   orderBy: { column: "created_at", ascending: false },
   searchFields: ["contract_no", "vessel", "origin_country"],
+  filterFields: ["status", "supplier_id", "product_id"],
   listFields: ["contract_no", "supplier_id", "product_id", "quantity", "eta", "status"],
   fields: [
     { name: "contract_no", label: "Sözleşme No", type: "text" },
