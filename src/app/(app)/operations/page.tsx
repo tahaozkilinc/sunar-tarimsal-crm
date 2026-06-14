@@ -1,8 +1,7 @@
 import { requireAccess } from "@/lib/auth";
-import { ResourceManager } from "@/components/resource-manager";
-import { stockMovementsResource } from "@/lib/resources";
+import { OperationsTabs } from "@/components/operations-tabs";
 
 export default async function OperationsPage() {
   const profile = await requireAccess("/operations");
-  return <ResourceManager config={stockMovementsResource} role={profile.role} />;
+  return <OperationsTabs role={profile.role} />;
 }

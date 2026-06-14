@@ -101,6 +101,7 @@ export function ResourceManager({
   defaultValues,
   title,
   detailExtra,
+  hideTitle,
 }: {
   config: ResourceConfig;
   role: Role;
@@ -108,6 +109,7 @@ export function ResourceManager({
   defaultValues?: Record<string, unknown>;
   title?: string;
   detailExtra?: (row: Row) => React.ReactNode;
+  hideTitle?: boolean;
 }) {
   const supabase = useMemo(() => createClient(), []);
   const [rows, setRows] = useState<Row[]>([]);
@@ -347,8 +349,14 @@ export function ResourceManager({
   return (
     <div className="space-y-4">
       {/* Üst bar */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <h1 className="text-lg font-semibold">{title || config.title}</h1>
+      <div
+        className={`flex flex-col gap-3 sm:flex-row sm:items-center ${
+          hideTitle ? "sm:justify-end" : "sm:justify-between"
+        }`}
+      >
+        {!hideTitle && (
+          <h1 className="text-lg font-semibold">{title || config.title}</h1>
+        )}
         <div className="flex items-center gap-2">
           {config.searchFields && (
             <div className="relative flex-1 sm:flex-none">
