@@ -252,6 +252,7 @@ export const salesOrdersResource: ResourceConfig = {
   fields: [
     { name: "order_no", label: "Satış No", type: "text" },
     { name: "customer_id", label: "Müşteri", type: "reference", ref: { table: "companies", labelField: "name" } },
+    { name: "contract_id", label: "Kaynak Bağlantı (Gemi)", type: "reference", ref: { table: "sellable_contracts", labelField: "contract_no" }, autofill: { product_id: "product_id" } },
     { name: "product_id", label: "Ürün", type: "reference", ref: { table: "products", labelField: "name" } },
     { name: "warehouse_id", label: "Çıkış Deposu", type: "reference", ref: { table: "warehouses", labelField: "name" } },
     { name: "quantity", label: "Miktar", type: "number", required: true },

@@ -8,6 +8,7 @@ import { navForRole, ROLE_LABELS, type NavItem } from "@/lib/nav";
 import type { Profile } from "@/lib/types";
 import {
   Boxes,
+  Calculator,
   LayoutDashboard,
   Leaf,
   LogOut,
@@ -29,6 +30,7 @@ const ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
   Settings,
   Wallet,
   Wheat,
+  Calculator,
 };
 
 function Brand() {

@@ -4,7 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { Card } from "@/components/ui";
 import { ROLE_LABELS } from "@/lib/nav";
 import { formatNumber } from "@/lib/format";
-import { ShoppingCart, TrendingUp, Truck, Wallet } from "lucide-react";
+import { Calculator, ShoppingCart, TrendingUp, Truck, Wallet } from "lucide-react";
 
 const sum = <T,>(rows: T[], pick: (r: T) => unknown) =>
   rows.reduce((a, r) => a + (Number(pick(r)) || 0), 0);
@@ -27,6 +27,7 @@ export default async function DashboardPage() {
   const canS = ["admin", "sales"].includes(role);
   const canO = ["admin", "operations"].includes(role);
   const canF = ["admin", "finans"].includes(role);
+  const canM = ["admin", "maliyet"].includes(role);
 
   const [c, s, inv, mv] = await Promise.all([
     canB
@@ -109,6 +110,15 @@ export default async function DashboardPage() {
       tone: "bg-rose-50 text-rose-700",
       main: "Ödemeler",
       sub: "öngörülen ödeme tarihleri",
+    });
+  if (canM)
+    cards.push({
+      title: "Maliyet",
+      href: "/cost",
+      icon: Calculator,
+      tone: "bg-slate-100 text-slate-700",
+      main: "Kâr / Zarar",
+      sub: "gemi bazlı al / sat",
     });
 
   return (
