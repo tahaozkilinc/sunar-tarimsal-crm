@@ -72,6 +72,8 @@ export interface ResourceConfig {
   filter?: Record<string, string | number | boolean | string[]>;
   defaultValues?: Record<string, unknown>;
   quota?: QuotaRule;
+  // Yeni kayıt açılırken o günün TCMB kurunu (usd_try/eur_try/fx_date) otomatik doldur.
+  fxCapture?: boolean;
 }
 
 // ---- Ortak seçenek listeleri ----
@@ -210,6 +212,7 @@ export const purchaseContractsResource: ResourceConfig = {
   searchFields: ["contract_no", "vessel", "origin_country"],
   filterFields: ["status", "supplier_id", "product_id"],
   listFields: ["contract_no", "supplier_id", "product_id", "quantity", "eta", "status"],
+  fxCapture: true,
   fields: [
     { name: "contract_no", label: "Sözleşme No", type: "text", unique: true },
     { name: "supplier_id", label: "Tedarikçi", type: "reference", ref: { table: "companies", labelField: "name", filter: { type: ["supplier", "both"] } } },
@@ -231,6 +234,9 @@ export const purchaseContractsResource: ResourceConfig = {
     { name: "principal_id", label: "Kimin Adına", type: "reference", ref: { table: "principals", labelField: "name" } },
     { name: "created_at", label: "Sözleşme Tarihi", type: "date", readOnly: true },
     { name: "contract_file_url", label: "Sözleşme Dosyası (PDF)", type: "file", bucket: "contracts" },
+    { name: "usd_try", label: "USD/TRY (TCMB)", type: "number", placeholder: "Otomatik" },
+    { name: "eur_try", label: "EUR/TRY (TCMB)", type: "number", placeholder: "Otomatik" },
+    { name: "fx_date", label: "Kur Tarihi", type: "date" },
     { name: "notes", label: "Notlar", type: "textarea" },
   ],
 };
@@ -266,6 +272,7 @@ export const salesOrdersResource: ResourceConfig = {
   orderBy: { column: "created_at", ascending: false },
   searchFields: ["order_no"],
   listFields: ["order_no", "customer_id", "product_id", "quantity", "delivery_date", "status"],
+  fxCapture: true,
   // Bir satış, kaynak bağlantının (gemi) toplam tonajını aşamaz (fazla satış engeli).
   quota: {
     field: "contract_id",
@@ -287,6 +294,9 @@ export const salesOrdersResource: ResourceConfig = {
     { name: "currency", label: "Para Birimi", type: "select", options: CURRENCY_OPTIONS },
     { name: "delivery_date", label: "Teslim Tarihi", type: "date" },
     { name: "status", label: "Durum", type: "select", options: SALES_STATUS_OPTIONS, required: true },
+    { name: "usd_try", label: "USD/TRY (TCMB)", type: "number", placeholder: "Otomatik" },
+    { name: "eur_try", label: "EUR/TRY (TCMB)", type: "number", placeholder: "Otomatik" },
+    { name: "fx_date", label: "Kur Tarihi", type: "date" },
     { name: "notes", label: "Notlar", type: "textarea" },
   ],
 };

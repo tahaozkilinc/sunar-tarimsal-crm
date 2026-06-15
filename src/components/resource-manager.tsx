@@ -286,6 +286,31 @@ export function ResourceManager({
     loadRows();
   }, [loadRows]);
 
+  // Yeni kayıt açılırken o günün TCMB kurunu otomatik doldur (USD bazlı raporlama).
+  useEffect(() => {
+    if (!modalOpen || editing || !config.fxCapture) return;
+    let on = true;
+    (async () => {
+      try {
+        const res = await fetch("/api/fx");
+        if (!res.ok) return;
+        const j = await res.json();
+        if (!on) return;
+        setForm((prev) => ({
+          ...prev,
+          usd_try: prev.usd_try ?? j.usd_try,
+          eur_try: prev.eur_try ?? j.eur_try,
+          fx_date: prev.fx_date ?? j.date,
+        }));
+      } catch {
+        /* TCMB erişilemezse sessizce geç; kullanıcı elle girebilir */
+      }
+    })();
+    return () => {
+      on = false;
+    };
+  }, [modalOpen, editing, config.fxCapture]);
+
   // --- yardımcılar ---
   const refLabel = (field: FieldDef, value: unknown) => {
     if (!value || !field.ref) return "-";
