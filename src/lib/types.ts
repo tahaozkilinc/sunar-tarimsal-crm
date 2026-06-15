@@ -1,6 +1,6 @@
 // Uygulamadaki temel veri tipleri. Şema genişledikçe burayı da genişletin.
 
-export type Role = "admin" | "purchasing" | "operations" | "sales" | "pending";
+export type Role = "admin" | "purchasing" | "operations" | "sales" | "finans" | "pending";
 
 export interface Profile {
   id: string;
@@ -68,6 +68,9 @@ export interface PurchaseContract {
   vessel: string | null;
   eta: string | null;
   status: string;
+  payment_due_date: string | null;
+  buyer: string | null;
+  on_behalf: string | null;
   contract_file_url: string | null;
   notes: string | null;
 }

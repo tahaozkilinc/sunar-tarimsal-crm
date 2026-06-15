@@ -15,7 +15,7 @@ export const NAV_ITEMS: NavItem[] = [
     href: "/",
     label: "Panel",
     icon: "LayoutDashboard",
-    roles: ["admin", "purchasing", "operations", "sales"],
+    roles: ["admin", "purchasing", "operations", "sales", "finans"],
   },
   {
     href: "/crm",
@@ -48,6 +48,12 @@ export const NAV_ITEMS: NavItem[] = [
     roles: ["admin", "sales"],
   },
   {
+    href: "/finance",
+    label: "Finans",
+    icon: "Wallet",
+    roles: ["admin", "finans"],
+  },
+  {
     href: "/admin",
     label: "Yönetim",
     icon: "Settings",
@@ -60,6 +66,7 @@ export const ROLE_LABELS: Record<Role, string> = {
   purchasing: "Satın Alma",
   operations: "Operasyon",
   sales: "Satış",
+  finans: "Finans",
   pending: "Onay Bekliyor",
 };
 

@@ -208,6 +208,9 @@ export const purchaseContractsResource: ResourceConfig = {
     { name: "laycan_start", label: "Laycan Başlangıç", type: "date" },
     { name: "laycan_end", label: "Laycan Bitiş", type: "date" },
     { name: "status", label: "Durum", type: "select", options: CONTRACT_STATUS_OPTIONS, required: true },
+    { name: "payment_due_date", label: "Öngörülen Ödeme Tarihi", type: "date" },
+    { name: "buyer", label: "Alıcı", type: "text" },
+    { name: "on_behalf", label: "Kimin Adına", type: "text" },
     { name: "notes", label: "Notlar", type: "textarea" },
   ],
 };
