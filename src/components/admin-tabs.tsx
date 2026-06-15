@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Tabs } from "./ui";
 import { ResourceManager } from "./resource-manager";
 import { UsersManager } from "./users-manager";
-import { productsResource, warehousesResource } from "@/lib/resources";
+import { principalsResource, productsResource, warehousesResource } from "@/lib/resources";
 import type { Role } from "@/lib/types";
 
 export function AdminTabs({ role }: { role: Role }) {
@@ -19,12 +19,16 @@ export function AdminTabs({ role }: { role: Role }) {
           { key: "users", label: "Kullanıcılar" },
           { key: "products", label: "Ürünler" },
           { key: "warehouses", label: "Depolar / Fabrikalar" },
+          { key: "principals", label: "Adına Alınanlar" },
         ]}
       />
       {tab === "users" && <UsersManager />}
       {tab === "products" && <ResourceManager config={productsResource} role={role} />}
       {tab === "warehouses" && (
         <ResourceManager config={warehousesResource} role={role} />
+      )}
+      {tab === "principals" && (
+        <ResourceManager config={principalsResource} role={role} />
       )}
     </div>
   );

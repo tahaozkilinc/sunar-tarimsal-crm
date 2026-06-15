@@ -283,6 +283,7 @@ export function ResourceManager({
     setFormError(null);
     const payload: Row = { ...defaults };
     for (const field of config.fields) {
+      if (field.readOnly) continue;
       let v = form[field.name];
       if (field.type === "number" || field.type === "money") {
         v = v === "" || v === undefined || v === null ? null : Number(v);
@@ -536,7 +537,7 @@ export function ResourceManager({
       >
         <div className="space-y-3">
           {config.fields
-            .filter((f) => !f.formHidden)
+            .filter((f) => !f.formHidden && !f.readOnly)
             .map((f) => (
               <Field key={f.name} label={f.label} required={f.required}>
                 {renderInput(f)}

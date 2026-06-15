@@ -46,6 +46,20 @@ export function FinanceView() {
     const x = new Date(d.slice(0, 10) + "T00:00:00");
     return !Number.isNaN(x.getTime()) && x < today;
   };
+  const daysTo = (d: string | null) => {
+    if (!d) return null;
+    const x = new Date(d.slice(0, 10) + "T00:00:00");
+    if (Number.isNaN(x.getTime())) return null;
+    return Math.round((x.getTime() - today.getTime()) / 86400000);
+  };
+  const overdueCount = rows.filter((r) => {
+    const n = daysTo(r.payment_due_date);
+    return n !== null && n < 0;
+  }).length;
+  const soonCount = rows.filter((r) => {
+    const n = daysTo(r.payment_due_date);
+    return n !== null && n >= 0 && n <= 7;
+  }).length;
 
   const filtered = rows.filter(
     (r) =>
@@ -67,6 +81,16 @@ export function FinanceView() {
           />
         </div>
       </div>
+
+      {(overdueCount > 0 || soonCount > 0) && (
+        <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          ⚠️{" "}
+          {overdueCount > 0 && (
+            <span className="font-semibold">{overdueCount} ödemenin tarihi geçti. </span>
+          )}
+          {soonCount > 0 && <span>{soonCount} ödeme önümüzdeki 7 gün içinde.</span>}
+        </div>
+      )}
 
       {error && (
         <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">

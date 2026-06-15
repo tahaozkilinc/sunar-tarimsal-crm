@@ -40,6 +40,7 @@ export interface FieldDef {
   ref?: { table: string; labelField: string };
   autofill?: Record<string, string>;
   formHidden?: boolean;
+  readOnly?: boolean;
   placeholder?: string;
 }
 
@@ -203,6 +204,7 @@ export const purchaseContractsResource: ResourceConfig = {
     { name: "currency", label: "Para Birimi", type: "select", options: CURRENCY_OPTIONS },
     { name: "incoterm", label: "Teslim Şekli", type: "select", options: INCOTERM_OPTIONS },
     { name: "origin_country", label: "Menşe Ülke", type: "text" },
+    { name: "loading_port", label: "Yükleme Limanı", type: "text" },
     { name: "vessel", label: "Gemi / Araç", type: "text" },
     { name: "eta", label: "ETA (Tahmini Varış)", type: "date" },
     { name: "laycan_start", label: "Laycan Başlangıç", type: "date" },
@@ -210,7 +212,8 @@ export const purchaseContractsResource: ResourceConfig = {
     { name: "status", label: "Durum", type: "select", options: CONTRACT_STATUS_OPTIONS, required: true },
     { name: "payment_due_date", label: "Öngörülen Ödeme Tarihi", type: "date" },
     { name: "buyer", label: "Alıcı", type: "text" },
-    { name: "on_behalf", label: "Kimin Adına", type: "text" },
+    { name: "principal_id", label: "Kimin Adına", type: "reference", ref: { table: "principals", labelField: "name" } },
+    { name: "created_at", label: "Sözleşme Tarihi", type: "date", readOnly: true },
     { name: "notes", label: "Notlar", type: "textarea" },
   ],
 };
@@ -292,6 +295,20 @@ export const warehousesResource: ResourceConfig = {
     { name: "type", label: "Tür", type: "select", options: LOCATION_TYPE_OPTIONS, required: true },
     { name: "city", label: "Şehir", type: "text" },
     { name: "capacity", label: "Kapasite", type: "number" },
+    { name: "is_active", label: "Aktif", type: "boolean" },
+  ],
+};
+
+export const principalsResource: ResourceConfig = {
+  table: "principals",
+  title: "Adına Alınanlar",
+  singular: "Firma",
+  writeRoles: ["admin"],
+  orderBy: { column: "name", ascending: true },
+  searchFields: ["name"],
+  listFields: ["name", "is_active"],
+  fields: [
+    { name: "name", label: "Firma Adı", type: "text", required: true },
     { name: "is_active", label: "Aktif", type: "boolean" },
   ],
 };

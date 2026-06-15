@@ -18,6 +18,7 @@ type Contract = {
   laycan_end: string | null;
   vessel: string | null;
   status: string;
+  origin_country: string | null;
 };
 type Ref = { id: string; name: string };
 
@@ -60,7 +61,7 @@ export function ShipmentSchedule() {
         supabase
           .from("purchase_contracts")
           .select(
-            "id,contract_no,supplier_id,product_id,quantity,unit,eta,laycan_start,laycan_end,vessel,status",
+            "id,contract_no,supplier_id,product_id,quantity,unit,eta,laycan_start,laycan_end,vessel,status,origin_country",
           ),
         supabase.from("products").select("id,name"),
         supabase.from("companies").select("id,name"),
@@ -374,31 +375,34 @@ export function ShipmentSchedule() {
               ))}
               {cells.map((d, i) => {
                 if (d === null)
-                  return <div key={i} className="min-h-[72px] rounded bg-gray-50/40" />;
+                  return <div key={i} className="min-h-[88px] rounded bg-gray-50/40" />;
                 const items = calItems.get(String(d)) || [];
                 return (
                   <div
                     key={i}
-                    className={`min-h-[72px] rounded border p-1 ${
+                    className={`min-h-[88px] rounded border p-1 ${
                       d === todayDay ? "border-brand bg-brand/5" : "border-border"
                     }`}
                   >
                     <div className="mb-0.5 text-right text-xs text-gray-400">{d}</div>
                     <div className="space-y-0.5">
-                      {items.slice(0, 3).map((c) => (
+                      {items.slice(0, 2).map((c) => (
                         <div
                           key={c.id}
-                          className="truncate rounded px-1 py-0.5 text-[10px] font-medium text-white"
+                          className="rounded px-1 py-0.5 text-[10px] leading-tight text-white"
                           style={{ background: STATUS_COLOR[c.status] || "#6b7280" }}
                           title={`${productName(c.product_id)} · ${formatNumber(c.quantity)} ${c.unit} · ${
-                            c.vessel || c.contract_no || ""
-                          }`}
+                            c.origin_country || ""
+                          } · ${c.vessel || c.contract_no || ""}`}
                         >
-                          {productName(c.product_id)} {formatNumber(c.quantity)}
+                          <div className="truncate font-medium">
+                            {productName(c.product_id)} · {formatNumber(c.quantity)}
+                          </div>
+                          <div className="truncate opacity-90">{c.origin_country || "menşe yok"}</div>
                         </div>
                       ))}
-                      {items.length > 3 && (
-                        <div className="text-[10px] text-gray-500">+{items.length - 3} daha</div>
+                      {items.length > 2 && (
+                        <div className="text-[10px] text-gray-500">+{items.length - 2} daha</div>
                       )}
                     </div>
                   </div>
