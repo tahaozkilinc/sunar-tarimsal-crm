@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Tabs } from "./ui";
 import { ResourceManager } from "./resource-manager";
 import { SatisSummary } from "./function-summary";
-import { salesOrdersResource } from "@/lib/resources";
+import { salesOrdersResource, sellableContractsResource } from "@/lib/resources";
 import type { Role } from "@/lib/types";
 
 export function SalesTabs({ role }: { role: Role }) {
@@ -17,10 +17,14 @@ export function SalesTabs({ role }: { role: Role }) {
         onChange={setTab}
         tabs={[
           { key: "ozet", label: "Özet" },
+          { key: "contracts", label: "Bağlantılar" },
           { key: "orders", label: "Satışlar" },
         ]}
       />
       {tab === "ozet" && <SatisSummary />}
+      {tab === "contracts" && (
+        <ResourceManager config={sellableContractsResource} role={role} hideTitle />
+      )}
       {tab === "orders" && (
         <ResourceManager config={salesOrdersResource} role={role} hideTitle />
       )}

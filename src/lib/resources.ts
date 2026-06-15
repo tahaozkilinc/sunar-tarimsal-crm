@@ -265,6 +265,30 @@ export const salesOrdersResource: ResourceConfig = {
   ],
 };
 
+// Satış rolünün "tüm bağlantıları" (fiyatsız, yoldakiler dahil) görebilmesi için.
+// sellable_contracts view'ı 0007 migration'ı ile oluşur.
+export const sellableContractsResource: ResourceConfig = {
+  table: "sellable_contracts",
+  title: "Bağlantılar",
+  singular: "Bağlantı",
+  writeRoles: [],
+  orderBy: { column: "eta", ascending: true },
+  searchFields: ["contract_no", "vessel", "origin_country"],
+  filterFields: ["status", "product_id"],
+  listFields: ["contract_no", "vessel", "product_id", "quantity", "eta", "status"],
+  fields: [
+    { name: "contract_no", label: "Sözleşme No", type: "text" },
+    { name: "vessel", label: "Gemi / Araç", type: "text" },
+    { name: "product_id", label: "Ürün", type: "reference", ref: { table: "products", labelField: "name" } },
+    { name: "quantity", label: "Miktar", type: "number" },
+    { name: "unit", label: "Birim", type: "text" },
+    { name: "origin_country", label: "Menşe Ülke", type: "text" },
+    { name: "eta", label: "ETA (Tahmini Varış)", type: "date" },
+    { name: "status", label: "Durum", type: "select", options: CONTRACT_STATUS_OPTIONS },
+    { name: "principal_id", label: "Kimin Adına", type: "reference", ref: { table: "principals", labelField: "name" } },
+  ],
+};
+
 export const productsResource: ResourceConfig = {
   table: "products",
   title: "Ürünler",
