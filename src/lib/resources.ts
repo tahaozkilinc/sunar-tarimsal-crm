@@ -54,7 +54,7 @@ export interface ResourceConfig {
   searchFields?: string[];
   filterFields?: string[];
   orderBy?: { column: string; ascending?: boolean };
-  filter?: Record<string, string | number | boolean>;
+  filter?: Record<string, string | number | boolean | string[]>;
   defaultValues?: Record<string, unknown>;
 }
 

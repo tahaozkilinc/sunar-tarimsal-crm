@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import {
   Badge,
@@ -103,16 +104,19 @@ export function ResourceManager({
   title,
   detailExtra,
   hideTitle,
+  rowHref,
 }: {
   config: ResourceConfig;
   role: Role;
-  filter?: Record<string, string | number | boolean>;
+  filter?: Record<string, string | number | boolean | string[]>;
   defaultValues?: Record<string, unknown>;
   title?: string;
   detailExtra?: (row: Row) => React.ReactNode;
   hideTitle?: boolean;
+  rowHref?: (row: Row) => string;
 }) {
   const supabase = useMemo(() => createClient(), []);
+  const router = useRouter();
   const [rows, setRows] = useState<Row[]>([]);
   const [refData, setRefData] = useState<Record<string, Row[]>>({});
   const [loading, setLoading] = useState(true);
@@ -169,8 +173,12 @@ export function ResourceManager({
     setLoading(true);
     setError(null);
     let query = supabase.from(config.table).select("*");
-    const f = JSON.parse(filterKey) as Record<string, string | number | boolean>;
-    for (const [k, v] of Object.entries(f)) query = query.eq(k, v);
+    const f = JSON.parse(filterKey) as Record<
+      string,
+      string | number | boolean | string[]
+    >;
+    for (const [k, v] of Object.entries(f))
+      query = Array.isArray(v) ? query.in(k, v) : query.eq(k, v);
     if (config.orderBy)
       query = query.order(config.orderBy.column, {
         ascending: config.orderBy.ascending ?? false,
@@ -330,6 +338,11 @@ export function ResourceManager({
     setNoteText(notesFieldName ? ((row[notesFieldName] as string) ?? "") : "");
   };
 
+  const onRowOpen = (row: Row) => {
+    if (rowHref) router.push(rowHref(row));
+    else openDetail(row);
+  };
+
   const saveNote = async () => {
     if (!detail || !notesFieldName) return;
     setSavingNote(true);
@@ -453,7 +466,7 @@ export function ResourceManager({
                 {filtered.map((row) => (
                   <tr
                     key={String(row.id)}
-                    onClick={() => openDetail(row)}
+                    onClick={() => onRowOpen(row)}
                     className="cursor-pointer border-b border-border last:border-0 hover:bg-gray-50"
                   >
                     {listFieldDefs.map((f) => (
@@ -464,7 +477,7 @@ export function ResourceManager({
                     <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                       <div className="flex justify-end gap-1">
                         <button
-                          onClick={() => openDetail(row)}
+                          onClick={() => onRowOpen(row)}
                           className="rounded-lg p-1.5 text-gray-500 hover:bg-gray-100"
                           title="Detay"
                         >
@@ -502,7 +515,7 @@ export function ResourceManager({
               <div
                 key={String(row.id)}
                 className="cursor-pointer rounded-xl border border-border bg-card p-4"
-                onClick={() => openDetail(row)}
+                onClick={() => onRowOpen(row)}
               >
                 {listFieldDefs.map((f, i) => (
                   <div

@@ -1,55 +1,68 @@
 "use client";
 
 import { useState } from "react";
-import { ResourceManager } from "./resource-manager";
 import { Tabs } from "./ui";
-import { CompanyReport } from "./company-report";
-import {
-  activitiesResource,
-  companiesResource,
-  contactsResource,
-} from "@/lib/resources";
+import { ResourceManager } from "./resource-manager";
+import { activitiesResource, companiesResource } from "@/lib/resources";
 import type { Role } from "@/lib/types";
 
 export function CrmTabs({ role }: { role: Role }) {
-  const [tab, setTab] = useState("companies");
+  const isAdmin = role === "admin";
+  const [crmModule, setCrmModule] = useState<"purchasing" | "sales">(
+    role === "sales" ? "sales" : "purchasing",
+  );
+  const effModule = isAdmin ? crmModule : role === "sales" ? "sales" : "purchasing";
+  const companyType = effModule === "sales" ? "customer" : "supplier";
+  const companyLabel = effModule === "sales" ? "Müşteriler" : "Tedarikçiler";
+  // "İkisi de" tipindeki firmalar her iki tarafta da görünsün
+  const typeFilter = effModule === "sales" ? ["customer", "both"] : ["supplier", "both"];
 
-  const crmModule = role === "sales" ? "sales" : "purchasing";
-  const companyType = role === "sales" ? "customer" : "supplier";
-  const companyLabel =
-    role === "sales" ? "Müşteriler" : role === "purchasing" ? "Tedarikçiler" : "Firmalar";
+  const [tab, setTab] = useState("companies");
 
   return (
     <div className="space-y-4">
-      <h1 className="text-xl font-bold">CRM</h1>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-xl font-bold">CRM</h1>
+        {isAdmin && (
+          <Tabs
+            value={crmModule}
+            onChange={(k) => setCrmModule(k as "purchasing" | "sales")}
+            tabs={[
+              { key: "purchasing", label: "Tedarikçiler (Bağlantı)" },
+              { key: "sales", label: "Müşteriler (Satış)" },
+            ]}
+          />
+        )}
+      </div>
+
       <Tabs
         value={tab}
         onChange={setTab}
         tabs={[
           { key: "companies", label: companyLabel },
-          { key: "contacts", label: "Kişiler" },
           { key: "activities", label: "Aktiviteler" },
         ]}
       />
 
       {tab === "companies" && (
         <ResourceManager
+          key={`c-${effModule}`}
           config={companiesResource}
           role={role}
+          filter={{ type: typeFilter }}
           defaultValues={{ type: companyType }}
           title={companyLabel}
-          detailExtra={(row) => <CompanyReport companyId={String(row.id)} />}
+          hideTitle
+          rowHref={(row) => `/crm/${row.id}`}
         />
-      )}
-      {tab === "contacts" && (
-        <ResourceManager config={contactsResource} role={role} />
       )}
       {tab === "activities" && (
         <ResourceManager
+          key={`a-${effModule}`}
           config={activitiesResource}
           role={role}
-          filter={role === "admin" ? undefined : { module: crmModule }}
-          defaultValues={{ module: crmModule }}
+          filter={{ module: effModule }}
+          defaultValues={{ module: effModule }}
         />
       )}
     </div>
