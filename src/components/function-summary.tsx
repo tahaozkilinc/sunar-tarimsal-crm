@@ -288,6 +288,7 @@ export function BaglantiSummary() {
 // SATIŞ
 // ---------------------------------------------------------------------------
 type Sale = {
+  id: string;
   status: string | null;
   quantity: number | null;
   order_no: string | null;
@@ -318,7 +319,7 @@ export function SatisSummary() {
     let on = true;
     (async () => {
       const [s, i, sc, pr] = await Promise.all([
-        supabase.from("sales_orders").select("status,quantity,order_no,product_id"),
+        supabase.from("sales_orders").select("id,status,quantity,order_no,product_id"),
         supabase.from("inventory").select("warehouse_name,product_name,available_qty"),
         supabase
           .from("sellable_contracts")
@@ -424,8 +425,8 @@ export function SatisSummary() {
       </ListCard>
 
       <ListCard title="Bekleyen / Açık satışlar" empty="Bekleyen satış yok." count={bekleyen.length}>
-        {bekleyen.slice(0, 6).map((s, i) => (
-          <div key={i} className="flex items-center justify-between gap-3 py-2 text-sm">
+        {bekleyen.slice(0, 6).map((s) => (
+          <div key={s.id} className="flex items-center justify-between gap-3 py-2 text-sm">
             <span className="min-w-0 truncate">
               <span className="font-medium">{s.order_no || "—"}</span>
               <span className="text-gray-500"> · {pn(s.product_id)}</span>
@@ -442,6 +443,7 @@ export function SatisSummary() {
 // OPERASYON
 // ---------------------------------------------------------------------------
 type Movement = {
+  id: string;
   movement_type: string | null;
   quantity: number | null;
   movement_date: string | null;
@@ -462,7 +464,7 @@ export function OperasyonSummary() {
       const [m, c] = await Promise.all([
         supabase
           .from("stock_movements")
-          .select("movement_type,quantity,movement_date,contract_id,product_id"),
+          .select("id,movement_type,quantity,movement_date,contract_id,product_id"),
         supabase.from("purchase_contracts").select("id,vessel"),
       ]);
       if (!on) return;
@@ -505,8 +507,8 @@ export function OperasyonSummary() {
         <Stat label="Hareket" value={String(rows.length)} unit="adet" />
       </div>
       <ListCard title="Son boşaltmalar (gemiden / araçtan)" empty="Giriş kaydı yok." count={son.length}>
-        {son.map((m, i) => (
-          <div key={i} className="flex items-center justify-between gap-3 py-2 text-sm">
+        {son.map((m) => (
+          <div key={m.id} className="flex items-center justify-between gap-3 py-2 text-sm">
             <span className="min-w-0 truncate">
               <span className="font-medium">
                 {(m.contract_id && vesselMap[m.contract_id]) || pn(m.product_id)}

@@ -4,7 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { Card } from "@/components/ui";
 import { ROLE_LABELS } from "@/lib/nav";
 import { formatNumber } from "@/lib/format";
-import { Calculator, ShoppingCart, TrendingUp, Truck, Wallet } from "lucide-react";
+import { Calculator, ShoppingCart, TrendingUp, Truck, Users, Wallet } from "lucide-react";
 
 const sum = <T,>(rows: T[], pick: (r: T) => unknown) =>
   rows.reduce((a, r) => a + (Number(pick(r)) || 0), 0);
@@ -28,8 +28,9 @@ export default async function DashboardPage() {
   const canO = ["admin", "operations"].includes(role);
   const canF = ["admin", "finans"].includes(role);
   const canM = ["admin", "maliyet"].includes(role);
+  const canCrm = ["admin", "purchasing", "sales"].includes(role);
 
-  const [c, s, inv, mv] = await Promise.all([
+  const [c, s, inv, mv, crm] = await Promise.all([
     canB
       ? supabase.from("purchase_contracts").select("status,quantity")
       : Promise.resolve({ data: null }),
@@ -40,6 +41,9 @@ export default async function DashboardPage() {
     canO
       ? supabase.from("stock_movements").select("movement_type,quantity,movement_date")
       : Promise.resolve({ data: null }),
+    canCrm
+      ? supabase.from("crm_activities").select("status,due_date")
+      : Promise.resolve({ data: null }),
   ]);
 
   const contracts = (c.data as { status: string | null; quantity: number | null }[] | null) || [];
@@ -49,6 +53,8 @@ export default async function DashboardPage() {
     (mv.data as
       | { movement_type: string | null; quantity: number | null; movement_date: string | null }[]
       | null) || [];
+  const activities =
+    (crm.data as { status: string | null; due_date: string | null }[] | null) || [];
 
   const baglantiActive = contracts.filter((r) => r.status !== "cancelled");
   const baglantiTon = sum(baglantiActive, (r) => r.quantity);
@@ -74,7 +80,23 @@ export default async function DashboardPage() {
     (m) => m.quantity,
   );
 
+  const acikAktivite = activities.filter((a) => a.status === "open");
+  const todayStr = now.toISOString().slice(0, 10);
+  const gecikenAktivite = acikAktivite.filter((a) => a.due_date && a.due_date < todayStr);
+
   const cards: FunctionCard[] = [];
+  if (canCrm)
+    cards.push({
+      title: "CRM",
+      href: "/crm",
+      icon: Users,
+      tone: "bg-purple-50 text-purple-700",
+      main: `${acikAktivite.length}`,
+      sub:
+        gecikenAktivite.length > 0
+          ? `açık aktivite · ${gecikenAktivite.length} gecikmiş`
+          : "açık aktivite",
+    });
   if (canB)
     cards.push({
       title: "Bağlantı",

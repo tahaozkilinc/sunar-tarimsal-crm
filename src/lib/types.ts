@@ -16,7 +16,6 @@ export interface Company {
   id: string;
   name: string;
   type: "supplier" | "customer" | "both";
-  tax_no: string | null;
   city: string | null;
   country: string | null;
   phone: string | null;
@@ -65,13 +64,16 @@ export interface PurchaseContract {
   currency: string;
   incoterm: string | null;
   origin_country: string | null;
+  loading_port: string | null;
   vessel: string | null;
   eta: string | null;
+  laycan_start: string | null;
+  laycan_end: string | null;
   status: string;
   payment_due_date: string | null;
   buyer: string | null;
-  on_behalf: string | null;
-  contract_file_url: string | null;
+  principal_id: string | null;
+  created_at: string;
   notes: string | null;
 }
 
@@ -92,6 +94,7 @@ export interface SalesOrder {
   id: string;
   order_no: string | null;
   customer_id: string | null;
+  contract_id: string | null;
   product_id: string | null;
   warehouse_id: string | null;
   quantity: number;

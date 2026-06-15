@@ -16,7 +16,15 @@ import { ROLE_LABELS } from "@/lib/nav";
 import type { Profile, Role } from "@/lib/types";
 import { Plus, Trash2 } from "lucide-react";
 
-const ROLE_OPTIONS: Role[] = ["admin", "purchasing", "operations", "sales", "pending"];
+const ROLE_OPTIONS: Role[] = [
+  "admin",
+  "purchasing",
+  "operations",
+  "sales",
+  "finans",
+  "maliyet",
+  "pending",
+];
 
 export function UsersManager() {
   const supabase = useMemo(() => createClient(), []);

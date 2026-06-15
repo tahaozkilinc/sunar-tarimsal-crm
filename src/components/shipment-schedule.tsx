@@ -282,7 +282,7 @@ export function ShipmentSchedule() {
                 <div className="h-5 flex-1 overflow-hidden rounded bg-gray-100">
                   <div
                     className="h-full rounded bg-brand"
-                    style={{ width: `${(p.ton / byProduct[0].ton) * 100}%` }}
+                    style={{ width: `${(p.ton / Math.max(byProduct[0].ton, 1)) * 100}%` }}
                   />
                 </div>
                 <div className="w-28 shrink-0 text-right text-sm font-semibold">
