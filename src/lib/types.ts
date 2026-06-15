@@ -73,6 +73,7 @@ export interface PurchaseContract {
   payment_due_date: string | null;
   buyer: string | null;
   principal_id: string | null;
+  contract_file_url: string | null;
   created_at: string;
   notes: string | null;
 }

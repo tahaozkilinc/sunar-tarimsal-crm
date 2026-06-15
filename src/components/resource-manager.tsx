@@ -18,7 +18,7 @@ import {
 import { formatDate, formatNumber } from "@/lib/format";
 import type { FieldDef, ResourceConfig } from "@/lib/resources";
 import type { Role } from "@/lib/types";
-import { Eye, Pencil, Plus, Search, Trash2 } from "lucide-react";
+import { Eye, Paperclip, Pencil, Plus, Search, Trash2 } from "lucide-react";
 
 type Row = Record<string, unknown>;
 
@@ -93,6 +93,95 @@ function NumberInput({
       disabled={disabled}
       onChange={(e) => handle(e.target.value)}
     />
+  );
+}
+
+// Depodaki dosyayı imzalı (geçici) URL ile açan bağlantı.
+function StorageFileLink({ bucket, path }: { bucket: string; path: string }) {
+  const supabase = useMemo(() => createClient(), []);
+  const [loading, setLoading] = useState(false);
+  const name = path.split("/").pop() || "Dosya";
+  const open = async () => {
+    setLoading(true);
+    const { data } = await supabase.storage.from(bucket).createSignedUrl(path, 3600);
+    setLoading(false);
+    if (data?.signedUrl) window.open(data.signedUrl, "_blank", "noopener");
+  };
+  return (
+    <button
+      type="button"
+      onClick={open}
+      className="inline-flex items-center gap-1 text-sm text-brand hover:underline"
+    >
+      <Paperclip className="h-3.5 w-3.5 shrink-0" />
+      <span className="truncate">{loading ? "Açılıyor..." : name}</span>
+    </button>
+  );
+}
+
+// Dosya yükleme alanı: seçilen dosyayı Storage'a yükler, alan değerine yolu yazar.
+function FileInput({
+  value,
+  onChange,
+  bucket,
+  disabled,
+}: {
+  value: unknown;
+  onChange: (v: string) => void;
+  bucket: string;
+  disabled?: boolean;
+}) {
+  const supabase = useMemo(() => createClient(), []);
+  const [uploading, setUploading] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const path = (value as string) || "";
+
+  const pick = async (file: File) => {
+    setUploading(true);
+    setErr(null);
+    const safe = file.name.replace(/[^\w.\-]+/g, "_");
+    const key = `${crypto.randomUUID()}-${safe}`;
+    const { error } = await supabase.storage.from(bucket).upload(key, file, { upsert: false });
+    setUploading(false);
+    if (error) {
+      setErr(error.message);
+      return;
+    }
+    onChange(key);
+  };
+
+  if (path)
+    return (
+      <div className="flex items-center justify-between gap-2 rounded-lg border border-border px-3 py-2">
+        <StorageFileLink bucket={bucket} path={path} />
+        {!disabled && (
+          <button
+            type="button"
+            onClick={() => onChange("")}
+            className="shrink-0 rounded-lg p-1 text-gray-400 hover:bg-red-50 hover:text-red-600"
+            title="Dosyayı kaldır"
+          >
+            <Trash2 className="h-4 w-4" />
+          </button>
+        )}
+      </div>
+    );
+
+  return (
+    <div className="space-y-1">
+      <input
+        type="file"
+        accept="application/pdf,image/*"
+        disabled={disabled || uploading}
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          if (f) pick(f);
+        }}
+        className="block w-full text-sm text-gray-600 file:mr-3 file:rounded-lg file:border-0 file:bg-brand/10 file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-brand"
+      />
+      {uploading && <div className="text-xs text-gray-500">Yükleniyor...</div>}
+      {err && <div className="text-xs text-red-600">{err}</div>}
+    </div>
   );
 }
 
@@ -223,6 +312,8 @@ export function ResourceManager({
       case "number":
       case "money":
         return formatNumber(value as number);
+      case "file":
+        return <StorageFileLink bucket={field.bucket || "contracts"} path={value as string} />;
       default:
         return String(value);
     }
@@ -314,6 +405,40 @@ export function ResourceManager({
       return;
     }
 
+    // Sayısal sınır + e-posta/telefon format kontrolü
+    for (const f of config.fields) {
+      if (f.readOnly) continue;
+      const v = payload[f.name];
+      if (v === null || v === undefined) continue;
+      if (f.type === "number" || f.type === "money") {
+        const n = Number(v);
+        if (f.positive && !(n > 0)) {
+          setSaving(false);
+          setFormError(`${f.label} 0'dan büyük olmalı.`);
+          return;
+        }
+        if (f.min !== undefined && n < f.min) {
+          setSaving(false);
+          setFormError(
+            f.min === 0 ? `${f.label} negatif olamaz.` : `${f.label} en az ${formatNumber(f.min)} olmalı.`,
+          );
+          return;
+        }
+      } else if (f.type === "email") {
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(v))) {
+          setSaving(false);
+          setFormError(`${f.label} geçerli bir e-posta adresi değil.`);
+          return;
+        }
+      } else if (f.type === "tel") {
+        if (String(v).replace(/\D/g, "").length < 7) {
+          setSaving(false);
+          setFormError(`${f.label} geçerli bir telefon numarası değil.`);
+          return;
+        }
+      }
+    }
+
     const dupField = config.fields.find((f) => {
       if (!f.unique || f.readOnly) return false;
       const v = payload[f.name];
@@ -327,6 +452,42 @@ export function ResourceManager({
       setSaving(false);
       setFormError(`${dupField.label}: "${String(payload[dupField.name])}" değeri zaten kayıtlı.`);
       return;
+    }
+
+    // Kota: kaynak bağlantının kalan tonajını aşan satışı engelle (fazla satış).
+    if (config.quota) {
+      const q = config.quota;
+      const refId = payload[q.field];
+      const adding = Number(payload[q.amountField]) || 0;
+      if (refId && adding > 0) {
+        const { data: capRow } = await supabase
+          .from(q.capacityTable)
+          .select(q.capacityField)
+          .eq("id", refId)
+          .maybeSingle();
+        const capacity = Number((capRow as Row | null)?.[q.capacityField]) || 0;
+        if (capacity > 0) {
+          const statusCol = q.statusField ?? "status";
+          let usedQ = supabase
+            .from(config.table)
+            .select(`${q.amountField},${statusCol}`)
+            .eq(q.field, refId);
+          if (editing?.id) usedQ = usedQ.neq("id", editing.id);
+          const { data: usedRows } = await usedQ;
+          const used = ((usedRows as Row[] | null) ?? []).reduce((sum, r) => {
+            if (q.excludeStatus?.includes(String(r[statusCol] ?? ""))) return sum;
+            return sum + (Number(r[q.amountField]) || 0);
+          }, 0);
+          if (used + adding > capacity) {
+            const remaining = Math.max(capacity - used, 0);
+            setSaving(false);
+            setFormError(
+              `Bu bağlantının satılabilir kalan miktarı ${formatNumber(remaining)} (toplam ${formatNumber(capacity)}). Daha fazlası girilemez.`,
+            );
+            return;
+          }
+        }
+      }
     }
 
     const result = editing?.id
@@ -760,6 +921,15 @@ export function ResourceManager({
           value={form[f.name]}
           onChange={(v) => setField(f.name, v)}
           placeholder={f.placeholder}
+          disabled={!canWrite}
+        />
+      );
+    if (f.type === "file")
+      return (
+        <FileInput
+          value={form[f.name]}
+          onChange={(v) => setField(f.name, v)}
+          bucket={f.bucket || "contracts"}
           disabled={!canWrite}
         />
       );

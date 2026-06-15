@@ -34,15 +34,29 @@ export interface FieldDef {
     | "boolean"
     | "email"
     | "tel"
-    | "url";
+    | "url"
+    | "file";
   required?: boolean;
   unique?: boolean;
+  positive?: boolean; // sayı > 0 olmalı
+  min?: number; // sayı için alt sınır (dahil)
+  bucket?: string; // "file" tipi için Supabase Storage kovası
   options?: SelectOption[];
   ref?: { table: string; labelField: string; filter?: Record<string, string[]> };
   autofill?: Record<string, string>;
   formHidden?: boolean;
   readOnly?: boolean;
   placeholder?: string;
+}
+
+// Bir kaydın bir "kapasiteyi" (ör. bağlantı tonajı) aşmasını engelleyen kota tanımı.
+export interface QuotaRule {
+  field: string; // bu kaynaktaki referans alanı (ör. "contract_id")
+  amountField: string; // bu kaynaktaki miktar alanı (ör. "quantity")
+  capacityTable: string; // kapasitenin okunacağı tablo/görünüm (ör. "sellable_contracts")
+  capacityField: string; // kapasite kolonu (ör. "quantity")
+  statusField?: string; // hariç tutulacak durumlar için durum kolonu
+  excludeStatus?: string[]; // toplama dahil edilmeyecek durumlar (ör. ["cancelled"])
 }
 
 export interface ResourceConfig {
@@ -57,6 +71,7 @@ export interface ResourceConfig {
   orderBy?: { column: string; ascending?: boolean };
   filter?: Record<string, string | number | boolean | string[]>;
   defaultValues?: Record<string, unknown>;
+  quota?: QuotaRule;
 }
 
 // ---- Ortak seçenek listeleri ----
@@ -199,9 +214,9 @@ export const purchaseContractsResource: ResourceConfig = {
     { name: "contract_no", label: "Sözleşme No", type: "text", unique: true },
     { name: "supplier_id", label: "Tedarikçi", type: "reference", ref: { table: "companies", labelField: "name", filter: { type: ["supplier", "both"] } } },
     { name: "product_id", label: "Ürün (Yağlı Tohum)", type: "reference", ref: { table: "products", labelField: "name" } },
-    { name: "quantity", label: "Miktar", type: "number", required: true },
+    { name: "quantity", label: "Miktar", type: "number", required: true, positive: true },
     { name: "unit", label: "Birim", type: "text" },
-    { name: "price", label: "Birim Fiyat", type: "money" },
+    { name: "price", label: "Birim Fiyat", type: "money", min: 0 },
     { name: "currency", label: "Para Birimi", type: "select", options: CURRENCY_OPTIONS },
     { name: "incoterm", label: "Teslim Şekli", type: "select", options: INCOTERM_OPTIONS },
     { name: "origin_country", label: "Menşe Ülke", type: "text" },
@@ -215,6 +230,7 @@ export const purchaseContractsResource: ResourceConfig = {
     { name: "buyer", label: "Alıcı", type: "text" },
     { name: "principal_id", label: "Kimin Adına", type: "reference", ref: { table: "principals", labelField: "name" } },
     { name: "created_at", label: "Sözleşme Tarihi", type: "date", readOnly: true },
+    { name: "contract_file_url", label: "Sözleşme Dosyası (PDF)", type: "file", bucket: "contracts" },
     { name: "notes", label: "Notlar", type: "textarea" },
   ],
 };
@@ -234,7 +250,7 @@ export const stockMovementsResource: ResourceConfig = {
     { name: "product_id", label: "Ürün", type: "reference", ref: { table: "products", labelField: "name" } },
     { name: "warehouse_id", label: "Depo / Fabrika", type: "reference", ref: { table: "warehouses", labelField: "name" }, required: true },
     { name: "movement_type", label: "Hareket Tipi", type: "select", options: MOVEMENT_TYPE_OPTIONS, required: true },
-    { name: "quantity", label: "Miktar", type: "number", required: true },
+    { name: "quantity", label: "Miktar", type: "number", required: true, positive: true },
     { name: "unit", label: "Birim", type: "text" },
     { name: "vehicle_plate", label: "Araç Plakası", type: "text" },
     { name: "notes", label: "Notlar", type: "textarea" },
@@ -250,15 +266,24 @@ export const salesOrdersResource: ResourceConfig = {
   orderBy: { column: "created_at", ascending: false },
   searchFields: ["order_no"],
   listFields: ["order_no", "customer_id", "product_id", "quantity", "delivery_date", "status"],
+  // Bir satış, kaynak bağlantının (gemi) toplam tonajını aşamaz (fazla satış engeli).
+  quota: {
+    field: "contract_id",
+    amountField: "quantity",
+    capacityTable: "sellable_contracts",
+    capacityField: "quantity",
+    statusField: "status",
+    excludeStatus: ["cancelled"],
+  },
   fields: [
     { name: "order_no", label: "Satış No", type: "text", unique: true },
     { name: "customer_id", label: "Müşteri", type: "reference", ref: { table: "companies", labelField: "name", filter: { type: ["customer", "both"] } } },
     { name: "contract_id", label: "Kaynak Bağlantı (Gemi)", type: "reference", ref: { table: "sellable_contracts", labelField: "contract_no" }, autofill: { product_id: "product_id" } },
     { name: "product_id", label: "Ürün", type: "reference", ref: { table: "products", labelField: "name" } },
     { name: "warehouse_id", label: "Çıkış Deposu", type: "reference", ref: { table: "warehouses", labelField: "name" } },
-    { name: "quantity", label: "Miktar", type: "number", required: true },
+    { name: "quantity", label: "Miktar", type: "number", required: true, positive: true },
     { name: "unit", label: "Birim", type: "text" },
-    { name: "price", label: "Birim Fiyat", type: "money" },
+    { name: "price", label: "Birim Fiyat", type: "money", min: 0 },
     { name: "currency", label: "Para Birimi", type: "select", options: CURRENCY_OPTIONS },
     { name: "delivery_date", label: "Teslim Tarihi", type: "date" },
     { name: "status", label: "Durum", type: "select", options: SALES_STATUS_OPTIONS, required: true },
@@ -320,7 +345,7 @@ export const warehousesResource: ResourceConfig = {
     { name: "name", label: "Ad", type: "text", required: true, unique: true },
     { name: "type", label: "Tür", type: "select", options: LOCATION_TYPE_OPTIONS, required: true },
     { name: "city", label: "Şehir", type: "text" },
-    { name: "capacity", label: "Kapasite", type: "number" },
+    { name: "capacity", label: "Kapasite", type: "number", min: 0 },
     { name: "is_active", label: "Aktif", type: "boolean" },
   ],
 };
