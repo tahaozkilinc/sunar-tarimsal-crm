@@ -59,7 +59,7 @@ type Row = {
   customers: CustomerProfit[];
 };
 
-export function CostView() {
+export function CostView({ hideTitle }: { hideTitle?: boolean } = {}) {
   const supabase = useMemo(() => createClient(), []);
   const [contracts, setContracts] = useState<PC[]>([]);
   const [sales, setSales] = useState<SO[]>([]);
@@ -239,8 +239,12 @@ export function CostView() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-xl font-bold">Maliyet / Kâr-Zarar</h1>
+      <div
+        className={`flex flex-wrap items-center gap-3 ${
+          hideTitle ? "justify-end" : "justify-between"
+        }`}
+      >
+        {!hideTitle && <h1 className="text-xl font-bold">Maliyet / Kâr-Zarar</h1>}
         <div className="flex items-center gap-2">
           <div className="relative">
             <Search className="pointer-events-none absolute left-2.5 top-2.5 h-4 w-4 text-gray-400" />
