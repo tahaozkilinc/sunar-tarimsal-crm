@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Tabs } from "./ui";
 import { ResourceManager } from "./resource-manager";
+import { CrmActivitySummary } from "./crm-activity-summary";
 import { activitiesResource, companiesResource } from "@/lib/resources";
 import type { Role } from "@/lib/types";
 
@@ -57,13 +58,16 @@ export function CrmTabs({ role }: { role: Role }) {
         />
       )}
       {tab === "activities" && (
-        <ResourceManager
-          key={`a-${effModule}`}
-          config={activitiesResource}
-          role={role}
-          filter={{ module: effModule }}
-          defaultValues={{ module: effModule }}
-        />
+        <div className="space-y-4">
+          <CrmActivitySummary key={`s-${effModule}`} module={effModule} />
+          <ResourceManager
+            key={`a-${effModule}`}
+            config={activitiesResource}
+            role={role}
+            filter={{ module: effModule }}
+            defaultValues={{ module: effModule }}
+          />
+        </div>
       )}
     </div>
   );
