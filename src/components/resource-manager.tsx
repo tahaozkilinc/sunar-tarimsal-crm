@@ -298,10 +298,35 @@ export function ResourceManager({
         v = v === "" || v === undefined || v === null ? null : Number(v);
       } else if (field.type === "boolean") {
         v = !!v;
-      } else if (v === "" || v === undefined) {
-        v = null;
+      } else {
+        if (typeof v === "string") v = v.trim();
+        if (v === "" || v === undefined || v === null) v = null;
       }
       payload[field.name] = v;
+    }
+
+    const missing = config.fields.filter(
+      (f) => f.required && !f.readOnly && payload[f.name] === null,
+    );
+    if (missing.length > 0) {
+      setSaving(false);
+      setFormError(`Lütfen zorunlu alanları doldurun: ${missing.map((f) => f.label).join(", ")}`);
+      return;
+    }
+
+    const dupField = config.fields.find((f) => {
+      if (!f.unique || f.readOnly) return false;
+      const v = payload[f.name];
+      if (v === null) return false;
+      const norm = String(v).toLocaleLowerCase("tr");
+      return rows.some(
+        (r) => r.id !== editing?.id && String(r[f.name] ?? "").trim().toLocaleLowerCase("tr") === norm,
+      );
+    });
+    if (dupField) {
+      setSaving(false);
+      setFormError(`${dupField.label}: "${String(payload[dupField.name])}" değeri zaten kayıtlı.`);
+      return;
     }
 
     const result = editing?.id

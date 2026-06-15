@@ -36,6 +36,7 @@ export interface FieldDef {
     | "tel"
     | "url";
   required?: boolean;
+  unique?: boolean;
   options?: SelectOption[];
   ref?: { table: string; labelField: string; filter?: Record<string, string[]> };
   autofill?: Record<string, string>;
@@ -137,7 +138,7 @@ export const companiesResource: ResourceConfig = {
   filterFields: ["type"],
   listFields: ["name", "type", "city", "phone"],
   fields: [
-    { name: "name", label: "Firma Adı", type: "text", required: true },
+    { name: "name", label: "Firma Adı", type: "text", required: true, unique: true },
     { name: "type", label: "Tür", type: "select", options: COMPANY_TYPE_OPTIONS, required: true },
     { name: "city", label: "Şehir", type: "text" },
     { name: "country", label: "Ülke", type: "text" },
@@ -195,7 +196,7 @@ export const purchaseContractsResource: ResourceConfig = {
   filterFields: ["status", "supplier_id", "product_id"],
   listFields: ["contract_no", "supplier_id", "product_id", "quantity", "eta", "status"],
   fields: [
-    { name: "contract_no", label: "Sözleşme No", type: "text" },
+    { name: "contract_no", label: "Sözleşme No", type: "text", unique: true },
     { name: "supplier_id", label: "Tedarikçi", type: "reference", ref: { table: "companies", labelField: "name", filter: { type: ["supplier", "both"] } } },
     { name: "product_id", label: "Ürün (Yağlı Tohum)", type: "reference", ref: { table: "products", labelField: "name" } },
     { name: "quantity", label: "Miktar", type: "number", required: true },
@@ -250,7 +251,7 @@ export const salesOrdersResource: ResourceConfig = {
   searchFields: ["order_no"],
   listFields: ["order_no", "customer_id", "product_id", "quantity", "delivery_date", "status"],
   fields: [
-    { name: "order_no", label: "Satış No", type: "text" },
+    { name: "order_no", label: "Satış No", type: "text", unique: true },
     { name: "customer_id", label: "Müşteri", type: "reference", ref: { table: "companies", labelField: "name", filter: { type: ["customer", "both"] } } },
     { name: "contract_id", label: "Kaynak Bağlantı (Gemi)", type: "reference", ref: { table: "sellable_contracts", labelField: "contract_no" }, autofill: { product_id: "product_id" } },
     { name: "product_id", label: "Ürün", type: "reference", ref: { table: "products", labelField: "name" } },
@@ -299,8 +300,8 @@ export const productsResource: ResourceConfig = {
   searchFields: ["name", "code"],
   listFields: ["name", "code", "category", "unit", "is_active"],
   fields: [
-    { name: "name", label: "Ürün Adı", type: "text", required: true },
-    { name: "code", label: "Kod", type: "text" },
+    { name: "name", label: "Ürün Adı", type: "text", required: true, unique: true },
+    { name: "code", label: "Kod", type: "text", unique: true },
     { name: "category", label: "Kategori", type: "text" },
     { name: "unit", label: "Birim", type: "text" },
     { name: "is_active", label: "Aktif", type: "boolean" },
@@ -316,7 +317,7 @@ export const warehousesResource: ResourceConfig = {
   searchFields: ["name", "city"],
   listFields: ["name", "type", "city", "capacity", "is_active"],
   fields: [
-    { name: "name", label: "Ad", type: "text", required: true },
+    { name: "name", label: "Ad", type: "text", required: true, unique: true },
     { name: "type", label: "Tür", type: "select", options: LOCATION_TYPE_OPTIONS, required: true },
     { name: "city", label: "Şehir", type: "text" },
     { name: "capacity", label: "Kapasite", type: "number" },
@@ -333,7 +334,7 @@ export const principalsResource: ResourceConfig = {
   searchFields: ["name"],
   listFields: ["name", "is_active"],
   fields: [
-    { name: "name", label: "Firma Adı", type: "text", required: true },
+    { name: "name", label: "Firma Adı", type: "text", required: true, unique: true },
     { name: "is_active", label: "Aktif", type: "boolean" },
   ],
 };
