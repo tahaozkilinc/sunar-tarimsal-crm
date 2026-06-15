@@ -122,7 +122,7 @@ export function AppShell({
   return (
     <div className="flex min-h-screen">
       {/* Masaüstü kenar çubuğu */}
-      <aside className="hidden w-60 shrink-0 flex-col gap-2 border-r border-border bg-white p-3 md:flex">
+      <aside className="hidden w-60 shrink-0 flex-col gap-2 border-r border-border bg-white p-3 md:flex print:hidden">
         <Brand />
         <div className="mt-2 flex flex-1 flex-col">
           <NavLinks items={items} pathname={pathname} />
@@ -152,7 +152,7 @@ export function AppShell({
       {/* İçerik */}
       <div className="flex min-w-0 flex-1 flex-col">
         {/* Mobil üst bar */}
-        <header className="sticky top-0 z-30 flex items-center justify-between border-b border-border bg-white px-4 py-3 md:hidden">
+        <header className="sticky top-0 z-30 flex items-center justify-between border-b border-border bg-white px-4 py-3 md:hidden print:hidden">
           <button onClick={() => setOpen(true)} className="rounded-lg p-1.5 hover:bg-gray-100">
             <Menu className="h-6 w-6" />
           </button>
@@ -160,7 +160,7 @@ export function AppShell({
           <div className="w-8" />
         </header>
 
-        <main className="flex-1 p-4 sm:p-6">{children}</main>
+        <main className="flex-1 p-4 sm:p-6 print:p-0">{children}</main>
       </div>
     </div>
   );

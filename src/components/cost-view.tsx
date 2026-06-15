@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { Card, EmptyState, Input, Spinner } from "./ui";
 import { formatMoney, formatNumber } from "@/lib/format";
-import { Download, Search } from "lucide-react";
+import { Download, FileText, Search } from "lucide-react";
 
 // Gemi (bağlantı) bazlı maliyet / kâr-zarar: ne kadara aldık, ne kadara sattık.
 // Alış fiyatları sözleşmeden, satışlar contract_id ile eşleşen satışlardan gelir.
@@ -320,7 +321,13 @@ export function CostView() {
                     {formatNumber(r.karTon)}
                   </td>
                   <td className="px-3 py-3">
-                    <div className="font-medium">{r.vessel || r.contractNo || "—"}</div>
+                    <Link
+                      href={`/cost/${r.id}`}
+                      className="inline-flex items-center gap-1 font-medium text-brand hover:underline"
+                    >
+                      <FileText className="h-3.5 w-3.5 shrink-0" />
+                      {r.vessel || r.contractNo || "—"}
+                    </Link>
                     {r.vessel && r.contractNo && (
                       <div className="text-xs text-gray-400">{r.contractNo}</div>
                     )}
