@@ -158,6 +158,7 @@ export function ResourceManager({
           .forEach((f) => {
             cols.add(f.ref!.labelField);
             if (f.autofill) Object.values(f.autofill).forEach((src) => cols.add(src));
+            if (f.ref!.filter) Object.keys(f.ref!.filter).forEach((c) => cols.add(c));
           });
         const { data } = await supabase
           .from(table)
@@ -713,11 +714,19 @@ export function ResourceManager({
           disabled={!canWrite}
         >
           <option value="">Seçiniz...</option>
-          {(refData[f.ref!.table] || []).map((o) => (
-            <option key={String(o.id)} value={String(o.id)}>
-              {(o[f.ref!.labelField] as string) || `#${String(o.id).slice(0, 8)}`}
-            </option>
-          ))}
+          {(refData[f.ref!.table] || [])
+            .filter((o) => {
+              const flt = f.ref!.filter;
+              return (
+                !flt ||
+                Object.entries(flt).every(([col, vals]) => vals.includes(String(o[col])))
+              );
+            })
+            .map((o) => (
+              <option key={String(o.id)} value={String(o.id)}>
+                {(o[f.ref!.labelField] as string) || `#${String(o.id).slice(0, 8)}`}
+              </option>
+            ))}
         </Select>
       );
     if (f.type === "number" || f.type === "money")
