@@ -77,11 +77,47 @@ type Contract = {
   id: string;
   status: string | null;
   quantity: number | null;
+  price: number | null;
+  currency: string | null;
+  created_at: string | null;
   contract_no: string | null;
   vessel: string | null;
   eta: string | null;
   product_id: string | null;
 };
+
+const OPEN_STATUSES = new Set(["draft", "active", "in_transit"]);
+const CARD_COLORS = [
+  "#4b5563", "#84cc16", "#22c55e", "#6b7280", "#14b8a6",
+  "#ec4899", "#3b82f6", "#f59e0b", "#8b5cf6", "#06b6d4",
+];
+
+type ProductStat = {
+  id: string;
+  name: string;
+  color: string;
+  openCount: number;
+  openTon: number;
+  yearCount: number;
+  yearTon: number;
+  avgPrice: number;
+  currency: string;
+  donut: number;
+};
+
+function Donut({ pct, color }: { pct: number; color: string }) {
+  const p = Math.max(0, Math.min(100, pct));
+  return (
+    <div
+      className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full"
+      style={{ background: `conic-gradient(${color} ${p * 3.6}deg, #e5e7eb 0deg)` }}
+    >
+      <div className="flex h-12 w-12 items-center justify-center rounded-full bg-white text-sm font-bold">
+        %{p}
+      </div>
+    </div>
+  );
+}
 
 export function BaglantiSummary() {
   const supabase = useMemo(() => createClient(), []);
@@ -94,7 +130,9 @@ export function BaglantiSummary() {
     (async () => {
       const { data } = await supabase
         .from("purchase_contracts")
-        .select("id,status,quantity,contract_no,vessel,eta,product_id");
+        .select(
+          "id,status,quantity,price,currency,created_at,contract_no,vessel,eta,product_id",
+        );
       if (!on) return;
       setRows((data as Contract[] | null) || []);
       setLoading(false);
@@ -105,31 +143,129 @@ export function BaglantiSummary() {
   }, [supabase]);
 
   const pn = (id: string | null) => (id && productMap[id]) || "Ürünsüz";
-  if (loading) return <Loading />;
+  const year = new Date().getFullYear();
 
-  const active = rows.filter((r) => r.status !== "cancelled");
-  const toplam = sumBy(active, (r) => r.quantity);
-  const yolda = sumBy(
-    rows.filter((r) => r.status === "active" || r.status === "in_transit"),
-    (r) => r.quantity,
+  const productStats = useMemo<ProductStat[]>(() => {
+    type Acc = {
+      openCount: number;
+      openTon: number;
+      yearCount: number;
+      yearTon: number;
+      byCur: Record<string, { amt: number; ton: number }>;
+    };
+    const map = new Map<string, Acc>();
+    rows.forEach((c) => {
+      const key = c.product_id || "none";
+      const e: Acc =
+        map.get(key) || { openCount: 0, openTon: 0, yearCount: 0, yearTon: 0, byCur: {} };
+      const q = Number(c.quantity) || 0;
+      if (c.status && OPEN_STATUSES.has(c.status)) {
+        e.openCount++;
+        e.openTon += q;
+      }
+      const cy = c.created_at ? new Date(c.created_at).getFullYear() : null;
+      if (c.status !== "cancelled" && cy === year) {
+        e.yearCount++;
+        e.yearTon += q;
+        const price = Number(c.price) || 0;
+        if (price > 0 && q > 0) {
+          const cur = c.currency || "USD";
+          const b = e.byCur[cur] || { amt: 0, ton: 0 };
+          b.amt += price * q;
+          b.ton += q;
+          e.byCur[cur] = b;
+        }
+      }
+      map.set(key, e);
+    });
+    const out: ProductStat[] = [];
+    Array.from(map.entries())
+      .sort((a, b) => b[1].yearTon - a[1].yearTon)
+      .forEach(([id, v], i) => {
+        if (v.yearCount === 0 && v.openCount === 0) return;
+        let cur = "USD";
+        let bestTon = -1;
+        let avg = 0;
+        for (const [c, b] of Object.entries(v.byCur)) {
+          if (b.ton > bestTon) {
+            bestTon = b.ton;
+            cur = c;
+            avg = b.ton ? b.amt / b.ton : 0;
+          }
+        }
+        out.push({
+          id,
+          name: id === "none" ? "Ürünsüz" : productMap[id] || "Ürünsüz",
+          color: CARD_COLORS[i % CARD_COLORS.length],
+          openCount: v.openCount,
+          openTon: v.openTon,
+          yearCount: v.yearCount,
+          yearTon: v.yearTon,
+          avgPrice: avg,
+          currency: cur,
+          donut: v.yearTon > 0 ? Math.round((v.openTon / v.yearTon) * 100) : 0,
+        });
+      });
+    return out;
+  }, [rows, productMap, year]);
+
+  const upcoming = useMemo(
+    () =>
+      rows
+        .filter((r) => r.status === "active" || r.status === "in_transit")
+        .sort((a, b) => (a.eta || "9999").localeCompare(b.eta || "9999"))
+        .slice(0, 6),
+    [rows],
   );
-  const geldi = sumBy(
-    rows.filter((r) => r.status === "arrived" || r.status === "completed"),
-    (r) => r.quantity,
-  );
-  const upcoming = rows
-    .filter((r) => r.status === "active" || r.status === "in_transit")
-    .sort((a, b) => (a.eta || "9999").localeCompare(b.eta || "9999"))
-    .slice(0, 6);
+
+  if (loading) return <Loading />;
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Stat label="Toplam Bağlı" value={formatNumber(toplam)} unit="ton" />
-        <Stat label="Yolda / Aktif" value={formatNumber(yolda)} unit="ton" />
-        <Stat label="Gelen" value={formatNumber(geldi)} unit="ton" />
-        <Stat label="Sözleşme" value={String(active.length)} unit="adet" />
-      </div>
+      {productStats.length === 0 ? (
+        <EmptyState message="Henüz bağlantı yok." />
+      ) : (
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
+          {productStats.map((p) => (
+            <div key={p.id} className="overflow-hidden rounded-xl border border-border bg-card">
+              <div
+                className="px-3 py-2 text-center text-sm font-bold text-white"
+                style={{ background: p.color }}
+              >
+                {p.name}
+              </div>
+              <div className="space-y-3 p-4">
+                <div className="space-y-0.5 text-xs text-gray-600">
+                  <div>
+                    Açık Bağlantılar: <span className="font-medium">{p.openCount}</span> Ad
+                  </div>
+                  <div>
+                    Açık Tonaj: <span className="font-medium">{formatNumber(p.openTon)}</span> Ton
+                  </div>
+                </div>
+                <div className="flex items-center gap-3">
+                  <Donut pct={p.donut} color={p.color} />
+                  <div className="space-y-0.5 text-xs text-gray-600">
+                    <div>
+                      Yıl Bağlantıları: <span className="font-medium">{p.yearCount}</span> Ad
+                    </div>
+                    <div>
+                      Yıl Tonaj: <span className="font-medium">{formatNumber(p.yearTon)}</span> Ton
+                    </div>
+                  </div>
+                </div>
+                <div className="border-t border-border pt-2 text-xs text-gray-600">
+                  Ortalama Fiyat:{" "}
+                  <span className="font-semibold">
+                    {p.avgPrice > 0 ? `${formatNumber(p.avgPrice)} ${p.currency}` : "-"}
+                  </span>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
       <ListCard title="Yolda / Gelecek olanlar" empty="Yolda kayıt yok." count={upcoming.length}>
         {upcoming.map((c) => (
           <div key={c.id} className="flex items-center justify-between gap-3 py-2 text-sm">
