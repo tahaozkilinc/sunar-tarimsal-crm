@@ -97,7 +97,8 @@ export function PendingArrivals({ role }: { role: Role }) {
   today.setHours(0, 0, 0, 0);
   const etaReady = (eta: string | null) => {
     if (!eta) return true; // ETA girilmemişse kilitleme
-    const d = new Date(eta);
+    // Tarihi yerel gün başına göre çöz: ETA bugünse de çekim yapılabilsin.
+    const d = new Date(eta.slice(0, 10) + "T00:00:00");
     return !Number.isNaN(d.getTime()) && d <= today;
   };
 
@@ -109,11 +110,18 @@ export function PendingArrivals({ role }: { role: Role }) {
       .eq("contract_id", contractId)
       .eq("movement_type", "inbound")
       .order("movement_date", { ascending: true });
-    setDraws((data as Draw[]) || []);
+    const list = (data as Draw[]) || [];
+    setDraws(list);
     setDrawsLoading(false);
+    return list;
   };
 
-  const openOperation = (c: Contract) => {
+  const remainingOf = (c: Contract, list: Draw[]) => {
+    const drawn = list.reduce((a, d) => a + (Number(d.quantity) || 0), 0);
+    return (Number(c.quantity) || 0) - drawn;
+  };
+
+  const openOperation = async (c: Contract) => {
     setTarget(c);
     setDefaultWh("");
     setWh("");
@@ -122,7 +130,9 @@ export function PendingArrivals({ role }: { role: Role }) {
     setDate(new Date().toISOString().slice(0, 10));
     setFormError(null);
     setDraws([]);
-    loadDraws(c.id);
+    const list = await loadDraws(c.id);
+    const rem = remainingOf(c, list);
+    setQty(rem > 0 ? String(rem) : "");
   };
 
   const pickDefault = (id: string) => {
@@ -160,11 +170,12 @@ export function PendingArrivals({ role }: { role: Role }) {
     }
     // Tetikleyici kuruluysa otomatik; admin/satın alma için ayrıca garanti et.
     await supabase.from("purchase_contracts").update({ status: "arrived" }).eq("id", target.id);
-    setQty("");
+    const list = await loadDraws(target.id);
+    const rem = remainingOf(target, list);
+    setQty(rem > 0 ? String(rem) : "");
     setPlate("");
     setWh(defaultWh);
     setSaving(false);
-    await loadDraws(target.id);
     load();
   };
 
@@ -197,6 +208,7 @@ export function PendingArrivals({ role }: { role: Role }) {
   const arrived = visible.filter((r) => r.status === "arrived");
 
   const drawnTotal = draws.reduce((a, d) => a + (Number(d.quantity) || 0), 0);
+  const remaining = target ? (Number(target.quantity) || 0) - drawnTotal : 0;
   const targetReady = target ? etaReady(target.eta) : false;
 
   const renderRow = (c: Contract) => {
@@ -272,10 +284,21 @@ export function PendingArrivals({ role }: { role: Role }) {
             <div>
               <div className="mb-1 flex items-center justify-between text-sm">
                 <span className="font-medium">Çekimler</span>
-                <span className="text-xs text-gray-500">
-                  Çekilen {formatNumber(drawnTotal)} / {formatNumber(target.quantity)}{" "}
-                  {target.unit || "ton"} · Kalan{" "}
-                  {formatNumber((Number(target.quantity) || 0) - drawnTotal)}
+                <span className="text-xs">
+                  <span className="text-gray-500">
+                    Çekilen {formatNumber(drawnTotal)} / {formatNumber(target.quantity)}{" "}
+                    {target.unit || "ton"}
+                  </span>
+                  {" · "}
+                  {remaining > 0 ? (
+                    <span className="text-gray-500">Kalan {formatNumber(remaining)}</span>
+                  ) : remaining < 0 ? (
+                    <span className="font-semibold text-amber-600">
+                      Fazla {formatNumber(-remaining)}
+                    </span>
+                  ) : (
+                    <span className="font-semibold text-green-600">Tam çekildi</span>
+                  )}
                 </span>
               </div>
               {drawsLoading ? (
