@@ -138,7 +138,6 @@ export const companiesResource: ResourceConfig = {
   fields: [
     { name: "name", label: "Firma Adı", type: "text", required: true },
     { name: "type", label: "Tür", type: "select", options: COMPANY_TYPE_OPTIONS, required: true },
-    { name: "tax_no", label: "Vergi No", type: "text" },
     { name: "city", label: "Şehir", type: "text" },
     { name: "country", label: "Ülke", type: "text" },
     { name: "phone", label: "Telefon", type: "tel" },

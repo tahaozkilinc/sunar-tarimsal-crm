@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 
 type DivProps = React.HTMLAttributes<HTMLDivElement>;
 
@@ -50,6 +50,97 @@ export function Textarea(props: React.TextareaHTMLAttributes<HTMLTextAreaElement
 
 export function Select(props: React.SelectHTMLAttributes<HTMLSelectElement>) {
   return <select className={cx(fieldClass, "bg-white", props.className)} {...props} />;
+}
+
+// Yazarak arama yapılabilen açılır liste (filtreler için).
+export function SearchableSelect({
+  value,
+  onChange,
+  options,
+  placeholder,
+  className,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  options: { value: string; label: string }[];
+  placeholder?: string;
+  className?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState("");
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const onDoc = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, []);
+
+  const selected = options.find((o) => o.value === value);
+  const filtered = q
+    ? options.filter((o) => o.label.toLocaleLowerCase("tr").includes(q.toLocaleLowerCase("tr")))
+    : options;
+
+  return (
+    <div ref={ref} className={cx("relative", className)}>
+      <button
+        type="button"
+        onClick={() => setOpen((s) => !s)}
+        className={cx(fieldClass, "flex items-center justify-between gap-2 text-left")}
+      >
+        <span className={cx("truncate", !selected && "text-gray-400")}>
+          {selected ? selected.label : placeholder}
+        </span>
+        <span className="shrink-0 text-gray-400">▾</span>
+      </button>
+      {open && (
+        <div className="absolute z-20 mt-1 w-full min-w-48 rounded-lg border border-border bg-white shadow-lg">
+          <input
+            autoFocus
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Yaz ve ara..."
+            className="w-full border-b border-border px-3 py-2 text-sm outline-none"
+          />
+          <div className="max-h-56 overflow-y-auto py-1">
+            <button
+              type="button"
+              onClick={() => {
+                onChange("");
+                setOpen(false);
+                setQ("");
+              }}
+              className="block w-full px-3 py-1.5 text-left text-sm text-gray-500 hover:bg-gray-100"
+            >
+              {placeholder || "Tümü"}
+            </button>
+            {filtered.map((o) => (
+              <button
+                key={o.value}
+                type="button"
+                onClick={() => {
+                  onChange(o.value);
+                  setOpen(false);
+                  setQ("");
+                }}
+                className={cx(
+                  "block w-full truncate px-3 py-1.5 text-left text-sm hover:bg-gray-100",
+                  o.value === value && "bg-brand/10 font-medium",
+                )}
+              >
+                {o.label}
+              </button>
+            ))}
+            {filtered.length === 0 && (
+              <div className="px-3 py-2 text-sm text-gray-400">Sonuç yok</div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 export function Field({

@@ -9,6 +9,7 @@ import {
   Field,
   Input,
   Modal,
+  SearchableSelect,
   Select,
   Spinner,
   Textarea,
@@ -222,21 +223,34 @@ export function ResourceManager({
   const filtered = useMemo(() => {
     const q = search.trim().toLocaleLowerCase("tr");
     const activeFilters = Object.entries(filters).filter(([, v]) => v !== "");
+    const searchNames = Array.from(
+      new Set([...(config.searchFields || []), ...config.listFields]),
+    );
+    // Aranabilir metin: referans (tedarikçi/ürün) ve seçim alanları etikete çevrilir.
+    const textOf = (r: Row) =>
+      searchNames
+        .map((name) => {
+          const f = fieldByName[name];
+          const v = r[name];
+          if (v === null || v === undefined || v === "") return "";
+          if (f?.type === "reference" && f.ref) {
+            const rr = (refData[f.ref.table] || []).find((x) => x.id === v);
+            return String(rr?.[f.ref.labelField] ?? "");
+          }
+          if (f?.type === "select")
+            return f.options?.find((o) => o.value === v)?.label || String(v);
+          return String(v);
+        })
+        .join(" ")
+        .toLocaleLowerCase("tr");
     return rows.filter((r) => {
       for (const [k, v] of activeFilters) {
         if (String(r[k] ?? "") !== v) return false;
       }
-      if (q && config.searchFields) {
-        const match = config.searchFields.some((f) =>
-          String(r[f] ?? "")
-            .toLocaleLowerCase("tr")
-            .includes(q),
-        );
-        if (!match) return false;
-      }
+      if (q && !textOf(r).includes(q)) return false;
       return true;
     });
-  }, [rows, search, filters, config.searchFields]);
+  }, [rows, search, filters, config.searchFields, config.listFields, fieldByName, refData]);
 
   // --- form ---
   const openNew = () => {
@@ -386,21 +400,14 @@ export function ResourceManager({
       {filterFieldDefs.length > 0 && (
         <div className="flex flex-wrap items-center gap-2">
           {filterFieldDefs.map((f) => (
-            <Select
+            <SearchableSelect
               key={f.name}
               value={filters[f.name] ?? ""}
-              onChange={(e) =>
-                setFilters((prev) => ({ ...prev, [f.name]: e.target.value }))
-              }
-              className="w-auto"
-            >
-              <option value="">{f.label}: Tümü</option>
-              {filterOptions(f).map((o) => (
-                <option key={o.value} value={o.value}>
-                  {o.label}
-                </option>
-              ))}
-            </Select>
+              onChange={(v) => setFilters((prev) => ({ ...prev, [f.name]: v }))}
+              options={filterOptions(f)}
+              placeholder={`${f.label}: Tümü`}
+              className="w-44"
+            />
           ))}
           {Object.values(filters).some((v) => v) && (
             <Button variant="ghost" size="sm" onClick={() => setFilters({})}>

@@ -17,6 +17,7 @@ import {
   TrendingUp,
   Truck,
   Users,
+  Wheat,
   X,
 } from "lucide-react";
 
@@ -28,6 +29,7 @@ const ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
   Boxes,
   TrendingUp,
   Settings,
+  Wheat,
 };
 
 function Brand() {
