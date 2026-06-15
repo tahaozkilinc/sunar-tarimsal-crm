@@ -229,6 +229,7 @@ export const purchaseContractsResource: ResourceConfig = {
     { name: "laycan_start", label: "Laycan Başlangıç", type: "date" },
     { name: "laycan_end", label: "Laycan Bitiş", type: "date" },
     { name: "status", label: "Durum", type: "select", options: CONTRACT_STATUS_OPTIONS, required: true },
+    { name: "assigned_to", label: "Operasyon Sorumlusu", type: "reference", ref: { table: "profiles", labelField: "full_name", filter: { role: ["operations"] } } },
     { name: "payment_due_date", label: "Öngörülen Ödeme Tarihi", type: "date" },
     { name: "buyer", label: "Alıcı", type: "text" },
     { name: "principal_id", label: "Kimin Adına", type: "reference", ref: { table: "principals", labelField: "name" } },
@@ -259,6 +260,7 @@ export const stockMovementsResource: ResourceConfig = {
     { name: "quantity", label: "Miktar", type: "number", required: true, positive: true },
     { name: "unit", label: "Birim", type: "text" },
     { name: "vehicle_plate", label: "Araç Plakası", type: "text" },
+    { name: "driver_name", label: "Şoför", type: "text" },
     { name: "notes", label: "Notlar", type: "textarea" },
   ],
 };

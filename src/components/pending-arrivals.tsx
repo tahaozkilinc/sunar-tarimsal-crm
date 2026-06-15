@@ -16,6 +16,7 @@ import {
 import { formatDate, formatNumber } from "@/lib/format";
 import { CONTRACT_STATUS_OPTIONS } from "@/lib/resources";
 import type { Role } from "@/lib/types";
+import { CheckCircle, Download } from "lucide-react";
 
 // Operasyonun çekirdeği: bağlantısı yapılmış yüklerin gelişini takip eder.
 // Bir geminin malı birden çok yere (fabrika / dış depo) bölünebilir => çoklu çekim.
@@ -33,6 +34,7 @@ type Contract = {
   unit: string | null;
   eta: string | null;
   status: string;
+  assigned_to: string | null;
 };
 type Ref = { id: string; name: string };
 type Draw = {
@@ -40,6 +42,7 @@ type Draw = {
   warehouse_id: string | null;
   quantity: number | null;
   vehicle_plate: string | null;
+  driver_name: string | null;
   movement_date: string | null;
 };
 
@@ -50,6 +53,7 @@ export function PendingArrivals({ role }: { role: Role }) {
   const [rows, setRows] = useState<Contract[]>([]);
   const [products, setProducts] = useState<Ref[]>([]);
   const [warehouses, setWarehouses] = useState<Ref[]>([]);
+  const [userId, setUserId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -61,6 +65,7 @@ export function PendingArrivals({ role }: { role: Role }) {
   const [wh, setWh] = useState("");
   const [qty, setQty] = useState("");
   const [plate, setPlate] = useState("");
+  const [driver, setDriver] = useState("");
   const [date, setDate] = useState("");
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
@@ -73,7 +78,7 @@ export function PendingArrivals({ role }: { role: Role }) {
     const [c, p, w] = await Promise.all([
       supabase
         .from("purchase_contracts")
-        .select("id,contract_no,vessel,origin_country,product_id,quantity,unit,eta,status")
+        .select("id,contract_no,vessel,origin_country,product_id,quantity,unit,eta,status,assigned_to")
         .order("eta", { ascending: true }),
       supabase.from("products").select("id,name"),
       supabase.from("warehouses").select("id,name"),
@@ -87,6 +92,7 @@ export function PendingArrivals({ role }: { role: Role }) {
 
   useEffect(() => {
     load();
+    supabase.auth.getUser().then(({ data }) => setUserId(data.user?.id ?? null));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [supabase]);
 
@@ -106,7 +112,7 @@ export function PendingArrivals({ role }: { role: Role }) {
     setDrawsLoading(true);
     const { data } = await supabase
       .from("stock_movements")
-      .select("id,warehouse_id,quantity,vehicle_plate,movement_date")
+      .select("id,warehouse_id,quantity,vehicle_plate,driver_name,movement_date")
       .eq("contract_id", contractId)
       .eq("movement_type", "inbound")
       .order("movement_date", { ascending: true });
@@ -127,6 +133,7 @@ export function PendingArrivals({ role }: { role: Role }) {
     setWh("");
     setQty("");
     setPlate("");
+    setDriver("");
     setDate(new Date().toISOString().slice(0, 10));
     setFormError(null);
     setDraws([]);
@@ -161,6 +168,7 @@ export function PendingArrivals({ role }: { role: Role }) {
       quantity: Number(qty),
       unit: target.unit || "ton",
       vehicle_plate: plate || null,
+      driver_name: driver || null,
       movement_date: date || new Date().toISOString().slice(0, 10),
     });
     if (insErr) {
@@ -174,9 +182,56 @@ export function PendingArrivals({ role }: { role: Role }) {
     const rem = remainingOf(target, list);
     setQty(rem > 0 ? String(rem) : "");
     setPlate("");
+    setDriver("");
     setWh(defaultWh);
     setSaving(false);
     load();
+  };
+
+  const finishShip = async () => {
+    if (!target) return;
+    if (
+      remaining > 0 &&
+      !window.confirm(
+        `Bu gemi için hâlâ ${formatNumber(remaining)} ${target.unit || "ton"} boşaltılmadı. Gemiyi tamamlandı olarak işaretlemek istiyor musunuz?`,
+      )
+    )
+      return;
+    setSaving(true);
+    setFormError(null);
+    const { error: updErr } = await supabase
+      .from("purchase_contracts")
+      .update({ status: "completed" })
+      .eq("id", target.id);
+    setSaving(false);
+    if (updErr) {
+      setFormError(updErr.message);
+      return;
+    }
+    setTarget(null);
+    load();
+  };
+
+  const exportDraws = () => {
+    if (!target) return;
+    const headers = ["Tarih", "Depo / Fabrika", "Plaka", "Şoför", "Miktar"];
+    const body: (string | number)[][] = draws.map((d) => [
+      formatDate(d.movement_date),
+      whName(d.warehouse_id),
+      d.vehicle_plate || "",
+      d.driver_name || "",
+      Number(d.quantity) || 0,
+    ]);
+    const csv = [headers, ...body]
+      .map((row) => row.map((c) => `"${String(c ?? "").replace(/"/g, '""')}"`).join(";"))
+      .join("\n");
+    const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${(target.vessel || target.contract_no || "gemi").replace(/[^\p{L}\p{N}]+/gu, "_")}-plaka-sofor.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   const deleteDraw = async (id: string) => {
@@ -203,7 +258,14 @@ export function PendingArrivals({ role }: { role: Role }) {
       </div>
     );
 
-  const visible = rows.filter((r) => r.status !== "cancelled" && r.status !== "completed");
+  // Bir kullanıcıya en az bir gemi atanmışsa, SADECE kendi gemisini/gemilerini görür.
+  // Atanmamış kullanıcılar, atanmamış (genel havuz) gemileri görür. (RLS ile birebir.)
+  const myAssigned = role === "operations" && rows.some((r) => r.assigned_to === userId);
+  const accessible =
+    role === "operations"
+      ? rows.filter((r) => (myAssigned ? r.assigned_to === userId : !r.assigned_to))
+      : rows;
+  const visible = accessible.filter((r) => r.status !== "cancelled" && r.status !== "completed");
   const pending = visible.filter((r) => r.status !== "arrived");
   const arrived = visible.filter((r) => r.status === "arrived");
 
@@ -229,6 +291,9 @@ export function PendingArrivals({ role }: { role: Role }) {
         </div>
         <div className="flex items-center gap-3">
           <span className="text-xs text-gray-500">ETA {formatDate(c.eta)}</span>
+          {role === "operations" && c.assigned_to === userId && (
+            <Badge color="purple">Sana Atandı</Badge>
+          )}
           {st && <Badge color={st.color}>{st.label}</Badge>}
           {canArrive && (
             <span className="text-xs font-medium text-brand">Operasyon →</span>
@@ -315,7 +380,8 @@ export function PendingArrivals({ role }: { role: Role }) {
                         <div className="truncate font-medium">{whName(d.warehouse_id)}</div>
                         <div className="text-xs text-gray-500">
                           {formatNumber(d.quantity)} {target.unit || "ton"}
-                          {d.vehicle_plate ? ` · ${d.vehicle_plate}` : ""} ·{" "}
+                          {d.vehicle_plate ? ` · ${d.vehicle_plate}` : ""}
+                          {d.driver_name ? ` · ${d.driver_name}` : ""} ·{" "}
                           {formatDate(d.movement_date)}
                         </div>
                       </div>
@@ -361,9 +427,14 @@ export function PendingArrivals({ role }: { role: Role }) {
                       <Input value={plate} onChange={(e) => setPlate(e.target.value)} />
                     </Field>
                   </div>
-                  <Field label="Tarih" required>
-                    <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
-                  </Field>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Field label="Şoför Adı">
+                      <Input value={driver} onChange={(e) => setDriver(e.target.value)} />
+                    </Field>
+                    <Field label="Tarih" required>
+                      <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+                    </Field>
+                  </div>
                   {formError && (
                     <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
                       {formError}
@@ -380,6 +451,17 @@ export function PendingArrivals({ role }: { role: Role }) {
                   Bu yük için ETA ({formatDate(target.eta)}) gelmeden operasyon verisi girilemez.
                 </div>
               ))}
+
+            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3">
+              <Button variant="secondary" onClick={exportDraws} disabled={draws.length === 0}>
+                <Download className="h-4 w-4" /> Plaka / Şoför (Excel)
+              </Button>
+              {canArrive && (
+                <Button onClick={finishShip} disabled={saving}>
+                  <CheckCircle className="h-4 w-4" /> Gemiyi Bitir
+                </Button>
+              )}
+            </div>
 
             <div className="flex justify-end">
               <Button variant="secondary" onClick={() => setTarget(null)}>

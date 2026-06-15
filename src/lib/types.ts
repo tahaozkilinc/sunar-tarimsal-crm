@@ -74,6 +74,7 @@ export interface PurchaseContract {
   buyer: string | null;
   principal_id: string | null;
   contract_file_url: string | null;
+  assigned_to: string | null;
   created_at: string;
   notes: string | null;
 }
@@ -88,6 +89,7 @@ export interface StockMovement {
   unit: string;
   movement_date: string;
   vehicle_plate: string | null;
+  driver_name: string | null;
   notes: string | null;
 }
 

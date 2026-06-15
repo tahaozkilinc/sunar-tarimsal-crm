@@ -53,6 +53,7 @@ type SM = {
   quantity: number | null;
   movement_type: string | null;
   vehicle_plate: string | null;
+  driver_name: string | null;
 };
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
@@ -100,7 +101,7 @@ export function ContractReport({ contractId }: { contractId: string }) {
           .eq("contract_id", contractId),
         supabase
           .from("stock_movements")
-          .select("id,movement_date,warehouse_id,quantity,movement_type,vehicle_plate")
+          .select("id,movement_date,warehouse_id,quantity,movement_type,vehicle_plate,driver_name")
           .eq("contract_id", contractId),
         supabase.from("products").select("id,name"),
         supabase.from("companies").select("id,name"),
@@ -152,7 +153,11 @@ export function ContractReport({ contractId }: { contractId: string }) {
     const karUsd = allocCostUsd !== null ? satisUsd - allocCostUsd : null;
     const karTonUsd = karUsd !== null && satisTon > 0 ? karUsd / satisTon : null;
 
-    const bosaltilan = moves.reduce((a, m) => a + (Number(m.quantity) || 0), 0);
+    // Boşaltma sadece gemiden depoya/fabrikaya GİRİŞ (inbound) hareketleridir;
+    // aynı contract_id'yi taşıyan transfer/to_factory/adjustment kayıtları
+    // (depo içi sevkiyatlar) boşaltma tonajına dahil edilmemeli.
+    const inboundMoves = moves.filter((m) => m.movement_type === "inbound");
+    const bosaltilan = inboundMoves.reduce((a, m) => a + (Number(m.quantity) || 0), 0);
 
     return {
       alisTon,
@@ -167,6 +172,7 @@ export function ContractReport({ contractId }: { contractId: string }) {
       karUsd,
       karTonUsd,
       kalanSatilabilir: alisTon - satisTon,
+      inboundMoves,
       bosaltilan,
       kalanBosaltilacak: alisTon - bosaltilan,
     };
@@ -306,7 +312,7 @@ export function ContractReport({ contractId }: { contractId: string }) {
               </div>
             </div>
           </div>
-          {moves.length === 0 ? (
+          {calc.inboundMoves.length === 0 ? (
             <div className="py-2 text-sm text-gray-500">Boşaltma hareketi yok.</div>
           ) : (
             <table className="w-full text-sm">
@@ -315,11 +321,12 @@ export function ContractReport({ contractId }: { contractId: string }) {
                   <th className="py-1.5 font-medium">Tarih</th>
                   <th className="py-1.5 font-medium">Depo</th>
                   <th className="py-1.5 font-medium">Plaka</th>
+                  <th className="py-1.5 font-medium">Şoför</th>
                   <th className="py-1.5 text-right font-medium">Miktar</th>
                 </tr>
               </thead>
               <tbody>
-                {moves
+                {calc.inboundMoves
                   .slice()
                   .sort((a, b) => (b.movement_date || "").localeCompare(a.movement_date || ""))
                   .map((m) => (
@@ -327,6 +334,7 @@ export function ContractReport({ contractId }: { contractId: string }) {
                       <td className="py-1.5">{formatDate(m.movement_date)}</td>
                       <td className="py-1.5">{names.warehouses[m.warehouse_id || ""] || "-"}</td>
                       <td className="py-1.5">{m.vehicle_plate || "-"}</td>
+                      <td className="py-1.5">{m.driver_name || "-"}</td>
                       <td className="py-1.5 text-right">{formatNumber(m.quantity)}</td>
                     </tr>
                   ))}
