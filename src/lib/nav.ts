@@ -26,12 +26,6 @@ export const NAV_ITEMS: NavItem[] = [
   {
     href: "/purchasing",
     label: "Bağlantı",
-    icon: "ShoppingCart",
-    roles: ["admin", "purchasing"],
-  },
-  {
-    href: "/products",
-    label: "Hammadde",
     icon: "Wheat",
     roles: ["admin", "purchasing"],
   },

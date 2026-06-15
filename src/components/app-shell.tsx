@@ -13,18 +13,15 @@ import {
   LogOut,
   Menu,
   Settings,
-  ShoppingCart,
   TrendingUp,
   Truck,
   Users,
   Wheat,
   X,
 } from "lucide-react";
-
 const ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
   LayoutDashboard,
   Users,
-  ShoppingCart,
   Truck,
   Boxes,
   TrendingUp,
