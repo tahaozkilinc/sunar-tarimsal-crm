@@ -293,26 +293,45 @@ type Sale = {
   order_no: string | null;
   product_id: string | null;
 };
+type InvRow = { warehouse_name: string; product_name: string; available_qty: number | null };
+type Sellable = {
+  id: string;
+  contract_no: string | null;
+  vessel: string | null;
+  product_id: string | null;
+  quantity: number | null;
+  eta: string | null;
+  status: string;
+  principal_id: string | null;
+};
 
 export function SatisSummary() {
   const supabase = useMemo(() => createClient(), []);
   const productMap = useProductMap(supabase);
   const [rows, setRows] = useState<Sale[]>([]);
-  const [available, setAvailable] = useState(0);
+  const [inv, setInv] = useState<InvRow[]>([]);
+  const [sellable, setSellable] = useState<Sellable[]>([]);
+  const [principals, setPrincipals] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let on = true;
     (async () => {
-      const [s, inv] = await Promise.all([
+      const [s, i, sc, pr] = await Promise.all([
         supabase.from("sales_orders").select("status,quantity,order_no,product_id"),
-        supabase.from("inventory").select("available_qty"),
+        supabase.from("inventory").select("warehouse_name,product_name,available_qty"),
+        supabase
+          .from("sellable_contracts")
+          .select("id,contract_no,vessel,product_id,quantity,eta,status,principal_id"),
+        supabase.from("principals").select("id,name"),
       ]);
       if (!on) return;
       setRows((s.data as Sale[] | null) || []);
-      setAvailable(
-        sumBy(((inv.data as { available_qty: number | null }[] | null) || []), (r) => r.available_qty),
-      );
+      setInv((i.data as InvRow[] | null) || []);
+      setSellable((sc.data as Sellable[] | null) || []);
+      const pm: Record<string, string> = {};
+      ((pr.data as { id: string; name: string }[] | null) || []).forEach((p) => (pm[p.id] = p.name));
+      setPrincipals(pm);
       setLoading(false);
     })();
     return () => {
@@ -323,6 +342,7 @@ export function SatisSummary() {
   const pn = (id: string | null) => (id && productMap[id]) || "Ürünsüz";
   if (loading) return <Loading />;
 
+  const available = sumBy(inv, (r) => r.available_qty);
   const bekleyen = rows.filter((s) => s.status === "draft" || s.status === "confirmed");
   const bekleyenTon = sumBy(bekleyen, (s) => s.quantity);
   const teslim = sumBy(
@@ -330,14 +350,79 @@ export function SatisSummary() {
     (s) => s.quantity,
   );
 
+  const byWarehouse = (() => {
+    const m = new Map<string, number>();
+    inv.forEach((r) =>
+      m.set(r.warehouse_name, (m.get(r.warehouse_name) || 0) + (Number(r.available_qty) || 0)),
+    );
+    return Array.from(m.entries())
+      .map(([name, ton]) => ({ name, ton }))
+      .sort((a, b) => b.ton - a.ton);
+  })();
+  const maxWh = Math.max(1, ...byWarehouse.map((w) => w.ton));
+
+  const sellableSorted = [...sellable].sort((a, b) =>
+    (a.eta || "9999").localeCompare(b.eta || "9999"),
+  );
+
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Stat label="Satılabilir Stok" value={formatNumber(available)} unit="ton (satılmamış)" />
+        <Stat label="Depodaki Satılabilir" value={formatNumber(available)} unit="ton" />
         <Stat label="Bekleyen Satış" value={formatNumber(bekleyenTon)} unit="ton" />
         <Stat label="Teslim Edilen" value={formatNumber(teslim)} unit="ton" />
         <Stat label="Satış" value={String(rows.length)} unit="adet" />
       </div>
+
+      <Card className="p-4">
+        <div className="mb-2 text-sm font-medium">Depo Bazında Kalan Stok</div>
+        {byWarehouse.length === 0 ? (
+          <div className="py-2 text-sm text-gray-500">Stok kaydı yok.</div>
+        ) : (
+          <div className="space-y-2">
+            {byWarehouse.map((w) => (
+              <div key={w.name} className="flex items-center gap-3">
+                <div className="w-36 shrink-0 truncate text-sm">{w.name}</div>
+                <div className="h-4 flex-1 overflow-hidden rounded bg-gray-100">
+                  <div
+                    className="h-full rounded bg-brand"
+                    style={{ width: `${(w.ton / maxWh) * 100}%` }}
+                  />
+                </div>
+                <div className="w-24 shrink-0 text-right text-sm font-semibold">
+                  {formatNumber(w.ton)} ton
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </Card>
+
+      <ListCard
+        title="Satılabilir Bağlantılar (yoldakiler dahil)"
+        empty="Satılabilir bağlantı yok."
+        count={sellableSorted.length}
+      >
+        {sellableSorted.slice(0, 10).map((c) => (
+          <div key={c.id} className="flex items-center justify-between gap-3 py-2 text-sm">
+            <span className="min-w-0 truncate">
+              <span className="font-medium">{pn(c.product_id)}</span>
+              <span className="text-gray-500">
+                {" · "}
+                {c.vessel || c.contract_no || "—"}
+                {c.principal_id && principals[c.principal_id]
+                  ? ` · ${principals[c.principal_id]}`
+                  : ""}
+              </span>
+            </span>
+            <span className="shrink-0 text-right">
+              {formatNumber(c.quantity)} ton
+              <span className="ml-2 text-xs text-gray-400">ETA {formatDate(c.eta)}</span>
+            </span>
+          </div>
+        ))}
+      </ListCard>
+
       <ListCard title="Bekleyen / Açık satışlar" empty="Bekleyen satış yok." count={bekleyen.length}>
         {bekleyen.slice(0, 6).map((s, i) => (
           <div key={i} className="flex items-center justify-between gap-3 py-2 text-sm">
