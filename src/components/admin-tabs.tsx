@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Tabs } from "./ui";
 import { ResourceManager } from "./resource-manager";
 import { UsersManager } from "./users-manager";
+import { AuditLog } from "./audit-log";
 import { principalsResource, productsResource, warehousesResource } from "@/lib/resources";
 import type { Role } from "@/lib/types";
 
@@ -20,6 +21,7 @@ export function AdminTabs({ role }: { role: Role }) {
           { key: "products", label: "Ürünler" },
           { key: "warehouses", label: "Depolar / Fabrikalar" },
           { key: "principals", label: "Adına Alınanlar" },
+          { key: "audit", label: "İşlem Geçmişi" },
         ]}
       />
       {tab === "users" && <UsersManager />}
@@ -30,6 +32,7 @@ export function AdminTabs({ role }: { role: Role }) {
       {tab === "principals" && (
         <ResourceManager config={principalsResource} role={role} />
       )}
+      {tab === "audit" && <AuditLog />}
     </div>
   );
 }
