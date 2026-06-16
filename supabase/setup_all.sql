@@ -809,6 +809,56 @@ create policy profiles_select_assign on public.profiles for select to authentica
 
 
 -- ============================================================
+-- BÖLÜM 13/13 — Stok (inventory) görünümü düzeltmesi
+-- Transfer/fabrikaya hareketleri kaynaktan düşer (çift sayım önlenir).
+-- ============================================================
+
+create or replace view public.inventory
+with (security_invoker = on) as
+with mv as (
+  select
+    product_id,
+    warehouse_id,
+    sum(case
+      when movement_type = 'inbound' then quantity
+      when movement_type = 'adjustment' then quantity
+      else 0
+    end) as received,
+    sum(case
+      when movement_type in ('transfer','to_factory') then quantity
+      else 0
+    end) as relocated_out
+  from public.stock_movements
+  where warehouse_id is not null
+  group by product_id, warehouse_id
+),
+outs as (
+  select product_id, warehouse_id, sum(quantity) as sold
+  from public.sales_orders
+  where status <> 'cancelled' and warehouse_id is not null
+  group by product_id, warehouse_id
+)
+select
+  w.id    as warehouse_id,
+  w.name  as warehouse_name,
+  w.type  as location_type,
+  pr.id   as product_id,
+  pr.name as product_name,
+  coalesce(mv.received, 0)                                 as received_qty,
+  coalesce(outs.sold, 0) + coalesce(mv.relocated_out, 0)  as sold_qty,
+  coalesce(mv.received, 0)
+    - coalesce(outs.sold, 0)
+    - coalesce(mv.relocated_out, 0)                       as available_qty
+from public.warehouses w
+join public.products pr on true
+left join mv   on mv.warehouse_id = w.id and mv.product_id = pr.id
+left join outs on outs.warehouse_id = w.id and outs.product_id = pr.id
+where coalesce(mv.received, 0) <> 0
+   or coalesce(mv.relocated_out, 0) <> 0
+   or coalesce(outs.sold, 0) <> 0;
+
+
+-- ============================================================
 -- KURULUM TAMAMLANDI
 -- Admin: taha.ozkilinc@sunaryatirim.com.tr / Sunar19*
 -- (Admin kullanıcısı oluşturulamazsa yukarıdaki NOTICE mesajını okuyun.)

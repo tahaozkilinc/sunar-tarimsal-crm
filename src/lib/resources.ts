@@ -216,7 +216,7 @@ export const purchaseContractsResource: ResourceConfig = {
   listFields: ["contract_no", "supplier_id", "product_id", "quantity", "eta", "status"],
   fxCapture: true,
   fields: [
-    { name: "contract_no", label: "Sözleşme No", type: "text", unique: true },
+    { name: "contract_no", label: "Sözleşme No", type: "text", required: true, unique: true },
     { name: "supplier_id", label: "Tedarikçi", type: "reference", ref: { table: "companies", labelField: "name", filter: { type: ["supplier", "both"] } }, required: true },
     { name: "product_id", label: "Ürün (Yağlı Tohum)", type: "reference", ref: { table: "products", labelField: "name" } },
     { name: "quantity", label: "Miktar (ton)", type: "number", required: true, positive: true },
@@ -289,9 +289,9 @@ export const salesOrdersResource: ResourceConfig = {
   fields: [
     { name: "order_no", label: "Satış No", type: "text", unique: true },
     { name: "customer_id", label: "Müşteri", type: "reference", ref: { table: "companies", labelField: "name", filter: { type: ["customer", "both"] } } },
-    { name: "contract_id", label: "Kaynak Bağlantı (Gemi)", type: "reference", ref: { table: "sellable_contracts", labelField: "vessel", labelFields: ["vessel", "contract_no"] }, autofill: { product_id: "product_id" } },
+    { name: "contract_id", label: "Kaynak Bağlantı (Gemi)", type: "reference", ref: { table: "sellable_contracts", labelField: "vessel", labelFields: ["vessel", "contract_no"] }, autofill: { product_id: "product_id" }, required: true },
     { name: "product_id", label: "Ürün", type: "reference", ref: { table: "products", labelField: "name" } },
-    { name: "warehouse_id", label: "Çıkış Deposu", type: "reference", ref: { table: "warehouses", labelField: "name" } },
+    { name: "warehouse_id", label: "Çıkış Deposu", type: "reference", ref: { table: "warehouses", labelField: "name" }, required: true },
     { name: "quantity", label: "Miktar", type: "number", required: true, positive: true },
     { name: "unit", label: "Birim", type: "text" },
     { name: "price", label: "Birim Fiyat", type: "money", min: 0 },
