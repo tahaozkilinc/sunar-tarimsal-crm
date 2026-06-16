@@ -30,13 +30,18 @@ type Movement = {
 };
 type Ref = { id: string; name: string };
 
-function durFmt(ms: number): string {
-  if (ms < 60_000) return `${Math.round(ms / 1000)} sn`;
-  const m = Math.floor(ms / 60_000);
-  if (m < 60) return `${m} dk`;
-  const h = Math.floor(m / 60);
-  const r = m % 60;
-  return r ? `${h} sa ${r} dk` : `${h} sa`;
+function durFmt(ms: number, showSec = false): string {
+  if (ms < 0) ms = 0;
+  const s = Math.floor(ms / 1000) % 60;
+  const m = Math.floor(ms / 60_000) % 60;
+  const h = Math.floor(ms / 3_600_000);
+  if (showSec) {
+    if (h > 0) return `${h}sa ${m}dk ${s}sn`;
+    if (m > 0) return `${m}dk ${s}sn`;
+    return `${s}sn`;
+  }
+  if (h > 0) return `${h} sa ${m} dk`;
+  return `${m} dk`;
 }
 function timeFmt(iso: string): string {
   return new Date(iso).toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" });
@@ -59,6 +64,13 @@ export function ShipOpsPage({ contractId }: { contractId: string }) {
   const [canWrite, setCanWrite]   = useState(false);
   const [loading, setLoading]     = useState(true);
   const [error, setError]         = useState<string | null>(null);
+
+  // Live clock — ticks every second when operation is ongoing
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(id);
+  }, []);
 
   // form
   const [plate,  setPlate]  = useState("");
@@ -140,6 +152,9 @@ export function ShipOpsPage({ contractId }: { contractId: string }) {
     const last  = sorted[sorted.length - 1].created_at;
     return { first, last, durationMs: new Date(last).getTime() - new Date(first).getTime(), count: movements.length };
   }, [movements]);
+
+  // Elapsed time from first vehicle entry (live, counts up)
+  const elapsedMs = opStats ? Math.max(0, now.getTime() - new Date(opStats.first).getTime()) : null;
 
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const etaReady = !contract?.eta || new Date(contract.eta.slice(0, 10) + "T00:00:00") <= today;
@@ -285,6 +300,24 @@ export function ShipOpsPage({ contractId }: { contractId: string }) {
         </div>
       </div>
 
+      {/* ── Operasyon durumu banner ── */}
+      {movements.length > 0 && contract.status !== "completed" && (
+        <div className={`rounded-xl px-4 py-3 text-sm font-semibold flex items-center justify-between gap-3 ${
+          remaining <= 0
+            ? "bg-emerald-50 border border-emerald-200 text-emerald-700"
+            : "bg-brand/5 border border-brand/20 text-brand"
+        }`}>
+          <span>
+            {remaining <= 0
+              ? "✓ Tüm yük çekildi — Gemiyi bitirebilirsiniz"
+              : `⚡ Operasyon devam ediyor — Kalan: ${formatNumber(remaining)} ${unit}`}
+          </span>
+          {elapsedMs !== null && (
+            <span className="font-mono text-base tabular-nums">{durFmt(elapsedMs, true)}</span>
+          )}
+        </div>
+      )}
+
       {/* ── Özet istatistik kartları ── */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Card className="p-3">
@@ -298,7 +331,7 @@ export function ShipOpsPage({ contractId }: { contractId: string }) {
           <div className="text-xs text-gray-400">{unit}</div>
         </Card>
         <Card className={`p-3 ${remaining < 0 ? "bg-red-50" : remaining === 0 && movements.length > 0 ? "bg-emerald-50" : ""}`}>
-          <div className="text-[11px] uppercase text-gray-500">{remaining < 0 ? "Fazla" : "Kalan"}</div>
+          <div className="text-[11px] uppercase text-gray-500">{remaining < 0 ? "Fazla Çekim" : "Bekleyen"}</div>
           <div className={`mt-0.5 text-xl font-bold ${remaining < 0 ? "text-red-600" : remaining === 0 && movements.length > 0 ? "text-emerald-700" : ""}`}>
             {formatNumber(Math.abs(remaining))}
           </div>
@@ -310,7 +343,8 @@ export function ShipOpsPage({ contractId }: { contractId: string }) {
             <>
               <div className="mt-0.5 text-lg font-bold">{opStats.count} araç</div>
               <div className="text-[11px] text-gray-500">
-                {timeFmt(opStats.first)} → {timeFmt(opStats.last)} ({durFmt(opStats.durationMs)})
+                {timeFmt(opStats.first)} → {opStats.count > 1 ? timeFmt(opStats.last) : "devam"}
+                {" "}({durFmt(elapsedMs ?? opStats.durationMs, false)})
               </div>
             </>
           ) : (
