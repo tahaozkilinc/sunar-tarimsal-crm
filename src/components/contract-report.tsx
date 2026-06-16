@@ -7,7 +7,7 @@ import { Badge, EmptyState, Spinner } from "./ui";
 import { formatDate, formatMoney, formatNumber } from "@/lib/format";
 import { formatUsd, toUsd } from "@/lib/fx";
 import { CONTRACT_STATUS_OPTIONS } from "@/lib/resources";
-import { ArrowLeft, Printer } from "lucide-react";
+import { ArrowLeft, Leaf, Printer } from "lucide-react";
 
 type PC = {
   id: string;
@@ -22,21 +22,14 @@ type PC = {
   currency: string | null;
   incoterm: string | null;
   origin_country: string | null;
-  loading_port: string | null;
   eta: string | null;
-  laycan_start: string | null;
-  laycan_end: string | null;
   status: string;
-  buyer: string | null;
-  payment_due_date: string | null;
   usd_try: number | null;
   eur_try: number | null;
   fx_date: string | null;
-  created_at: string | null;
 };
 type SO = {
   id: string;
-  order_no: string | null;
   customer_id: string | null;
   quantity: number | null;
   price: number | null;
@@ -48,31 +41,18 @@ type SO = {
 };
 type SM = {
   id: string;
-  movement_date: string | null;
-  warehouse_id: string | null;
   quantity: number | null;
   movement_type: string | null;
-  vehicle_plate: string | null;
-  driver_name: string | null;
 };
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <section className="rounded-xl border border-border bg-card p-4 print:break-inside-avoid">
-      <h2 className="mb-3 border-b border-border pb-2 text-sm font-semibold">{title}</h2>
-      {children}
-    </section>
-  );
-}
-
-function Row({ label, value }: { label: string; value: React.ReactNode }) {
-  return (
-    <div className="flex justify-between gap-4 py-1">
-      <span className="text-sm text-gray-500">{label}</span>
-      <span className="text-right text-sm font-medium">{value}</span>
-    </div>
-  );
-}
+type CustomerLine = {
+  id: string;
+  name: string;
+  ton: number;
+  lastDate: string | null;
+  satisUsd: number | null;
+  karUsd: number | null;
+};
 
 export function ContractReport({ contractId }: { contractId: string }) {
   const supabase = useMemo(() => createClient(), []);
@@ -83,30 +63,26 @@ export function ContractReport({ contractId }: { contractId: string }) {
     products: Record<string, string>;
     companies: Record<string, string>;
     principals: Record<string, string>;
-    warehouses: Record<string, string>;
-  }>({ products: {}, companies: {}, principals: {}, warehouses: {} });
+  }>({ products: {}, companies: {}, principals: {} });
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let on = true;
     (async () => {
       setLoading(true);
-      const [c, so, sm, pr, co, pri, wh] = await Promise.all([
+      const [c, so, sm, pr, co, pri] = await Promise.all([
         supabase.from("purchase_contracts").select("*").eq("id", contractId).maybeSingle(),
         supabase
           .from("sales_orders")
-          .select(
-            "id,order_no,customer_id,quantity,price,currency,delivery_date,status,usd_try,eur_try",
-          )
+          .select("id,customer_id,quantity,price,currency,delivery_date,status,usd_try,eur_try")
           .eq("contract_id", contractId),
         supabase
           .from("stock_movements")
-          .select("id,movement_date,warehouse_id,quantity,movement_type,vehicle_plate,driver_name")
+          .select("id,quantity,movement_type")
           .eq("contract_id", contractId),
         supabase.from("products").select("id,name"),
         supabase.from("companies").select("id,name"),
         supabase.from("principals").select("id,name"),
-        supabase.from("warehouses").select("id,name"),
       ]);
       if (!on) return;
       setPc((c.data as PC | null) ?? null);
@@ -121,7 +97,6 @@ export function ContractReport({ contractId }: { contractId: string }) {
         products: toMap(pr.data as { id: string; name: string }[] | null),
         companies: toMap(co.data as { id: string; name: string }[] | null),
         principals: toMap(pri.data as { id: string; name: string }[] | null),
-        warehouses: toMap(wh.data as { id: string; name: string }[] | null),
       });
       setLoading(false);
     })();
@@ -141,23 +116,52 @@ export function ContractReport({ contractId }: { contractId: string }) {
 
     const active = sales.filter((s) => s.status !== "cancelled");
     const satisTon = active.reduce((a, s) => a + (Number(s.quantity) || 0), 0);
-    let satisUsd = 0;
-    let satisUsdEksik = false; // bazı satışların kuru yoksa kâr eksik hesaplanır
+
+    let satisUsd: number | null = 0;
+    const byCustomer = new Map<string, SO[]>();
     active.forEach((s) => {
+      const key = s.customer_id || "_";
+      const arr = byCustomer.get(key) || [];
+      arr.push(s);
+      byCustomer.set(key, arr);
       const u = toUsd((Number(s.quantity) || 0) * (Number(s.price) || 0), s.currency, s.usd_try, s.eur_try);
-      if (u === null) satisUsdEksik = true;
-      else satisUsd += u;
+      if (u === null) satisUsd = null;
+      else if (satisUsd !== null) satisUsd += u;
     });
 
-    const allocCostUsd = costPerTonUsd !== null ? satisTon * costPerTonUsd : null;
-    const karUsd = allocCostUsd !== null ? satisUsd - allocCostUsd : null;
+    const customers: CustomerLine[] = Array.from(byCustomer.entries())
+      .map(([id, sos]) => {
+        const ton = sos.reduce((a, s) => a + (Number(s.quantity) || 0), 0);
+        let cUsd: number | null = 0;
+        sos.forEach((s) => {
+          const u = toUsd((Number(s.quantity) || 0) * (Number(s.price) || 0), s.currency, s.usd_try, s.eur_try);
+          if (u === null) cUsd = null;
+          else if (cUsd !== null) cUsd += u;
+        });
+        const allocCost = costPerTonUsd !== null ? ton * costPerTonUsd : null;
+        const karUsd = cUsd !== null && allocCost !== null ? cUsd - allocCost : null;
+        const lastDate = sos
+          .map((s) => s.delivery_date)
+          .filter(Boolean)
+          .sort((a, b) => (b || "").localeCompare(a || ""))[0] || null;
+        return {
+          id,
+          name: id === "_" ? "Müşteri belirtilmemiş" : names.companies[id] || "—",
+          ton,
+          lastDate,
+          satisUsd: cUsd,
+          karUsd,
+        };
+      })
+      .sort((a, b) => b.ton - a.ton);
+
+    const allocCostTotal = costPerTonUsd !== null ? satisTon * costPerTonUsd : null;
+    const karUsd = satisUsd !== null && allocCostTotal !== null ? satisUsd - allocCostTotal : null;
     const karTonUsd = karUsd !== null && satisTon > 0 ? karUsd / satisTon : null;
 
-    // Boşaltma sadece gemiden depoya/fabrikaya GİRİŞ (inbound) hareketleridir;
-    // aynı contract_id'yi taşıyan transfer/to_factory/adjustment kayıtları
-    // (depo içi sevkiyatlar) boşaltma tonajına dahil edilmemeli.
-    const inboundMoves = moves.filter((m) => m.movement_type === "inbound");
-    const bosaltilan = inboundMoves.reduce((a, m) => a + (Number(m.quantity) || 0), 0);
+    const bosaltilan = moves
+      .filter((m) => m.movement_type === "inbound")
+      .reduce((a, m) => a + (Number(m.quantity) || 0), 0);
 
     return {
       alisTon,
@@ -165,18 +169,16 @@ export function ContractReport({ contractId }: { contractId: string }) {
       alisCur,
       alisNative,
       alisUsd,
-      costPerTonUsd,
       satisTon,
       satisUsd,
-      satisUsdEksik,
       karUsd,
       karTonUsd,
-      kalanSatilabilir: alisTon - satisTon,
-      inboundMoves,
       bosaltilan,
-      kalanBosaltilacak: alisTon - bosaltilan,
+      kalanSatilabilir: alisTon - satisTon,
+      customers,
+      fxMissing: (alisBirim > 0 && alisUsd === null) || satisUsd === null,
     };
-  }, [pc, sales, moves]);
+  }, [pc, sales, moves, names.companies]);
 
   if (loading)
     return (
@@ -190,9 +192,10 @@ export function ContractReport({ contractId }: { contractId: string }) {
   const statusOpt = CONTRACT_STATUS_OPTIONS.find((o) => o.value === pc.status);
   const parite = pc.usd_try && pc.eur_try ? pc.eur_try / pc.usd_try : null;
   const title = pc.vessel || pc.contract_no || "Bağlantı";
+  const unit = pc.unit || "ton";
 
   return (
-    <div className="space-y-4">
+    <div className="mx-auto max-w-4xl space-y-4">
       {/* Aksiyon çubuğu - yazdırmada gizli */}
       <div className="flex items-center justify-between gap-3 print:hidden">
         <Link
@@ -209,211 +212,253 @@ export function ContractReport({ contractId }: { contractId: string }) {
         </button>
       </div>
 
-      {/* Rapor başlığı */}
-      <div className="flex flex-wrap items-end justify-between gap-2 border-b border-border pb-3">
-        <div>
-          <div className="text-xs text-gray-500">Sunar Tarımsal — Gemi (Bağlantı) Raporu</div>
-          <h1 className="text-2xl font-bold">{title}</h1>
-          <div className="text-sm text-gray-500">
-            {names.products[pc.product_id || ""] || "Ürünsüz"}
-            {pc.contract_no ? ` · ${pc.contract_no}` : ""}
-          </div>
-        </div>
-        <div className="text-right">
-          {statusOpt && <Badge color={statusOpt.color}>{statusOpt.label}</Badge>}
-          <div className="mt-1 text-xs text-gray-400">
-            Rapor: {formatDate(new Date().toISOString())}
-          </div>
-        </div>
-      </div>
-
-      {/* USD kâr-zarar özeti */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <div className="rounded-xl border border-border bg-card p-4">
-          <div className="text-xs text-gray-500">Toplam Maliyet (USD)</div>
-          <div className="mt-1 text-lg font-bold">{formatUsd(calc.alisUsd, 0)}</div>
-        </div>
-        <div className="rounded-xl border border-border bg-card p-4">
-          <div className="text-xs text-gray-500">Satış Geliri (USD)</div>
-          <div className="mt-1 text-lg font-bold">{formatUsd(calc.satisUsd, 0)}</div>
-        </div>
-        <div className="rounded-xl border border-border bg-card p-4">
-          <div className="text-xs text-gray-500">Kâr (USD)</div>
-          <div
-            className={`mt-1 text-lg font-bold ${
-              calc.karUsd === null
-                ? "text-gray-400"
-                : calc.karUsd < 0
-                  ? "text-red-600"
-                  : "text-emerald-700"
-            }`}
-          >
-            {calc.karUsd !== null ? formatUsd(calc.karUsd, 0) : "-"}
-          </div>
-        </div>
-        <div className="rounded-xl border border-border bg-card p-4">
-          <div className="text-xs text-gray-500">Ton Başına Kâr (USD)</div>
-          <div className="mt-1 text-lg font-bold text-emerald-700">
-            {calc.karTonUsd !== null ? formatUsd(calc.karTonUsd) : "-"}
-          </div>
-        </div>
-      </div>
-
-      <div className="grid gap-4 lg:grid-cols-2">
-        <Section title="Satın Alma">
-          <Row label="Tedarikçi" value={names.companies[pc.supplier_id || ""] || "-"} />
-          <Row label="Kimin Adına" value={names.principals[pc.principal_id || ""] || "-"} />
-          <Row label="Menşe / Yükleme Limanı" value={`${pc.origin_country || "-"} · ${pc.loading_port || "-"}`} />
-          <Row label="Teslim Şekli (Incoterm)" value={pc.incoterm || "-"} />
-          <Row label="ETA" value={formatDate(pc.eta)} />
-          <Row
-            label="Laycan"
-            value={`${formatDate(pc.laycan_start)} – ${formatDate(pc.laycan_end)}`}
-          />
-          <Row label="Miktar" value={`${formatNumber(calc.alisTon)} ${pc.unit || "ton"}`} />
-          <Row
-            label="Birim Fiyat"
-            value={calc.alisBirim > 0 ? formatMoney(calc.alisBirim, calc.alisCur) : "-"}
-          />
-          <Row
-            label="Toplam Maliyet"
-            value={
-              <>
-                {calc.alisNative > 0 ? formatMoney(calc.alisNative, calc.alisCur) : "-"}
-                <span className="ml-2 text-gray-400">/ {formatUsd(calc.alisUsd, 0)}</span>
-              </>
-            }
-          />
-          <Row label="Ödeme Tarihi" value={formatDate(pc.payment_due_date)} />
-          <Row
-            label="TCMB Kuru"
-            value={
-              pc.usd_try
-                ? `USD/TRY ${formatNumber(pc.usd_try, 4)}${
-                    parite ? ` · EUR/USD ${formatNumber(parite, 4)}` : ""
-                  }${pc.fx_date ? ` (${formatDate(pc.fx_date)})` : ""}`
-                : "Kur kaydı yok"
-            }
-          />
-        </Section>
-
-        <Section title="Operasyon (Boşaltma)">
-          <div className="mb-2 flex gap-4">
-            <div>
-              <div className="text-xs text-gray-500">Boşaltılan</div>
-              <div className="text-base font-bold">{formatNumber(calc.bosaltilan)} ton</div>
+      {/* ===== Tek sayfa kurumsal rapor ===== */}
+      <div className="report-sheet rounded-2xl border border-border bg-white p-6 shadow-sm print:rounded-none print:p-0">
+        {/* Antet */}
+        <div className="flex items-start justify-between gap-4 border-b-2 border-brand pb-4">
+          <div className="flex items-center gap-3">
+            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-brand text-white">
+              <Leaf className="h-6 w-6" />
             </div>
-            <div>
-              <div className="text-xs text-gray-500">Kalan (boşaltılacak)</div>
-              <div
-                className={`text-base font-bold ${calc.kalanBosaltilacak < 0 ? "text-amber-600" : ""}`}
-              >
-                {formatNumber(calc.kalanBosaltilacak)} ton
+            <div className="leading-tight">
+              <div className="text-base font-bold tracking-tight">SUNAR TARIMSAL</div>
+              <div className="text-xs uppercase tracking-widest text-gray-400">
+                Gemi · Satış &amp; Maliyet Raporu
               </div>
             </div>
           </div>
-          {calc.inboundMoves.length === 0 ? (
-            <div className="py-2 text-sm text-gray-500">Boşaltma hareketi yok.</div>
-          ) : (
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border text-left text-xs uppercase text-gray-500">
-                  <th className="py-1.5 font-medium">Tarih</th>
-                  <th className="py-1.5 font-medium">Depo</th>
-                  <th className="py-1.5 font-medium">Plaka</th>
-                  <th className="py-1.5 font-medium">Şoför</th>
-                  <th className="py-1.5 text-right font-medium">Miktar</th>
-                </tr>
-              </thead>
-              <tbody>
-                {calc.inboundMoves
-                  .slice()
-                  .sort((a, b) => (b.movement_date || "").localeCompare(a.movement_date || ""))
-                  .map((m) => (
-                    <tr key={m.id} className="border-b border-border last:border-0">
-                      <td className="py-1.5">{formatDate(m.movement_date)}</td>
-                      <td className="py-1.5">{names.warehouses[m.warehouse_id || ""] || "-"}</td>
-                      <td className="py-1.5">{m.vehicle_plate || "-"}</td>
-                      <td className="py-1.5">{m.driver_name || "-"}</td>
-                      <td className="py-1.5 text-right">{formatNumber(m.quantity)}</td>
-                    </tr>
-                  ))}
-              </tbody>
-            </table>
-          )}
-        </Section>
-      </div>
-
-      <Section title="Satış (Müşteri Bazlı)">
-        <div className="mb-2 flex gap-4">
-          <div>
-            <div className="text-xs text-gray-500">Satılan</div>
-            <div className="text-base font-bold">{formatNumber(calc.satisTon)} ton</div>
-          </div>
-          <div>
-            <div className="text-xs text-gray-500">Kalan (satılabilir)</div>
-            <div
-              className={`text-base font-bold ${calc.kalanSatilabilir < 0 ? "text-amber-600" : ""}`}
-            >
-              {formatNumber(calc.kalanSatilabilir)} ton
+          <div className="text-right">
+            {statusOpt && <Badge color={statusOpt.color}>{statusOpt.label}</Badge>}
+            <div className="mt-1 text-xs text-gray-400">
+              {formatDate(new Date().toISOString())}
             </div>
           </div>
         </div>
-        {sales.length === 0 ? (
-          <div className="py-2 text-sm text-gray-500">Bu gemiye bağlı satış yok.</div>
-        ) : (
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border text-left text-xs uppercase text-gray-500">
-                <th className="py-1.5 font-medium">Müşteri</th>
-                <th className="py-1.5 font-medium">Tarih</th>
-                <th className="py-1.5 text-right font-medium">Miktar</th>
-                <th className="py-1.5 text-right font-medium">Birim Fiyat</th>
-                <th className="py-1.5 text-right font-medium">Tutar (USD)</th>
-                <th className="py-1.5 font-medium">Durum</th>
-              </tr>
-            </thead>
-            <tbody>
-              {sales
-                .slice()
-                .sort((a, b) => (b.delivery_date || "").localeCompare(a.delivery_date || ""))
-                .map((s) => {
-                  const rev = toUsd(
-                    (Number(s.quantity) || 0) * (Number(s.price) || 0),
-                    s.currency,
-                    s.usd_try,
-                    s.eur_try,
-                  );
-                  return (
-                    <tr key={s.id} className="border-b border-border last:border-0">
-                      <td className="py-1.5">{names.companies[s.customer_id || ""] || "-"}</td>
-                      <td className="py-1.5">{formatDate(s.delivery_date)}</td>
-                      <td className="py-1.5 text-right">{formatNumber(s.quantity)}</td>
-                      <td className="py-1.5 text-right">
-                        {s.price ? formatMoney(s.price, s.currency || "TRY") : "-"}
-                      </td>
-                      <td className="py-1.5 text-right">{formatUsd(rev, 0)}</td>
-                      <td className="py-1.5">
-                        {s.status === "cancelled" ? (
-                          <span className="text-gray-400">İptal</span>
-                        ) : (
-                          s.order_no || "—"
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-            </tbody>
-          </table>
-        )}
-      </Section>
 
-      {(calc.alisUsd === null || calc.satisUsdEksik) && (
-        <p className="text-xs text-amber-600 print:text-black">
-          Uyarı: Bazı kayıtlarda TCMB kuru bulunmadığı için USD tutarları/kâr eksik hesaplanmış
-          olabilir. (Kur, kayıt oluşturulurken otomatik alınır; eski kayıtlarda elle girilebilir.)
-        </p>
-      )}
+        {/* Başlık */}
+        <div className="flex flex-wrap items-end justify-between gap-2 py-4">
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight">{title}</h1>
+            <div className="mt-0.5 text-sm text-gray-500">
+              {names.products[pc.product_id || ""] || "Ürünsüz"}
+              {pc.contract_no ? ` · Sözleşme ${pc.contract_no}` : ""}
+              {pc.principal_id && names.principals[pc.principal_id]
+                ? ` · ${names.principals[pc.principal_id]} adına`
+                : ""}
+            </div>
+          </div>
+        </div>
+
+        {/* Finansal özet (USD) */}
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <div className="rounded-xl bg-gray-50 p-3 print:border print:border-border">
+            <div className="text-[11px] uppercase tracking-wide text-gray-500">Toplam Maliyet</div>
+            <div className="mt-1 text-lg font-bold">{formatUsd(calc.alisUsd, 0)}</div>
+          </div>
+          <div className="rounded-xl bg-gray-50 p-3 print:border print:border-border">
+            <div className="text-[11px] uppercase tracking-wide text-gray-500">Satış Geliri</div>
+            <div className="mt-1 text-lg font-bold">{formatUsd(calc.satisUsd, 0)}</div>
+          </div>
+          <div
+            className={`rounded-xl p-3 print:border print:border-border ${
+              calc.karUsd !== null && calc.karUsd < 0 ? "bg-red-50" : "bg-emerald-50"
+            }`}
+          >
+            <div className="text-[11px] uppercase tracking-wide text-gray-500">Kâr</div>
+            <div
+              className={`mt-1 text-lg font-bold ${
+                calc.karUsd === null
+                  ? "text-gray-400"
+                  : calc.karUsd < 0
+                    ? "text-red-600"
+                    : "text-emerald-700"
+              }`}
+            >
+              {calc.karUsd !== null ? formatUsd(calc.karUsd, 0) : "-"}
+            </div>
+          </div>
+          <div className="rounded-xl bg-gray-50 p-3 print:border print:border-border">
+            <div className="text-[11px] uppercase tracking-wide text-gray-500">Ton Başına Kâr</div>
+            <div className="mt-1 text-lg font-bold text-emerald-700">
+              {calc.karTonUsd !== null ? formatUsd(calc.karTonUsd) : "-"}
+            </div>
+          </div>
+        </div>
+
+        {/* Alış bilgileri + Ton akışı */}
+        <div className="mt-4 grid gap-4 md:grid-cols-2">
+          <div className="report-avoid-break rounded-xl border border-border p-4">
+            <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
+              Alış Bilgileri
+            </h2>
+            <dl className="divide-y divide-border text-sm">
+              <InfoRow label="Tedarikçi" value={names.companies[pc.supplier_id || ""] || "-"} />
+              <InfoRow label="Menşe" value={pc.origin_country || "-"} />
+              <InfoRow label="Teslim Şekli" value={pc.incoterm || "-"} />
+              <InfoRow label="ETA" value={formatDate(pc.eta)} />
+              <InfoRow label="Miktar" value={`${formatNumber(calc.alisTon)} ${unit}`} />
+              <InfoRow
+                label="Birim Fiyat"
+                value={calc.alisBirim > 0 ? formatMoney(calc.alisBirim, calc.alisCur) : "-"}
+              />
+              <InfoRow
+                label="Toplam Maliyet"
+                value={
+                  <>
+                    {calc.alisNative > 0 ? formatMoney(calc.alisNative, calc.alisCur) : "-"}
+                    <span className="ml-1.5 text-gray-400">/ {formatUsd(calc.alisUsd, 0)}</span>
+                  </>
+                }
+              />
+              <InfoRow
+                label="TCMB Kuru"
+                value={
+                  pc.usd_try
+                    ? `USD/TRY ${formatNumber(pc.usd_try, 4)}${
+                        parite ? ` · EUR/USD ${formatNumber(parite, 4)}` : ""
+                      }`
+                    : "Kur kaydı yok"
+                }
+              />
+            </dl>
+          </div>
+
+          <div className="report-avoid-break rounded-xl border border-border p-4">
+            <h2 className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-500">
+              Ton Akışı
+            </h2>
+            <div className="grid grid-cols-2 gap-3">
+              <FlowStat label="Bağlı" value={calc.alisTon} unit={unit} />
+              <FlowStat label="Boşaltılan" value={calc.bosaltilan} unit={unit} />
+              <FlowStat label="Satılan" value={calc.satisTon} unit={unit} />
+              <FlowStat
+                label="Kalan (satılabilir)"
+                value={calc.kalanSatilabilir}
+                unit={unit}
+                warn={calc.kalanSatilabilir < 0}
+              />
+            </div>
+            {/* İlerleme çubuğu: satılan / bağlı */}
+            {calc.alisTon > 0 && (
+              <div className="mt-4">
+                <div className="mb-1 flex justify-between text-[11px] text-gray-500">
+                  <span>Satış gerçekleşme</span>
+                  <span>
+                    %{formatNumber(Math.min(100, (calc.satisTon / calc.alisTon) * 100), 0)}
+                  </span>
+                </div>
+                <div className="h-2.5 overflow-hidden rounded-full bg-gray-100">
+                  <div
+                    className="h-full rounded-full bg-brand"
+                    style={{
+                      width: `${Math.min(100, (calc.satisTon / calc.alisTon) * 100)}%`,
+                    }}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Müşteri bazlı satış */}
+        <div className="report-avoid-break mt-4 rounded-xl border border-border p-4">
+          <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
+            Müşteri Bazlı Satış
+          </h2>
+          {calc.customers.length === 0 ? (
+            <div className="py-2 text-sm text-gray-500">Bu gemiye bağlı satış yok.</div>
+          ) : (
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border text-left text-[11px] uppercase text-gray-400">
+                  <th className="py-1.5 font-medium">Müşteri</th>
+                  <th className="py-1.5 font-medium">Son Teslim</th>
+                  <th className="py-1.5 text-right font-medium">Ton</th>
+                  <th className="py-1.5 text-right font-medium">Gelir (USD)</th>
+                  <th className="py-1.5 text-right font-medium">Kâr (USD)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {calc.customers.map((cu) => (
+                  <tr key={cu.id} className="border-b border-border/60 last:border-0">
+                    <td className="py-2 font-medium">{cu.name}</td>
+                    <td className="py-2 text-gray-500">{formatDate(cu.lastDate)}</td>
+                    <td className="py-2 text-right">{formatNumber(cu.ton)}</td>
+                    <td className="py-2 text-right">{formatUsd(cu.satisUsd, 0)}</td>
+                    <td
+                      className={`py-2 text-right font-medium ${
+                        cu.karUsd !== null
+                          ? cu.karUsd < 0
+                            ? "text-red-600"
+                            : "text-emerald-700"
+                          : "text-gray-400"
+                      }`}
+                    >
+                      {cu.karUsd !== null ? formatUsd(cu.karUsd, 0) : "-"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr className="border-t-2 border-border text-sm font-semibold">
+                  <td className="py-2">TOPLAM</td>
+                  <td className="py-2" />
+                  <td className="py-2 text-right">{formatNumber(calc.satisTon)}</td>
+                  <td className="py-2 text-right">{formatUsd(calc.satisUsd, 0)}</td>
+                  <td
+                    className={`py-2 text-right ${
+                      calc.karUsd !== null && calc.karUsd < 0 ? "text-red-600" : "text-emerald-700"
+                    }`}
+                  >
+                    {calc.karUsd !== null ? formatUsd(calc.karUsd, 0) : "-"}
+                  </td>
+                </tr>
+              </tfoot>
+            </table>
+          )}
+        </div>
+
+        {/* Alt bilgi */}
+        <div className="mt-4 flex items-center justify-between border-t border-border pt-3 text-[11px] text-gray-400">
+          <span>Sunar Tarımsal CRM · Tutarlar TCMB kuruyla USD&apos;ye çevrilmiştir.</span>
+          <span>{formatDate(new Date().toISOString())}</span>
+        </div>
+        {calc.fxMissing && (
+          <p className="mt-2 text-[11px] text-amber-600 print:text-black">
+            Uyarı: Bazı kayıtlarda TCMB kuru bulunmadığı için USD tutarları eksik olabilir.
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function InfoRow({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div className="flex justify-between gap-4 py-1.5">
+      <dt className="text-gray-500">{label}</dt>
+      <dd className="text-right font-medium">{value}</dd>
+    </div>
+  );
+}
+
+function FlowStat({
+  label,
+  value,
+  unit,
+  warn,
+}: {
+  label: string;
+  value: number;
+  unit: string;
+  warn?: boolean;
+}) {
+  return (
+    <div className="rounded-lg bg-gray-50 p-3 print:border print:border-border">
+      <div className="text-[11px] text-gray-500">{label}</div>
+      <div className={`mt-0.5 text-base font-bold ${warn ? "text-amber-600" : ""}`}>
+        {formatNumber(value)} <span className="text-xs font-normal text-gray-400">{unit}</span>
+      </div>
     </div>
   );
 }

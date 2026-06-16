@@ -42,3 +42,31 @@ button,
 * {
   scrollbar-width: thin;
 }
+
+/* ---------------------------------------------------------------------------
+   Baskı (PDF) — kurumsal tek sayfa rapor
+   Rapor A4'e sığsın; arka plan renkleri korunsun; gereksiz sayfa kırılması olmasın.
+--------------------------------------------------------------------------- */
+@media print {
+  @page {
+    size: A4;
+    margin: 12mm;
+  }
+  html,
+  body {
+    background: #ffffff !important;
+  }
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+  /* Rapor kutusu sayfa ortasında, kenarlıksız, tek parça */
+  .report-sheet {
+    box-shadow: none !important;
+    border: none !important;
+  }
+  .report-sheet,
+  .report-avoid-break {
+    break-inside: avoid;
+  }
+}
