@@ -290,7 +290,7 @@ export const salesOrdersResource: ResourceConfig = {
     { name: "order_no", label: "Satış No", type: "text", unique: true },
     { name: "customer_id", label: "Müşteri", type: "reference", ref: { table: "companies", labelField: "name", filter: { type: ["customer", "both"] } } },
     { name: "contract_id", label: "Kaynak Bağlantı (Gemi)", type: "reference", ref: { table: "sellable_contracts", labelField: "vessel", labelFields: ["vessel", "contract_no"] }, autofill: { product_id: "product_id" }, required: true },
-    { name: "product_id", label: "Ürün", type: "reference", ref: { table: "products", labelField: "name" } },
+    { name: "product_id", label: "Ürün", type: "reference", ref: { table: "products", labelField: "name" }, formHidden: true },
     { name: "warehouse_id", label: "Çıkış Deposu", type: "reference", ref: { table: "warehouses", labelField: "name" }, required: true },
     { name: "quantity", label: "Miktar", type: "number", required: true, positive: true },
     { name: "unit", label: "Birim", type: "text" },
