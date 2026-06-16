@@ -23,6 +23,7 @@ const ROLE_OPTIONS: Role[] = [
   "sales",
   "finans",
   "maliyet",
+  "viewer",
   "pending",
 ];
 

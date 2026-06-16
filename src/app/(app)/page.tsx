@@ -23,12 +23,14 @@ export default async function DashboardPage() {
   const role = profile.role;
   const supabase = await createClient();
 
-  const canB = ["admin", "purchasing"].includes(role);
-  const canS = ["admin", "sales"].includes(role);
-  const canO = ["admin", "operations"].includes(role);
-  const canF = ["admin", "finans"].includes(role);
-  const canM = ["admin", "maliyet"].includes(role);
-  const canCrm = ["admin", "purchasing", "sales"].includes(role);
+  // viewer (Görüntüleyici): her şeyi görür, hiçbir şeyi değiştiremez.
+  const v = role === "viewer";
+  const canB = v || ["admin", "purchasing"].includes(role);
+  const canS = v || ["admin", "sales"].includes(role);
+  const canO = v || ["admin", "operations"].includes(role);
+  const canF = v || ["admin", "finans"].includes(role);
+  const canM = v || ["admin", "maliyet"].includes(role);
+  const canCrm = v || ["admin", "purchasing", "sales"].includes(role);
 
   const [c, s, inv, mv, crm] = await Promise.all([
     canB
