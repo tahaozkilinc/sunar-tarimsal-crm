@@ -298,8 +298,8 @@ export function ContractReport({ contractId }: { contractId: string }) {
               <InfoRow label="ETA" value={formatDate(pc.eta)} />
               <InfoRow label="Miktar" value={`${formatNumber(calc.alisTon)} ${unit}`} />
               <InfoRow
-                label="Birim Fiyat"
-                value={calc.alisBirim > 0 ? formatMoney(calc.alisBirim, calc.alisCur) : "-"}
+                label="Toplam Maliyet"
+                value={calc.alisNative > 0 ? formatMoney(calc.alisNative, calc.alisCur) : "-"}
               />
               <InfoRow
                 label="TCMB Kuru"

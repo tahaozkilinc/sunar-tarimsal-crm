@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { Card, EmptyState, Input, Spinner } from "./ui";
-import { formatNumber } from "@/lib/format";
+import { formatMoney, formatNumber } from "@/lib/format";
 import { formatUsd, toUsd } from "@/lib/fx";
 import { Download, FileText, Search } from "lucide-react";
 
@@ -51,8 +51,11 @@ type Row = {
   contractNo: string;
   product: string;
   alisTon: number;
+  alisPrice: number;
+  alisCur: string;
   alisUsd: number | null;
   satisTon: number;
+  satisAvgUsd: number | null;
   satisUsd: number | null;
   kalan: number;
   karUsd: number | null;
@@ -168,8 +171,11 @@ export function CostView({ hideTitle }: { hideTitle?: boolean } = {}) {
           contractNo: c.contract_no || "",
           product: (c.product_id && productMap[c.product_id]) || "Ürünsüz",
           alisTon,
+          alisPrice,
+          alisCur: c.currency || "USD",
           alisUsd,
           satisTon,
+          satisAvgUsd: satisTon > 0 && satisUsd !== null ? satisUsd / satisTon : null,
           satisUsd,
           kalan: alisTon - satisTon,
           karUsd,
@@ -198,21 +204,23 @@ export function CostView({ hideTitle }: { hideTitle?: boolean } = {}) {
   const downloadCsv = () => {
     const headers = [
       "Gemi", "Sözleşme No", "Ürün",
-      "Alış Ton", "Alış (USD)",
-      "Satış Ton", "Satış (USD)", "Kalan Ton", "Kâr (USD)",
+      "Alış Ton", "Alış Birim Fiyat", "Alış (USD)",
+      "Satış Ton", "Satış Birim (USD/ton)", "Satış (USD)", "Kalan Ton", "Kâr (USD)",
     ];
     const body: (string | number)[][] = [];
     filtered.forEach((r) => {
       body.push([
         r.vessel, r.contractNo, r.product,
-        r.alisTon, r.alisUsd ?? "",
-        r.satisTon, r.satisUsd ?? "", r.kalan, r.karUsd ?? "",
+        r.alisTon, r.alisPrice > 0 ? `${r.alisPrice} ${r.alisCur}` : "",
+        r.alisUsd ?? "",
+        r.satisTon, r.satisAvgUsd !== null ? r.satisAvgUsd.toFixed(2) : "",
+        r.satisUsd ?? "", r.kalan, r.karUsd ?? "",
       ]);
       r.customers.forEach((cu) => {
         body.push([
           `↳ ${cu.customerName}`, "", "",
-          "", "",
-          cu.ton, cu.satisUsd ?? "", "", cu.karUsd ?? "",
+          "", "", "",
+          cu.ton, "", cu.satisUsd ?? "", "", cu.karUsd ?? "",
         ]);
       });
     });
@@ -307,8 +315,10 @@ export function CostView({ hideTitle }: { hideTitle?: boolean } = {}) {
                 <th className="px-3 py-3 font-medium">Gemi / Sözleşme</th>
                 <th className="px-3 py-3 font-medium">Ürün</th>
                 <th className="px-3 py-3 text-right font-medium">Alış Ton</th>
+                <th className="px-3 py-3 text-right font-medium">Alış Birim</th>
                 <th className="px-3 py-3 text-right font-medium">Alış (USD)</th>
                 <th className="px-3 py-3 text-right font-medium">Satış Ton</th>
+                <th className="px-3 py-3 text-right font-medium">Satış Birim</th>
                 <th className="px-3 py-3 text-right font-medium">Satış (USD)</th>
                 <th className="px-3 py-3 text-right font-medium">Kalan Ton</th>
                 <th className="px-3 py-3 text-right font-medium">Kâr (USD)</th>
@@ -331,8 +341,14 @@ export function CostView({ hideTitle }: { hideTitle?: boolean } = {}) {
                   </td>
                   <td className="px-3 py-3">{r.product}</td>
                   <td className="px-3 py-3 text-right">{formatNumber(r.alisTon)}</td>
+                  <td className="px-3 py-3 text-right text-gray-600">
+                    {r.alisPrice > 0 ? formatMoney(r.alisPrice, r.alisCur) : "—"}
+                  </td>
                   <td className="px-3 py-3 text-right">{formatUsd(r.alisUsd, 0)}</td>
                   <td className="px-3 py-3 text-right">{formatNumber(r.satisTon)}</td>
+                  <td className="px-3 py-3 text-right text-gray-600">
+                    {r.satisAvgUsd !== null ? `${formatUsd(r.satisAvgUsd)}/ton` : "—"}
+                  </td>
                   <td className="px-3 py-3 text-right">{formatUsd(r.satisUsd, 0)}</td>
                   <td
                     className={`px-3 py-3 text-right font-semibold ${
@@ -362,7 +378,9 @@ export function CostView({ hideTitle }: { hideTitle?: boolean } = {}) {
                     <td className="px-3 py-2 text-gray-400">—</td>
                     <td className="px-3 py-2 text-right text-gray-400">—</td>
                     <td className="px-3 py-2 text-right text-gray-400">—</td>
+                    <td className="px-3 py-2 text-right text-gray-400">—</td>
                     <td className="px-3 py-2 text-right text-gray-600">{formatNumber(cu.ton)}</td>
+                    <td className="px-3 py-2 text-right text-gray-400">—</td>
                     <td className="px-3 py-2 text-right text-gray-600">{formatUsd(cu.satisUsd, 0)}</td>
                     <td className="px-3 py-2 text-right text-gray-400">—</td>
                     <td

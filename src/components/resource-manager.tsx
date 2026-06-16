@@ -590,10 +590,15 @@ export function ResourceManager({
 
   const remove = async (row: Row) => {
     if (!window.confirm(`"${config.singular}" kaydı silinsin mi?`)) return;
-    const { error } = await supabase.from(config.table).delete().eq("id", row.id);
-    if (error) {
-      alert("Silinemedi: " + error.message);
-      return;
+    if (config.softDelete) {
+      const { error } = await supabase
+        .from(config.table)
+        .update({ [config.softDelete.column]: false })
+        .eq("id", row.id);
+      if (error) { alert("Silinemedi: " + error.message); return; }
+    } else {
+      const { error } = await supabase.from(config.table).delete().eq("id", row.id);
+      if (error) { alert("Silinemedi: " + error.message); return; }
     }
     loadRows();
   };
@@ -646,10 +651,15 @@ export function ResourceManager({
     if (field.type === "select")
       return (field.options || []).map((o) => ({ value: o.value, label: o.label }));
     if (field.type === "reference" && field.ref)
-      return (refData[field.ref.table] || []).map((r) => ({
-        value: String(r.id),
-        label: pickRefLabel(field.ref!, r, r.id),
-      }));
+      return (refData[field.ref.table] || [])
+        .filter((o) => {
+          const flt = field.ref!.filter;
+          return !flt || Object.entries(flt).every(([col, vals]) => vals.includes(String(o[col])));
+        })
+        .map((r) => ({
+          value: String(r.id),
+          label: pickRefLabel(field.ref!, r, r.id),
+        }));
     if (field.type === "boolean")
       return [
         { value: "true", label: "Evet" },
