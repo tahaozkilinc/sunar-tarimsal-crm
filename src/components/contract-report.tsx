@@ -302,15 +302,6 @@ export function ContractReport({ contractId }: { contractId: string }) {
                 value={calc.alisBirim > 0 ? formatMoney(calc.alisBirim, calc.alisCur) : "-"}
               />
               <InfoRow
-                label="Toplam Maliyet"
-                value={
-                  <>
-                    {calc.alisNative > 0 ? formatMoney(calc.alisNative, calc.alisCur) : "-"}
-                    <span className="ml-1.5 text-gray-400">/ {formatUsd(calc.alisUsd, 0)}</span>
-                  </>
-                }
-              />
-              <InfoRow
                 label="TCMB Kuru"
                 value={
                   pc.usd_try
