@@ -42,7 +42,9 @@ export interface FieldDef {
   min?: number; // sayı için alt sınır (dahil)
   bucket?: string; // "file" tipi için Supabase Storage kovası
   options?: SelectOption[];
-  ref?: { table: string; labelField: string; filter?: Record<string, string[]> };
+  // labelField: tek etiket kolonu. labelFields: sırayla denenen yedek kolonlar
+  // (ilk boş olmayan kullanılır; ör. gemi adı yoksa sözleşme no).
+  ref?: { table: string; labelField: string; labelFields?: string[]; filter?: Record<string, string[]> };
   autofill?: Record<string, string>;
   formHidden?: boolean;
   readOnly?: boolean;
@@ -215,11 +217,11 @@ export const purchaseContractsResource: ResourceConfig = {
   fxCapture: true,
   fields: [
     { name: "contract_no", label: "Sözleşme No", type: "text", unique: true },
-    { name: "supplier_id", label: "Tedarikçi", type: "reference", ref: { table: "companies", labelField: "name", filter: { type: ["supplier", "both"] } } },
+    { name: "supplier_id", label: "Tedarikçi", type: "reference", ref: { table: "companies", labelField: "name", filter: { type: ["supplier", "both"] } }, required: true },
     { name: "product_id", label: "Ürün (Yağlı Tohum)", type: "reference", ref: { table: "products", labelField: "name" } },
-    { name: "quantity", label: "Miktar", type: "number", required: true, positive: true },
+    { name: "quantity", label: "Miktar (ton)", type: "number", required: true, positive: true },
     { name: "unit", label: "Birim", type: "text" },
-    { name: "price", label: "Birim Fiyat", type: "money", min: 0 },
+    { name: "price", label: "Birim Fiyat", type: "money", required: true, positive: true },
     { name: "currency", label: "Para Birimi", type: "select", options: CURRENCY_OPTIONS },
     { name: "incoterm", label: "Teslim Şekli", type: "select", options: INCOTERM_OPTIONS },
     { name: "origin_country", label: "Menşe Ülke", type: "text" },
@@ -253,7 +255,7 @@ export const stockMovementsResource: ResourceConfig = {
   listFields: ["movement_date", "contract_id", "product_id", "warehouse_id", "movement_type", "quantity"],
   fields: [
     { name: "movement_date", label: "Tarih", type: "date", required: true },
-    { name: "contract_id", label: "Kaynak Sözleşme (Gemi)", type: "reference", ref: { table: "purchase_contracts", labelField: "contract_no" }, autofill: { product_id: "product_id", unit: "unit" } },
+    { name: "contract_id", label: "Kaynak Sözleşme (Gemi)", type: "reference", ref: { table: "purchase_contracts", labelField: "vessel", labelFields: ["vessel", "contract_no"] }, autofill: { product_id: "product_id", unit: "unit" } },
     { name: "product_id", label: "Ürün", type: "reference", ref: { table: "products", labelField: "name" } },
     { name: "warehouse_id", label: "Depo / Fabrika", type: "reference", ref: { table: "warehouses", labelField: "name" }, required: true },
     { name: "movement_type", label: "Hareket Tipi", type: "select", options: MOVEMENT_TYPE_OPTIONS, required: true },
@@ -287,7 +289,7 @@ export const salesOrdersResource: ResourceConfig = {
   fields: [
     { name: "order_no", label: "Satış No", type: "text", unique: true },
     { name: "customer_id", label: "Müşteri", type: "reference", ref: { table: "companies", labelField: "name", filter: { type: ["customer", "both"] } } },
-    { name: "contract_id", label: "Kaynak Bağlantı (Gemi)", type: "reference", ref: { table: "sellable_contracts", labelField: "contract_no" }, autofill: { product_id: "product_id" } },
+    { name: "contract_id", label: "Kaynak Bağlantı (Gemi)", type: "reference", ref: { table: "sellable_contracts", labelField: "vessel", labelFields: ["vessel", "contract_no"] }, autofill: { product_id: "product_id" } },
     { name: "product_id", label: "Ürün", type: "reference", ref: { table: "products", labelField: "name" } },
     { name: "warehouse_id", label: "Çıkış Deposu", type: "reference", ref: { table: "warehouses", labelField: "name" } },
     { name: "quantity", label: "Miktar", type: "number", required: true, positive: true },

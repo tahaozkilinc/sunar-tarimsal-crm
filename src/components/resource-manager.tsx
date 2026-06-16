@@ -246,6 +246,7 @@ export function ResourceManager({
           .filter((f) => f.ref!.table === table)
           .forEach((f) => {
             cols.add(f.ref!.labelField);
+            (f.ref!.labelFields || []).forEach((c) => cols.add(c));
             if (f.autofill) Object.values(f.autofill).forEach((src) => cols.add(src));
             if (f.ref!.filter) Object.keys(f.ref!.filter).forEach((c) => cols.add(c));
           });
@@ -312,11 +313,25 @@ export function ResourceManager({
   }, [modalOpen, editing, config.fxCapture]);
 
   // --- yardımcılar ---
+  // Referans satırından etiketi seçer: labelFields sırayla denenir (ilk dolu olan),
+  // hiçbiri yoksa labelField, o da boşsa kısa id (#xxxx) gösterilir.
+  const pickRefLabel = (
+    ref: NonNullable<FieldDef["ref"]>,
+    row: Row | undefined,
+    id: unknown,
+  ) => {
+    const candidates = ref.labelFields?.length ? ref.labelFields : [ref.labelField];
+    for (const col of candidates) {
+      const v = row?.[col];
+      if (v !== null && v !== undefined && String(v).trim() !== "") return String(v);
+    }
+    return `#${String(id).slice(0, 8)}`;
+  };
+
   const refLabel = (field: FieldDef, value: unknown) => {
     if (!value || !field.ref) return "-";
     const row = (refData[field.ref.table] || []).find((r) => r.id === value);
-    const label = row?.[field.ref.labelField];
-    return (label as string) || `#${String(value).slice(0, 8)}`;
+    return pickRefLabel(field.ref, row, value);
   };
 
   const renderCell = (field: FieldDef, row: Row) => {
@@ -360,7 +375,8 @@ export function ResourceManager({
           if (v === null || v === undefined || v === "") return "";
           if (f?.type === "reference" && f.ref) {
             const rr = (refData[f.ref.table] || []).find((x) => x.id === v);
-            return String(rr?.[f.ref.labelField] ?? "");
+            const cands = f.ref.labelFields?.length ? f.ref.labelFields : [f.ref.labelField];
+            return cands.map((c) => String(rr?.[c] ?? "")).join(" ");
           }
           if (f?.type === "select")
             return f.options?.find((o) => o.value === v)?.label || String(v);
@@ -582,7 +598,7 @@ export function ResourceManager({
     if (field.type === "reference" && field.ref)
       return (refData[field.ref.table] || []).map((r) => ({
         value: String(r.id),
-        label: (r[field.ref!.labelField] as string) || `#${String(r.id).slice(0, 8)}`,
+        label: pickRefLabel(field.ref!, r, r.id),
       }));
     if (field.type === "boolean")
       return [
@@ -935,7 +951,7 @@ export function ResourceManager({
             })
             .map((o) => (
               <option key={String(o.id)} value={String(o.id)}>
-                {(o[f.ref!.labelField] as string) || `#${String(o.id).slice(0, 8)}`}
+                {pickRefLabel(f.ref!, o, o.id)}
               </option>
             ))}
         </Select>
