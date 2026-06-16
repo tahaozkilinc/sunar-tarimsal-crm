@@ -74,19 +74,30 @@ export const ROLE_LABELS: Record<Role, string> = {
   sales: "Satış",
   finans: "Finans",
   maliyet: "Maliyet",
-  viewer: "Görüntüleyici",
+  viewer: "Görüntüleyici (Tümü)",
+  purchasing_view: "Satın Alma (Görüntüleme)",
+  operations_view: "Operasyon (Görüntüleme)",
+  sales_view: "Satış (Görüntüleme)",
   pending: "Onay Bekliyor",
 };
 
+// "_view" salt-okunur roller, taban rolüyle aynı menüleri/erişimi alır
+// (yetki farkı yazma tarafındadır: RLS ve writeRoles _view'i içermez).
+export function baseRole(role: Role): Role {
+  return (role.endsWith("_view") ? role.slice(0, -"_view".length) : role) as Role;
+}
+
 export function navForRole(role: Role): NavItem[] {
-  return NAV_ITEMS.filter((item) => item.roles.includes(role));
+  const base = baseRole(role);
+  return NAV_ITEMS.filter((item) => item.roles.includes(base));
 }
 
 export function canAccess(role: Role, href: string): boolean {
+  const base = baseRole(role);
   // En uzun eşleşen yolu bul (örn. /purchasing/x -> /purchasing).
   const match = NAV_ITEMS.filter(
     (item) => href === item.href || (item.href !== "/" && href.startsWith(item.href)),
   ).sort((a, b) => b.href.length - a.href.length)[0];
   if (!match) return true; // tanımsız yollar (örn. /profile) serbest
-  return match.roles.includes(role);
+  return match.roles.includes(base);
 }
