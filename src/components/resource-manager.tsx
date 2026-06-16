@@ -220,6 +220,12 @@ export function ResourceManager({
   const [noteText, setNoteText] = useState("");
   const [savingNote, setSavingNote] = useState(false);
   const [filters, setFilters] = useState<Record<string, string>>({});
+  // Kota bilgisi (ör. satışta seçili geminin toplam / satılan / kalan tonajı)
+  const [quotaInfo, setQuotaInfo] = useState<{
+    capacity: number;
+    used: number;
+    remaining: number;
+  } | null>(null);
 
   const canWrite = config.writeRoles.includes(role);
   const filterKey = JSON.stringify({ ...(config.filter || {}), ...(filter || {}) });
@@ -311,6 +317,44 @@ export function ResourceManager({
       on = false;
     };
   }, [modalOpen, editing, config.fxCapture]);
+
+  // Kota alanı (ör. satışta "Kaynak Bağlantı") değişince seçili kaynağın
+  // toplam / kullanılan / kalan miktarını getir; formda gösterilir ve fazla
+  // girişi canlı uyarır (kesin engel save() içindeki kota kontrolündedir).
+  const quotaRefId = config.quota ? form[config.quota.field] : undefined;
+  useEffect(() => {
+    const q = config.quota;
+    if (!modalOpen || !q || !quotaRefId) {
+      setQuotaInfo(null);
+      return;
+    }
+    let on = true;
+    (async () => {
+      const { data: capRow } = await supabase
+        .from(q.capacityTable)
+        .select(q.capacityField)
+        .eq("id", quotaRefId)
+        .maybeSingle();
+      const capacity = Number((capRow as Row | null)?.[q.capacityField]) || 0;
+      const statusCol = q.statusField ?? "status";
+      let usedQ = supabase
+        .from(config.table)
+        .select(`${q.amountField},${statusCol}`)
+        .eq(q.field, quotaRefId);
+      if (editing?.id) usedQ = usedQ.neq("id", editing.id);
+      const { data: usedRows } = await usedQ;
+      const used = ((usedRows as Row[] | null) ?? []).reduce((sum, r) => {
+        if (q.excludeStatus?.includes(String(r[statusCol] ?? ""))) return sum;
+        return sum + (Number(r[q.amountField]) || 0);
+      }, 0);
+      if (!on) return;
+      setQuotaInfo({ capacity, used, remaining: Math.max(capacity - used, 0) });
+    })();
+    return () => {
+      on = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [modalOpen, quotaRefId, editing?.id]);
 
   // --- yardımcılar ---
   // Referans satırından etiketi seçer: labelFields sırayla denenir (ilk dolu olan),
@@ -587,6 +631,12 @@ export function ResourceManager({
     loadRows();
   };
 
+  const overQuota = !!(
+    quotaInfo &&
+    config.quota &&
+    Number(form[config.quota.amountField]) > quotaInfo.remaining
+  );
+
   const listFieldDefs = config.listFields.map((n) => fieldByName[n]).filter(Boolean);
   const filterFieldDefs = (config.filterFields || [])
     .map((n) => fieldByName[n])
@@ -777,6 +827,29 @@ export function ResourceManager({
         }
       >
         <div className="space-y-3">
+          {quotaInfo && (
+            <div
+              className={`rounded-lg border px-3 py-2 text-sm ${
+                overQuota
+                  ? "border-red-200 bg-red-50 text-red-700"
+                  : "border-emerald-200 bg-emerald-50 text-emerald-800"
+              }`}
+            >
+              <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-0.5">
+                <span>Seçili gemi tonajı</span>
+                <span className="font-medium">
+                  Toplam {formatNumber(quotaInfo.capacity)} · Satılan{" "}
+                  {formatNumber(quotaInfo.used)} · Kalan {formatNumber(quotaInfo.remaining)}
+                </span>
+              </div>
+              {overQuota && (
+                <div className="mt-1 text-xs font-medium">
+                  Girilen miktar kalan tonajı aşıyor. En fazla{" "}
+                  {formatNumber(quotaInfo.remaining)} girilebilir.
+                </div>
+              )}
+            </div>
+          )}
           {config.fields
             .filter((f) => !f.formHidden && !f.readOnly)
             .map((f) => (
