@@ -82,18 +82,30 @@ function NavLinks({
   );
 }
 
-function UserBox({ profile, onLogout }: { profile: Profile; onLogout: () => void }) {
+function UserBox({
+  profile,
+  onLogout,
+  onNavigate,
+}: {
+  profile: Profile;
+  onLogout: () => void;
+  onNavigate?: () => void;
+}) {
   return (
     <div className="border-t border-border pt-3">
-      <div className="px-2 pb-2">
+      <Link
+        href="/profile"
+        onClick={onNavigate}
+        className="block rounded-lg px-2 py-1.5 hover:bg-gray-100"
+      >
         <div className="truncate text-sm font-medium">
           {profile.full_name || profile.email}
         </div>
         <div className="text-xs text-gray-500">{ROLE_LABELS[profile.role]}</div>
-      </div>
+      </Link>
       <button
         onClick={onLogout}
-        className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm text-gray-600 hover:bg-gray-100"
+        className="mt-1 flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm text-gray-600 hover:bg-gray-100"
       >
         <LogOut className="h-5 w-5" /> Çıkış Yap
       </button>
@@ -143,7 +155,7 @@ export function AppShell({
             </div>
             <div className="mt-2 flex flex-1 flex-col">
               <NavLinks items={items} pathname={pathname} onClick={() => setOpen(false)} />
-              <UserBox profile={profile} onLogout={logout} />
+              <UserBox profile={profile} onLogout={logout} onNavigate={() => setOpen(false)} />
             </div>
           </aside>
         </div>

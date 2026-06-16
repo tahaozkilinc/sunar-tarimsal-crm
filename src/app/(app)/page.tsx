@@ -2,7 +2,7 @@ import Link from "next/link";
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { Card } from "@/components/ui";
-import { ROLE_LABELS } from "@/lib/nav";
+import { baseRole, ROLE_LABELS } from "@/lib/nav";
 import { formatNumber } from "@/lib/format";
 import { Calculator, ShoppingCart, TrendingUp, Truck, Users, Wallet } from "lucide-react";
 
@@ -23,14 +23,16 @@ export default async function DashboardPage() {
   const role = profile.role;
   const supabase = await createClient();
 
-  // viewer (Görüntüleyici): her şeyi görür, hiçbir şeyi değiştiremez.
+  // viewer: her şeyi görür. *_view rolleri taban rolüyle aynı kartları görür.
+  // Hepsi salt-okunur; kartlar yalnızca özet/yönlendirme amaçlıdır.
   const v = role === "viewer";
-  const canB = v || ["admin", "purchasing"].includes(role);
-  const canS = v || ["admin", "sales"].includes(role);
-  const canO = v || ["admin", "operations"].includes(role);
-  const canF = v || ["admin", "finans"].includes(role);
-  const canM = v || ["admin", "maliyet"].includes(role);
-  const canCrm = v || ["admin", "purchasing", "sales"].includes(role);
+  const base = baseRole(role);
+  const canB = v || ["admin", "purchasing"].includes(base);
+  const canS = v || ["admin", "sales"].includes(base);
+  const canO = v || ["admin", "operations"].includes(base);
+  const canF = v || ["admin", "finans"].includes(base);
+  const canM = v || ["admin", "maliyet"].includes(base);
+  const canCrm = v || ["admin", "purchasing", "sales"].includes(base);
 
   const [c, s, inv, mv, crm] = await Promise.all([
     canB

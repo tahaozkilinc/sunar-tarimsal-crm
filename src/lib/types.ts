@@ -1,6 +1,17 @@
 // Uygulamadaki temel veri tipleri. Şema genişledikçe burayı da genişletin.
 
-export type Role = "admin" | "purchasing" | "operations" | "sales" | "finans" | "maliyet" | "viewer" | "pending";
+export type Role =
+  | "admin"
+  | "purchasing"
+  | "operations"
+  | "sales"
+  | "finans"
+  | "maliyet"
+  | "viewer"
+  | "purchasing_view"
+  | "operations_view"
+  | "sales_view"
+  | "pending";
 
 export interface Profile {
   id: string;
