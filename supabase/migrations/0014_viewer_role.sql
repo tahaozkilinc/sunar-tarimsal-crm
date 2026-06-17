@@ -58,7 +58,8 @@ create policy act_select on public.crm_activities for select to authenticated
   );
 
 -- payment_schedule görünümü (Finans) — viewer da görebilsin
-create or replace view public.payment_schedule
+drop view if exists public.payment_schedule cascade;
+create view public.payment_schedule
 with (security_invoker = off) as
   select id, contract_no, payment_due_date, eta, status
   from public.purchase_contracts

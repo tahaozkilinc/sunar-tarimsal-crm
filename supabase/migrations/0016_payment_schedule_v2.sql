@@ -11,7 +11,7 @@
 -- Bu yüzden önce DROP, sonra CREATE yapıyoruz.
 -- =============================================================================
 
-drop view if exists public.payment_schedule;
+drop view if exists public.payment_schedule cascade;
 
 create view public.payment_schedule
 with (security_invoker = off) as

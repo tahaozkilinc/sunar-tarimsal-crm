@@ -569,7 +569,8 @@ alter table public.purchase_contracts
 
 alter type public.user_role add value if not exists 'finans';
 
-create or replace view public.payment_schedule
+drop view if exists public.payment_schedule cascade;
+create view public.payment_schedule
 with (security_invoker = off) as
   select id, contract_no, payment_due_date, eta, status
   from public.purchase_contracts
@@ -901,7 +902,8 @@ create policy act_select on public.crm_activities for select to authenticated
     or (public.auth_role() = 'sales' and module = 'sales')
   );
 
-create or replace view public.payment_schedule
+drop view if exists public.payment_schedule cascade;
+create view public.payment_schedule
 with (security_invoker = off) as
   select id, contract_no, payment_due_date, eta, status
   from public.purchase_contracts
@@ -992,7 +994,7 @@ create policy act_select on public.crm_activities for select to authenticated
     or (public.auth_base_role() = 'sales' and module = 'sales')
   );
 
-drop view if exists public.payment_schedule;
+drop view if exists public.payment_schedule cascade;
 create view public.payment_schedule
 with (security_invoker = off) as
   select
