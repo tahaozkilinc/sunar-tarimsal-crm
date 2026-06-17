@@ -42,6 +42,9 @@ export function FinanceView() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  // Eski sürüm view tespiti: view tutar kolonlarını döndürmüyorsa (migration
+  // 0016 çalıştırılmadıysa) "price" anahtarı satır nesnesinde hiç bulunmaz.
+  const [needsMigration, setNeedsMigration] = useState(false);
   const [calMonth, setCalMonth] = useState(() => {
     const d = new Date();
     return new Date(d.getFullYear(), d.getMonth(), 1);
@@ -54,7 +57,9 @@ export function FinanceView() {
         .select("*")
         .order("payment_due_date", { ascending: true });
       if (error) setError(error.message);
-      setRows((data as Row[]) || []);
+      const list = (data as Row[]) || [];
+      setRows(list);
+      setNeedsMigration(list.length > 0 && !("price" in list[0]));
       setLoading(false);
     })();
   }, [supabase]);
@@ -129,6 +134,17 @@ export function FinanceView() {
           />
         </div>
       </div>
+
+      {needsMigration && (
+        <div className="rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800">
+          <div className="font-semibold">Ödeme tutarları için veritabanı güncellemesi gerekiyor.</div>
+          <div className="mt-1 text-red-700">
+            Supabase → SQL Editor&apos;de{" "}
+            <code className="rounded bg-red-100 px-1">supabase/migrations/0016_payment_schedule_v2.sql</code>{" "}
+            dosyasını çalıştırın. Bu güncelleme yapılmadan tutarlar görünmez (yalnızca tarihler).
+          </div>
+        </div>
+      )}
 
       {/* Özet kartlar */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">

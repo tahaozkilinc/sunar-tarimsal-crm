@@ -992,13 +992,19 @@ create policy act_select on public.crm_activities for select to authenticated
     or (public.auth_base_role() = 'sales' and module = 'sales')
   );
 
-create or replace view public.payment_schedule
+drop view if exists public.payment_schedule;
+create view public.payment_schedule
 with (security_invoker = off) as
-  select id, contract_no, payment_due_date, eta, status
-  from public.purchase_contracts
+  select
+    pc.id, pc.contract_no, pc.vessel, pc.payment_due_date, pc.eta, pc.status,
+    pc.quantity, pc.price, pc.currency, pc.usd_try, pc.eur_try,
+    co.name as supplier_name, pr.name as product_name
+  from public.purchase_contracts pc
+  left join public.companies co on co.id = pc.supplier_id
+  left join public.products  pr on pr.id = pc.product_id
   where public.auth_base_role() in ('admin', 'finans', 'viewer')
-    and payment_due_date is not null
-    and status <> 'cancelled';
+    and pc.payment_due_date is not null
+    and pc.status <> 'cancelled';
 grant select on public.payment_schedule to authenticated;
 
 create or replace view public.sellable_contracts

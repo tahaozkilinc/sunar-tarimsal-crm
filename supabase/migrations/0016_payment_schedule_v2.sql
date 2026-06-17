@@ -1,13 +1,19 @@
 -- =============================================================================
 -- Sunar Tarımsal CRM – Ödeme planı görünümü v2
--- Sıra: 16 – 0015'ten SONRA çalıştırın. (Idempotent – CREATE OR REPLACE)
+-- Sıra: 16 – 0015'ten SONRA çalıştırın. (Idempotent.)
 --
 -- Değişiklik: payment_schedule view'una tutar alanları (price, quantity,
--- currency, usd_try, eur_try) + tedarikçi ve ürün adı eklendi.
+-- currency, usd_try, eur_try) + gemi/tedarikçi/ürün adı eklendi.
 -- Böylece finans rolü ödenecek tutarı da görür.
+--
+-- ÖNEMLİ: Yeni kolonlar mevcut kolonların ARASINA eklendiği için
+-- "CREATE OR REPLACE VIEW" hata verir (Postgres kolon sırasını değiştiremez).
+-- Bu yüzden önce DROP, sonra CREATE yapıyoruz.
 -- =============================================================================
 
-create or replace view public.payment_schedule
+drop view if exists public.payment_schedule;
+
+create view public.payment_schedule
 with (security_invoker = off) as
   select
     pc.id,
