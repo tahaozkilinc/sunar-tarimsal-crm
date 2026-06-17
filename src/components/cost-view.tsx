@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { Card, EmptyState, Input, Spinner } from "./ui";
-import { formatNumber } from "@/lib/format";
+import { formatMoney, formatNumber } from "@/lib/format";
 import { formatUsd, toUsd } from "@/lib/fx";
 import { Download, FileText, Search } from "lucide-react";
 
@@ -51,8 +51,12 @@ type Row = {
   contractNo: string;
   product: string;
   alisTon: number;
+  alisPrice: number;
+  alisCur: string;
+  alisUsdPerTon: number | null; // purchase unit price converted to USD/ton
   alisUsd: number | null;
   satisTon: number;
+  satisAvgUsd: number | null;
   satisUsd: number | null;
   kalan: number;
   karUsd: number | null;
@@ -168,8 +172,12 @@ export function CostView({ hideTitle }: { hideTitle?: boolean } = {}) {
           contractNo: c.contract_no || "",
           product: (c.product_id && productMap[c.product_id]) || "Ürünsüz",
           alisTon,
+          alisPrice,
+          alisCur: c.currency || "USD",
+          alisUsdPerTon: alisUsd !== null && alisTon > 0 ? alisUsd / alisTon : null,
           alisUsd,
           satisTon,
+          satisAvgUsd: satisTon > 0 && satisUsd !== null ? satisUsd / satisTon : null,
           satisUsd,
           kalan: alisTon - satisTon,
           karUsd,
@@ -188,31 +196,43 @@ export function CostView({ hideTitle }: { hideTitle?: boolean } = {}) {
     );
   });
 
-  const totalAlisTon = filtered.reduce((a, r) => a + r.alisTon, 0);
-  const totalSatisTon = filtered.reduce((a, r) => a + r.satisTon, 0);
-  const totalAlisUsd = filtered.reduce((a, r) => a + (r.alisUsd ?? 0), 0);
+  const totalAlisUsd  = filtered.reduce((a, r) => a + (r.alisUsd ?? 0), 0);
   const totalSatisUsd = filtered.reduce((a, r) => a + (r.satisUsd ?? 0), 0);
-  const totalKarUsd = filtered.reduce((a, r) => a + (r.karUsd ?? 0), 0);
-  const anyFxMissing = filtered.some((r) => r.fxMissing);
+  const totalKarUsd   = filtered.reduce((a, r) => a + (r.karUsd ?? 0), 0);
+  const anyFxMissing  = filtered.some((r) => r.fxMissing);
+
+  // Per-product tonnage breakdown (replaces "Toplam Alış/Satış" single cards)
+  const productSummary = useMemo(() => {
+    const map = new Map<string, { alisTon: number; satisTon: number }>();
+    filtered.forEach((r) => {
+      const ex = map.get(r.product) || { alisTon: 0, satisTon: 0 };
+      map.set(r.product, { alisTon: ex.alisTon + r.alisTon, satisTon: ex.satisTon + r.satisTon });
+    });
+    return Array.from(map.entries())
+      .map(([name, d]) => ({ name, ...d }))
+      .sort((a, b) => b.alisTon - a.alisTon);
+  }, [filtered]);
 
   const downloadCsv = () => {
     const headers = [
       "Gemi", "Sözleşme No", "Ürün",
-      "Alış Ton", "Alış (USD)",
-      "Satış Ton", "Satış (USD)", "Kalan Ton", "Kâr (USD)",
+      "Alış Ton", "Alış Birim Fiyat", "Alış (USD)",
+      "Satış Ton", "Satış Birim (USD/ton)", "Satış (USD)", "Kalan Ton", "Kâr (USD)",
     ];
     const body: (string | number)[][] = [];
     filtered.forEach((r) => {
       body.push([
         r.vessel, r.contractNo, r.product,
-        r.alisTon, r.alisUsd ?? "",
-        r.satisTon, r.satisUsd ?? "", r.kalan, r.karUsd ?? "",
+        r.alisTon, r.alisPrice > 0 ? `${r.alisPrice} ${r.alisCur}` : "",
+        r.alisUsd ?? "",
+        r.satisTon, r.satisAvgUsd !== null ? r.satisAvgUsd.toFixed(2) : "",
+        r.satisUsd ?? "", r.kalan, r.karUsd ?? "",
       ]);
       r.customers.forEach((cu) => {
         body.push([
           `↳ ${cu.customerName}`, "", "",
-          "", "",
-          cu.ton, cu.satisUsd ?? "", "", cu.karUsd ?? "",
+          "", "", "",
+          cu.ton, "", cu.satisUsd ?? "", "", cu.karUsd ?? "",
         ]);
       });
     });
@@ -255,33 +275,34 @@ export function CostView({ hideTitle }: { hideTitle?: boolean } = {}) {
         </div>
       </div>
 
-      {/* Toplu özet (USD) */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+      {/* Ürün bazlı tonaj dağılımı */}
+      {productSummary.length > 0 && (
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+          {productSummary.map((ps) => (
+            <Card key={ps.name} className="p-3">
+              <div className="truncate text-[11px] text-gray-500">{ps.name}</div>
+              <div className="mt-0.5 font-bold">{formatNumber(ps.alisTon)} <span className="text-xs font-normal text-gray-400">t alış</span></div>
+              {ps.satisTon > 0 && (
+                <div className="text-xs text-gray-500">{formatNumber(ps.satisTon)} t satıldı</div>
+              )}
+            </Card>
+          ))}
+        </div>
+      )}
+
+      {/* Finansal özet (USD) */}
+      <div className="grid grid-cols-3 gap-3">
         <Card className="p-4">
-          <div className="text-xs text-gray-500">Toplam Alış</div>
-          <div className="mt-1 text-2xl font-bold">{formatNumber(totalAlisTon)}</div>
-          <div className="text-xs text-gray-400">ton</div>
+          <div className="text-xs text-gray-500">Toplam Alış Tutarı</div>
+          <div className="mt-1 font-semibold">{formatUsd(totalAlisUsd, 0)}</div>
         </Card>
         <Card className="p-4">
-          <div className="text-xs text-gray-500">Toplam Satış</div>
-          <div className="mt-1 text-2xl font-bold">{formatNumber(totalSatisTon)}</div>
-          <div className="text-xs text-gray-400">ton</div>
+          <div className="text-xs text-gray-500">Toplam Satış Tutarı</div>
+          <div className="mt-1 font-semibold">{formatUsd(totalSatisUsd, 0)}</div>
         </Card>
         <Card className="p-4">
-          <div className="text-xs text-gray-500">Alış Tutarı</div>
-          <div className="mt-1 text-sm font-semibold">{formatUsd(totalAlisUsd, 0)}</div>
-        </Card>
-        <Card className="p-4">
-          <div className="text-xs text-gray-500">Satış Tutarı</div>
-          <div className="mt-1 text-sm font-semibold">{formatUsd(totalSatisUsd, 0)}</div>
-        </Card>
-        <Card className="p-4">
-          <div className="text-xs text-gray-500">Toplam Kâr</div>
-          <div
-            className={`mt-1 text-sm font-semibold ${
-              totalKarUsd < 0 ? "text-red-600" : "text-emerald-700"
-            }`}
-          >
+          <div className="text-xs text-gray-500">Toplam Kâr (USD)</div>
+          <div className={`mt-1 font-semibold ${totalKarUsd < 0 ? "text-red-600" : "text-emerald-700"}`}>
             {formatUsd(totalKarUsd, 0)}
           </div>
         </Card>
@@ -307,9 +328,11 @@ export function CostView({ hideTitle }: { hideTitle?: boolean } = {}) {
                 <th className="px-3 py-3 font-medium">Gemi / Sözleşme</th>
                 <th className="px-3 py-3 font-medium">Ürün</th>
                 <th className="px-3 py-3 text-right font-medium">Alış Ton</th>
-                <th className="px-3 py-3 text-right font-medium">Alış (USD)</th>
+                <th className="px-3 py-3 text-right font-medium">Alış USD/ton</th>
+                <th className="px-3 py-3 text-right font-medium">Alış Toplam</th>
                 <th className="px-3 py-3 text-right font-medium">Satış Ton</th>
-                <th className="px-3 py-3 text-right font-medium">Satış (USD)</th>
+                <th className="px-3 py-3 text-right font-medium">Satış USD/ton</th>
+                <th className="px-3 py-3 text-right font-medium">Satış Toplam</th>
                 <th className="px-3 py-3 text-right font-medium">Kalan Ton</th>
                 <th className="px-3 py-3 text-right font-medium">Kâr (USD)</th>
               </tr>
@@ -331,8 +354,14 @@ export function CostView({ hideTitle }: { hideTitle?: boolean } = {}) {
                   </td>
                   <td className="px-3 py-3">{r.product}</td>
                   <td className="px-3 py-3 text-right">{formatNumber(r.alisTon)}</td>
+                  <td className="px-3 py-3 text-right text-gray-600">
+                    {r.alisUsdPerTon !== null ? `${formatUsd(r.alisUsdPerTon)}/t` : "—"}
+                  </td>
                   <td className="px-3 py-3 text-right">{formatUsd(r.alisUsd, 0)}</td>
                   <td className="px-3 py-3 text-right">{formatNumber(r.satisTon)}</td>
+                  <td className="px-3 py-3 text-right text-gray-600">
+                    {r.satisAvgUsd !== null ? `${formatUsd(r.satisAvgUsd)}/ton` : "—"}
+                  </td>
                   <td className="px-3 py-3 text-right">{formatUsd(r.satisUsd, 0)}</td>
                   <td
                     className={`px-3 py-3 text-right font-semibold ${
@@ -362,7 +391,9 @@ export function CostView({ hideTitle }: { hideTitle?: boolean } = {}) {
                     <td className="px-3 py-2 text-gray-400">—</td>
                     <td className="px-3 py-2 text-right text-gray-400">—</td>
                     <td className="px-3 py-2 text-right text-gray-400">—</td>
+                    <td className="px-3 py-2 text-right text-gray-400">—</td>
                     <td className="px-3 py-2 text-right text-gray-600">{formatNumber(cu.ton)}</td>
+                    <td className="px-3 py-2 text-right text-gray-400">—</td>
                     <td className="px-3 py-2 text-right text-gray-600">{formatUsd(cu.satisUsd, 0)}</td>
                     <td className="px-3 py-2 text-right text-gray-400">—</td>
                     <td
@@ -380,6 +411,27 @@ export function CostView({ hideTitle }: { hideTitle?: boolean } = {}) {
                 )),
               ])}
             </tbody>
+            <tfoot>
+              <tr className="border-t-2 border-border bg-gray-50 text-xs font-bold">
+                <td className="px-3 py-2.5" colSpan={2}>TOPLAM ({filtered.length} gemi)</td>
+                <td className="px-3 py-2.5 text-right">
+                  {formatNumber(filtered.reduce((a, r) => a + r.alisTon, 0))}
+                </td>
+                <td className="px-3 py-2.5 text-right text-gray-400">—</td>
+                <td className="px-3 py-2.5 text-right">{formatUsd(totalAlisUsd, 0)}</td>
+                <td className="px-3 py-2.5 text-right">
+                  {formatNumber(filtered.reduce((a, r) => a + r.satisTon, 0))}
+                </td>
+                <td className="px-3 py-2.5 text-right text-gray-400">—</td>
+                <td className="px-3 py-2.5 text-right">{formatUsd(totalSatisUsd, 0)}</td>
+                <td className="px-3 py-2.5 text-right">
+                  {formatNumber(filtered.reduce((a, r) => a + r.kalan, 0))}
+                </td>
+                <td className={`px-3 py-2.5 text-right ${totalKarUsd < 0 ? "text-red-600" : "text-emerald-700"}`}>
+                  {formatUsd(totalKarUsd, 0)}
+                </td>
+              </tr>
+            </tfoot>
           </table>
         </div>
       )}

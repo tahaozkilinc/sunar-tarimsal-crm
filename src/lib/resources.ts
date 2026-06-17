@@ -76,6 +76,8 @@ export interface ResourceConfig {
   quota?: QuotaRule;
   // Yeni kayıt açılırken o günün TCMB kurunu (usd_try/eur_try/fx_date) otomatik doldur.
   fxCapture?: boolean;
+  // Silme işlemini soft-delete'e çevirir (DELETE yerine column=false yapar).
+  softDelete?: { column: string };
 }
 
 // ---- Ortak seçenek listeleri ----
@@ -218,7 +220,7 @@ export const purchaseContractsResource: ResourceConfig = {
   fields: [
     { name: "contract_no", label: "Sözleşme No", type: "text", required: true, unique: true },
     { name: "supplier_id", label: "Tedarikçi", type: "reference", ref: { table: "companies", labelField: "name", filter: { type: ["supplier", "both"] } }, required: true },
-    { name: "product_id", label: "Ürün (Yağlı Tohum)", type: "reference", ref: { table: "products", labelField: "name" } },
+    { name: "product_id", label: "Ürün (Yağlı Tohum)", type: "reference", ref: { table: "products", labelField: "name", filter: { is_active: ["true"] } } },
     { name: "quantity", label: "Miktar (ton)", type: "number", required: true, positive: true },
     { name: "unit", label: "Birim", type: "text" },
     { name: "price", label: "Birim Fiyat", type: "money", required: true, positive: true },
@@ -256,7 +258,7 @@ export const stockMovementsResource: ResourceConfig = {
   fields: [
     { name: "movement_date", label: "Tarih", type: "date", required: true },
     { name: "contract_id", label: "Kaynak Sözleşme (Gemi)", type: "reference", ref: { table: "purchase_contracts", labelField: "vessel", labelFields: ["vessel", "contract_no"] }, autofill: { product_id: "product_id", unit: "unit" } },
-    { name: "product_id", label: "Ürün", type: "reference", ref: { table: "products", labelField: "name" } },
+    { name: "product_id", label: "Ürün", type: "reference", ref: { table: "products", labelField: "name", filter: { is_active: ["true"] } } },
     { name: "warehouse_id", label: "Depo / Fabrika", type: "reference", ref: { table: "warehouses", labelField: "name" }, required: true },
     { name: "movement_type", label: "Hareket Tipi", type: "select", options: MOVEMENT_TYPE_OPTIONS, required: true },
     { name: "quantity", label: "Miktar", type: "number", required: true, positive: true },
@@ -290,7 +292,7 @@ export const salesOrdersResource: ResourceConfig = {
     { name: "order_no", label: "Satış No", type: "text", unique: true },
     { name: "customer_id", label: "Müşteri", type: "reference", ref: { table: "companies", labelField: "name", filter: { type: ["customer", "both"] } } },
     { name: "contract_id", label: "Kaynak Bağlantı (Gemi)", type: "reference", ref: { table: "sellable_contracts", labelField: "vessel", labelFields: ["vessel", "contract_no"] }, autofill: { product_id: "product_id" }, required: true },
-    { name: "product_id", label: "Ürün", type: "reference", ref: { table: "products", labelField: "name" }, formHidden: true },
+    { name: "product_id", label: "Ürün", type: "reference", ref: { table: "products", labelField: "name", filter: { is_active: ["true"] } }, formHidden: true },
     { name: "warehouse_id", label: "Çıkış Deposu", type: "reference", ref: { table: "warehouses", labelField: "name" }, required: true },
     { name: "quantity", label: "Miktar", type: "number", required: true, positive: true },
     { name: "unit", label: "Birim", type: "text" },
@@ -319,7 +321,7 @@ export const sellableContractsResource: ResourceConfig = {
   fields: [
     { name: "contract_no", label: "Sözleşme No", type: "text" },
     { name: "vessel", label: "Gemi / Araç", type: "text" },
-    { name: "product_id", label: "Ürün", type: "reference", ref: { table: "products", labelField: "name" } },
+    { name: "product_id", label: "Ürün", type: "reference", ref: { table: "products", labelField: "name", filter: { is_active: ["true"] } } },
     { name: "quantity", label: "Miktar", type: "number" },
     { name: "unit", label: "Birim", type: "text" },
     { name: "origin_country", label: "Menşe Ülke", type: "text" },
@@ -334,9 +336,11 @@ export const productsResource: ResourceConfig = {
   title: "Ürünler",
   singular: "Ürün",
   writeRoles: ["admin", "purchasing", "operations"],
-  defaultValues: { unit: "ton" },
+  defaultValues: { unit: "ton", is_active: true },
   orderBy: { column: "name", ascending: true },
   searchFields: ["name", "code"],
+  filter: { is_active: true },
+  softDelete: { column: "is_active" },
   listFields: ["name", "code", "category", "unit", "is_active"],
   fields: [
     { name: "name", label: "Ürün Adı", type: "text", required: true, unique: true },

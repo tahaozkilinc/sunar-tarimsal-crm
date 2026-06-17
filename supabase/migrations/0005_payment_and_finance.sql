@@ -19,7 +19,8 @@ alter type public.user_role add value if not exists 'finans';
 -- 3) Finansın göreceği güvenli görünüm: SADECE ödeme tarihi bilgileri.
 --    Definer view + auth_role() kontrolü => finans/admin dışında satır dönmez;
 --    fiyat/tedarikçi/miktar gibi hassas alanlar bu görünümde HİÇ yer almaz.
-create or replace view public.payment_schedule
+drop view if exists public.payment_schedule cascade;
+create view public.payment_schedule
 with (security_invoker = off) as
   select id, contract_no, payment_due_date, eta, status
   from public.purchase_contracts
