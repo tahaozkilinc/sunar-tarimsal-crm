@@ -148,7 +148,7 @@ export function Field({
   required,
   children,
 }: {
-  label: string;
+  label: React.ReactNode;
   required?: boolean;
   children: React.ReactNode;
 }) {

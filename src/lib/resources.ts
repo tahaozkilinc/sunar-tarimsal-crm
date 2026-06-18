@@ -100,6 +100,9 @@ export const COMPANY_TYPE_OPTIONS: SelectOption[] = [
   { value: "supplier", label: "Tedarikçi", color: "blue" },
   { value: "customer", label: "Müşteri", color: "green" },
   { value: "both", label: "İkisi de", color: "purple" },
+  { value: "surveyor", label: "Gözetim Şirketi", color: "yellow" },
+  { value: "port", label: "Liman", color: "gray" },
+  { value: "carrier", label: "Nakliyeci", color: "red" },
 ];
 
 export const LOCATION_TYPE_OPTIONS: SelectOption[] = [
@@ -153,7 +156,7 @@ export const companiesResource: ResourceConfig = {
   table: "companies",
   title: "Firmalar",
   singular: "Firma",
-  writeRoles: ["admin", "purchasing", "sales"],
+  writeRoles: ["admin", "purchasing", "sales", "operations"],
   orderBy: { column: "name", ascending: true },
   searchFields: ["name", "city", "phone", "email"],
   filterFields: ["type"],
@@ -192,7 +195,7 @@ export const activitiesResource: ResourceConfig = {
   table: "crm_activities",
   title: "Aktiviteler",
   singular: "Aktivite",
-  writeRoles: ["admin", "purchasing", "sales"],
+  writeRoles: ["admin", "purchasing", "sales", "operations"],
   orderBy: { column: "created_at", ascending: false },
   searchFields: ["subject"],
   listFields: ["subject", "activity_type", "company_id", "due_date", "status"],

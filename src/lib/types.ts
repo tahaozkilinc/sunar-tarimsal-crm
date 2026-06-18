@@ -26,7 +26,7 @@ export interface Profile {
 export interface Company {
   id: string;
   name: string;
-  type: "supplier" | "customer" | "both";
+  type: "supplier" | "customer" | "both" | "surveyor" | "port" | "carrier";
   city: string | null;
   country: string | null;
   phone: string | null;
@@ -102,6 +102,7 @@ export interface StockMovement {
   vehicle_plate: string | null;
   driver_name: string | null;
   notes: string | null;
+  created_by: string | null;
 }
 
 export interface SalesOrder {
@@ -124,7 +125,7 @@ export interface CrmActivity {
   id: string;
   company_id: string | null;
   contact_id: string | null;
-  module: "purchasing" | "sales";
+  module: "purchasing" | "sales" | "operations";
   activity_type: string;
   subject: string;
   description: string | null;

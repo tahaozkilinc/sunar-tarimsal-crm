@@ -27,6 +27,7 @@ type Movement = {
   driver_name: string | null;
   movement_date: string | null;
   created_at: string;
+  created_by: string | null;
 };
 type Ref = { id: string; name: string };
 
@@ -61,6 +62,7 @@ export function ShipOpsPage({ contractId }: { contractId: string }) {
   const [warehouses, setWarehouses] = useState<Ref[]>([]);
   const [products, setProducts]   = useState<Ref[]>([]);
   const [companies, setCompanies] = useState<Ref[]>([]);
+  const [creatorNames, setCreatorNames] = useState<Record<string, string>>({});
   const [canWrite, setCanWrite]   = useState(false);
   const [loading, setLoading]     = useState(true);
   const [error, setError]         = useState<string | null>(null);
@@ -77,6 +79,7 @@ export function ShipOpsPage({ contractId }: { contractId: string }) {
   const [driver, setDriver] = useState("");
   const [wh,     setWh]     = useState("");
   const [qty,    setQty]    = useState("");
+  const [qtyUnit, setQtyUnit] = useState<"ton" | "kg">("ton");
   const [date,   setDate]   = useState(new Date().toISOString().slice(0, 10));
   const [saving, setSaving] = useState(false);
   const [formErr, setFormErr] = useState<string | null>(null);
@@ -85,7 +88,7 @@ export function ShipOpsPage({ contractId }: { contractId: string }) {
   const loadMovements = useCallback(async () => {
     const { data } = await supabase
       .from("stock_movements")
-      .select("id,warehouse_id,quantity,vehicle_plate,driver_name,movement_date,created_at")
+      .select("id,warehouse_id,quantity,vehicle_plate,driver_name,movement_date,created_at,created_by")
       .eq("contract_id", contractId)
       .eq("movement_type", "inbound")
       .order("created_at", { ascending: true });
@@ -94,7 +97,7 @@ export function ShipOpsPage({ contractId }: { contractId: string }) {
 
   useEffect(() => {
     (async () => {
-      const [c, w, p, co, { data: au }] = await Promise.all([
+      const [c, w, p, co, pn, { data: au }] = await Promise.all([
         supabase
           .from("purchase_contracts")
           .select("id,contract_no,vessel,product_id,supplier_id,quantity,unit,eta,status")
@@ -103,6 +106,7 @@ export function ShipOpsPage({ contractId }: { contractId: string }) {
         supabase.from("warehouses").select("id,name").eq("is_active", true).order("name"),
         supabase.from("products").select("id,name"),
         supabase.from("companies").select("id,name"),
+        supabase.from("profile_names").select("id,full_name"),
         supabase.auth.getUser(),
       ]);
       if (c.error) { setError(c.error.message); setLoading(false); return; }
@@ -110,6 +114,11 @@ export function ShipOpsPage({ contractId }: { contractId: string }) {
       setWarehouses((w.data as Ref[]) || []);
       setProducts((p.data as Ref[]) || []);
       setCompanies((co.data as Ref[]) || []);
+      const names: Record<string, string> = {};
+      ((pn.data as { id: string; full_name: string | null }[] | null) || []).forEach((x) => {
+        names[x.id] = x.full_name || "—";
+      });
+      setCreatorNames(names);
       if (au.user) {
         const { data: prof } = await supabase
           .from("profiles").select("role").eq("id", au.user.id).maybeSingle();
@@ -124,6 +133,7 @@ export function ShipOpsPage({ contractId }: { contractId: string }) {
   const pName = (id: string | null) => products.find(p => p.id === id)?.name || "—";
   const wName = (id: string | null) => warehouses.find(w => w.id === id)?.name || "—";
   const cName = (id: string | null) => companies.find(c => c.id === id)?.name || "—";
+  const creatorName = (id: string | null) => (id && creatorNames[id]) || "—";
 
   const totalDrawn = useMemo(
     () => movements.reduce((a, m) => a + (Number(m.quantity) || 0), 0),
@@ -162,8 +172,9 @@ export function ShipOpsPage({ contractId }: { contractId: string }) {
   const addVehicle = async () => {
     if (!contract) return;
     if (!wh)  { setFormErr("Hedef depo / fabrika seçin."); return; }
-    const q = parseFloat(qty.replace(",", "."));
-    if (!qty || isNaN(q) || q <= 0) { setFormErr("Geçerli bir miktar girin."); return; }
+    const raw = parseFloat(qty.replace(",", "."));
+    if (!qty || isNaN(raw) || raw <= 0) { setFormErr("Geçerli bir miktar girin."); return; }
+    const q = qtyUnit === "kg" ? raw / 1000 : raw;
     setSaving(true);
     setFormErr(null);
     const { error: err } = await supabase.from("stock_movements").insert({
@@ -384,6 +395,7 @@ export function ShipOpsPage({ contractId }: { contractId: string }) {
                     <th className="px-3 py-2.5 font-medium">Plaka</th>
                     <th className="px-3 py-2.5 font-medium">Şoför</th>
                     <th className="px-3 py-2.5 font-medium">Depo / Fabrika</th>
+                    <th className="px-3 py-2.5 font-medium">Giren</th>
                     <th className="px-3 py-2.5 text-right font-medium">Miktar</th>
                     {canWrite && <th className="px-2 py-2.5 print:hidden" />}
                   </tr>
@@ -401,6 +413,7 @@ export function ShipOpsPage({ contractId }: { contractId: string }) {
                       </td>
                       <td className="px-3 py-2">{m.driver_name || <span className="text-gray-400">—</span>}</td>
                       <td className="px-3 py-2 text-xs">{wName(m.warehouse_id)}</td>
+                      <td className="px-3 py-2 text-xs text-gray-500">{creatorName(m.created_by)}</td>
                       <td className="px-3 py-2 text-right font-semibold">
                         {formatNumber(m.quantity)} <span className="text-xs font-normal text-gray-400">{unit}</span>
                       </td>
@@ -419,7 +432,7 @@ export function ShipOpsPage({ contractId }: { contractId: string }) {
                 </tbody>
                 <tfoot>
                   <tr className="border-t-2 border-border">
-                    <td colSpan={canWrite ? 5 : 5} className="px-3 py-2 text-xs font-semibold text-gray-600">TOPLAM</td>
+                    <td colSpan={6} className="px-3 py-2 text-xs font-semibold text-gray-600">TOPLAM</td>
                     <td className="px-3 py-2 text-right font-bold">
                       {formatNumber(totalDrawn)} <span className="text-xs font-normal text-gray-400">{unit}</span>
                     </td>
@@ -468,7 +481,30 @@ export function ShipOpsPage({ contractId }: { contractId: string }) {
                         ))}
                       </Select>
                     </Field>
-                    <Field label="Miktar" required>
+                    <Field
+                      label={
+                        <span className="flex items-center justify-between">
+                          <span>Miktar</span>
+                          <span className="inline-flex overflow-hidden rounded-md border border-border text-xs">
+                            <button
+                              type="button"
+                              onClick={() => setQtyUnit("ton")}
+                              className={`px-2 py-0.5 font-medium ${qtyUnit === "ton" ? "bg-brand text-white" : "bg-white text-gray-500"}`}
+                            >
+                              Ton
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setQtyUnit("kg")}
+                              className={`px-2 py-0.5 font-medium ${qtyUnit === "kg" ? "bg-brand text-white" : "bg-white text-gray-500"}`}
+                            >
+                              KG
+                            </button>
+                          </span>
+                        </span>
+                      }
+                      required
+                    >
                       <Input
                         id="ship-ops-qty"
                         type="number"
@@ -476,9 +512,18 @@ export function ShipOpsPage({ contractId }: { contractId: string }) {
                         min={0}
                         value={qty}
                         onChange={e => setQty(e.target.value)}
-                        placeholder={remaining > 0 ? `Kalan: ${formatNumber(remaining)}` : "Miktar"}
+                        placeholder={
+                          remaining > 0
+                            ? `Kalan: ${formatNumber(qtyUnit === "kg" ? remaining * 1000 : remaining, qtyUnit === "kg" ? 0 : 2)} ${qtyUnit === "kg" ? "kg" : unit}`
+                            : "Miktar"
+                        }
                         onKeyDown={e => { if (e.key === "Enter") addVehicle(); }}
                       />
+                      {qtyUnit === "kg" && qty && !isNaN(parseFloat(qty.replace(",", "."))) && (
+                        <div className="mt-1 text-xs text-gray-500">
+                          ≈ {formatNumber(parseFloat(qty.replace(",", ".")) / 1000, 3)} {unit}
+                        </div>
+                      )}
                     </Field>
                     <Field label="Tarih">
                       <Input

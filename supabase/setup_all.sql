@@ -1122,6 +1122,73 @@ create policy contacts_write on public.contacts for all to authenticated
 
 
 -- ============================================================
+-- BÖLÜM 18/18 — Operasyon CRM'i (gözetim/liman/nakliyeci) + "kim girdi"
+-- company_type: surveyor/port/carrier, crm_module: operations eklenir.
+-- profile_names: stock_movements.created_by için dar kapsamlı ad dizini.
+-- ============================================================
+
+alter type public.company_type add value if not exists 'surveyor';
+alter type public.company_type add value if not exists 'port';
+alter type public.company_type add value if not exists 'carrier';
+alter type public.crm_module   add value if not exists 'operations';
+
+create or replace function public.can_see_company(cid uuid)
+returns boolean language sql stable security definer set search_path = public as $$
+  select case
+    when public.is_admin() then true
+    when cid is null then public.auth_base_role() in ('purchasing','operations','sales')
+    else exists (
+      select 1 from public.companies c
+      where c.id = cid and (
+        (public.auth_base_role() in ('purchasing','operations') and c.type in ('supplier','both')) or
+        (public.auth_base_role() = 'sales' and c.type in ('customer','both')) or
+        (public.auth_base_role() = 'operations' and c.type in ('surveyor','port','carrier'))
+      )
+    )
+  end;
+$$;
+
+drop policy if exists companies_insert on public.companies;
+create policy companies_insert on public.companies for insert to authenticated
+  with check (
+    public.is_admin()
+    or (public.auth_role() = 'purchasing' and type in ('supplier','both'))
+    or (public.auth_role() = 'sales' and type in ('customer','both'))
+    or (public.auth_role() = 'operations' and type in ('surveyor','port','carrier'))
+  );
+
+drop policy if exists act_select on public.crm_activities;
+create policy act_select on public.crm_activities for select to authenticated
+  using (
+    public.is_admin()
+    or public.auth_base_role() = 'viewer'
+    or (public.auth_base_role() = 'purchasing' and module = 'purchasing')
+    or (public.auth_base_role() = 'sales' and module = 'sales')
+    or (public.auth_base_role() = 'operations' and module = 'operations')
+  );
+
+drop policy if exists act_write on public.crm_activities;
+create policy act_write on public.crm_activities for all to authenticated
+  using (
+    public.is_admin()
+    or (public.auth_role() = 'purchasing' and module = 'purchasing')
+    or (public.auth_role() = 'sales' and module = 'sales')
+    or (public.auth_role() = 'operations' and module = 'operations')
+  )
+  with check (
+    public.is_admin()
+    or (public.auth_role() = 'purchasing' and module = 'purchasing')
+    or (public.auth_role() = 'sales' and module = 'sales')
+    or (public.auth_role() = 'operations' and module = 'operations')
+  );
+
+create or replace view public.profile_names
+with (security_invoker = off) as
+  select id, full_name from public.profiles;
+grant select on public.profile_names to authenticated;
+
+
+-- ============================================================
 -- KURULUM TAMAMLANDI
 -- Admin: taha.ozkilinc@sunaryatirim.com.tr / Sunar19*
 -- (Admin kullanıcısı oluşturulamazsa yukarıdaki NOTICE mesajını okuyun.)
