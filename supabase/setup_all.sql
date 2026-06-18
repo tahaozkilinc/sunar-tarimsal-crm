@@ -1089,6 +1089,39 @@ grant select on public.payment_schedule to authenticated;
 
 
 -- ============================================================
+-- BÖLÜM 17/17 — Güvenlik düzeltmesi: "_view" rolleri yazabiliyordu
+-- can_see_company() bu dosyada daha sonra (yukarıda) auth_base_role()
+-- kullanacak şekilde değiştirildi; companies_update/companies_delete/
+-- contacts_write politikaları (BÖLÜM 2/12) aynı fonksiyona dayandığından
+-- purchasing_view/operations_view/sales_view rolleri -- salt-okunur
+-- olmaları gerekirken -- yazabiliyordu. Bu bölüm o politikaları "_view"
+-- rolünü açıkça reddedecek şekilde düzeltir (okuma tarafı değişmez).
+-- ============================================================
+
+create or replace function public.is_view_role()
+returns boolean language sql stable security definer set search_path = public as $$
+  select coalesce(
+    (select right(role::text, 5) = '_view' from public.profiles where id = auth.uid()),
+    false
+  );
+$$;
+
+drop policy if exists companies_update on public.companies;
+create policy companies_update on public.companies for update to authenticated
+  using (public.can_see_company(id) and not public.is_view_role())
+  with check (public.can_see_company(id) and not public.is_view_role());
+
+drop policy if exists companies_delete on public.companies;
+create policy companies_delete on public.companies for delete to authenticated
+  using (public.is_admin() or (public.can_see_company(id) and not public.is_view_role()));
+
+drop policy if exists contacts_write on public.contacts;
+create policy contacts_write on public.contacts for all to authenticated
+  using (public.can_see_company(company_id) and not public.is_view_role())
+  with check (public.can_see_company(company_id) and not public.is_view_role());
+
+
+-- ============================================================
 -- KURULUM TAMAMLANDI
 -- Admin: taha.ozkilinc@sunaryatirim.com.tr / Sunar19*
 -- (Admin kullanıcısı oluşturulamazsa yukarıdaki NOTICE mesajını okuyun.)
