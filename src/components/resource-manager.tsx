@@ -193,6 +193,7 @@ export function ResourceManager({
   title,
   detailExtra,
   hideTitle,
+  hideFilters,
   rowHref,
 }: {
   config: ResourceConfig;
@@ -202,6 +203,7 @@ export function ResourceManager({
   title?: string;
   detailExtra?: (row: Row) => React.ReactNode;
   hideTitle?: boolean;
+  hideFilters?: boolean;
   rowHref?: (row: Row) => string;
 }) {
   const supabase = useMemo(() => createClient(), []);
@@ -699,7 +701,7 @@ export function ResourceManager({
         </div>
       </div>
 
-      {filterFieldDefs.length > 0 && (
+      {!hideFilters && filterFieldDefs.length > 0 && (
         <div className="flex flex-wrap items-center gap-2">
           {filterFieldDefs.map((f) => (
             <SearchableSelect
