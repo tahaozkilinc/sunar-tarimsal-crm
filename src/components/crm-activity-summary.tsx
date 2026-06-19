@@ -33,11 +33,20 @@ function Tile({
 }
 
 // CRM aktiviteleri için özet: açık / bugün / gecikmiş + dikkat gerektiren liste.
-export function CrmActivitySummary({ module }: { module: "purchasing" | "sales" | "operations" }) {
+// companyIds verilirse (ör. operasyonda gözetim/liman/nakliyeci ayrımı) sadece
+// o firmalara ait aktiviteler sayılır.
+export function CrmActivitySummary({
+  module,
+  companyIds,
+}: {
+  module: "purchasing" | "sales" | "operations";
+  companyIds?: string[];
+}) {
   const supabase = useMemo(() => createClient(), []);
   const [rows, setRows] = useState<Act[]>([]);
   const [companies, setCompanies] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
+  const idsKey = companyIds ? companyIds.join(",") : null;
 
   useEffect(() => {
     let on = true;
@@ -51,7 +60,12 @@ export function CrmActivitySummary({ module }: { module: "purchasing" | "sales" 
         supabase.from("companies").select("id,name"),
       ]);
       if (!on) return;
-      setRows((a.data as Act[] | null) || []);
+      let arows = (a.data as Act[] | null) || [];
+      if (idsKey !== null) {
+        const allow = new Set(idsKey ? idsKey.split(",") : []);
+        arows = arows.filter((r) => r.company_id && allow.has(r.company_id));
+      }
+      setRows(arows);
       const cm: Record<string, string> = {};
       ((c.data as { id: string; name: string }[] | null) || []).forEach((x) => (cm[x.id] = x.name));
       setCompanies(cm);
@@ -60,7 +74,7 @@ export function CrmActivitySummary({ module }: { module: "purchasing" | "sales" 
     return () => {
       on = false;
     };
-  }, [supabase, module]);
+  }, [supabase, module, idsKey]);
 
   if (loading)
     return (
