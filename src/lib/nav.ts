@@ -21,7 +21,7 @@ export const NAV_ITEMS: NavItem[] = [
     href: "/crm",
     label: "CRM",
     icon: "Users",
-    roles: ["admin", "purchasing", "sales", "viewer"],
+    roles: ["admin", "purchasing", "sales", "operations", "viewer"],
   },
   {
     href: "/purchasing",
