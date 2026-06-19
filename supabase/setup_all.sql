@@ -1194,6 +1194,50 @@ grant select on public.profile_names to authenticated;
 
 
 -- ============================================================
+-- BÖLÜM 20/20 — Gemiye gözetim/liman/nakliyeci atama
+-- purchase_contracts'a üç firma referansı + sadece bu kolonları güncelleyen
+-- SECURITY DEFINER fonksiyon (admin + erişimi olan operasyon).
+-- ============================================================
+
+alter table public.purchase_contracts
+  add column if not exists surveyor_id uuid references public.companies(id) on delete set null,
+  add column if not exists port_id     uuid references public.companies(id) on delete set null,
+  add column if not exists carrier_id  uuid references public.companies(id) on delete set null;
+
+create index if not exists idx_pc_surveyor on public.purchase_contracts(surveyor_id);
+create index if not exists idx_pc_port     on public.purchase_contracts(port_id);
+create index if not exists idx_pc_carrier  on public.purchase_contracts(carrier_id);
+
+create or replace function public.assign_ship_parties(
+  p_contract_id uuid,
+  p_surveyor_id uuid default null,
+  p_port_id     uuid default null,
+  p_carrier_id  uuid default null
+)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  if not (
+    public.is_admin()
+    or (public.auth_role() = 'operations' and public.can_access_ship(p_contract_id))
+  ) then
+    raise exception 'Bu işlem için yetkiniz yok';
+  end if;
+
+  update public.purchase_contracts
+  set surveyor_id = p_surveyor_id,
+      port_id     = p_port_id,
+      carrier_id  = p_carrier_id
+  where id = p_contract_id;
+
+  if not found then
+    raise exception 'Gemi bulunamadı';
+  end if;
+end $$;
+
+grant execute on function public.assign_ship_parties(uuid, uuid, uuid, uuid) to authenticated;
+
+
+-- ============================================================
 -- KURULUM TAMAMLANDI
 -- Admin: taha.ozkilinc@sunaryatirim.com.tr
 -- Şifre: BÖLÜM 3/12 çalışırken NOTICE çıktısında bir kez gösterilen geçici

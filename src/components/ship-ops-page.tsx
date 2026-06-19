@@ -18,6 +18,9 @@ type Contract = {
   unit: string | null;
   eta: string | null;
   status: string;
+  surveyor_id: string | null;
+  port_id: string | null;
+  carrier_id: string | null;
 };
 type Movement = {
   id: string;
@@ -30,6 +33,7 @@ type Movement = {
   created_by: string | null;
 };
 type Ref = { id: string; name: string };
+type CompanyRef = { id: string; name: string; type: string };
 
 function durFmt(ms: number, showSec = false): string {
   if (ms < 0) ms = 0;
@@ -54,14 +58,20 @@ function dtFmt(iso: string): string {
   });
 }
 
-export function ShipOpsPage({ contractId }: { contractId: string }) {
+export function ShipOpsPage({
+  contractId,
+  embedded = false,
+}: {
+  contractId: string;
+  embedded?: boolean;
+}) {
   const supabase = useMemo(() => createClient(), []);
 
   const [contract, setContract]   = useState<Contract | null>(null);
   const [movements, setMovements] = useState<Movement[]>([]);
   const [warehouses, setWarehouses] = useState<Ref[]>([]);
   const [products, setProducts]   = useState<Ref[]>([]);
-  const [companies, setCompanies] = useState<Ref[]>([]);
+  const [companies, setCompanies] = useState<CompanyRef[]>([]);
   const [creatorNames, setCreatorNames] = useState<Record<string, string>>({});
   const [canWrite, setCanWrite]   = useState(false);
   const [loading, setLoading]     = useState(true);
@@ -85,6 +95,14 @@ export function ShipOpsPage({ contractId }: { contractId: string }) {
   const [formErr, setFormErr] = useState<string | null>(null);
   const [flash, setFlash]   = useState<string | null>(null);
 
+  // Gemiye gözetim / liman / nakliyeci atama
+  const [surveyorId, setSurveyorId] = useState("");
+  const [portId,     setPortId]     = useState("");
+  const [carrierId,  setCarrierId]  = useState("");
+  const [assignSaving, setAssignSaving] = useState(false);
+  const [assignErr, setAssignErr] = useState<string | null>(null);
+  const [assignFlash, setAssignFlash] = useState<string | null>(null);
+
   const loadMovements = useCallback(async () => {
     const { data } = await supabase
       .from("stock_movements")
@@ -100,12 +118,12 @@ export function ShipOpsPage({ contractId }: { contractId: string }) {
       const [c, w, p, co, pn, { data: au }] = await Promise.all([
         supabase
           .from("purchase_contracts")
-          .select("id,contract_no,vessel,product_id,supplier_id,quantity,unit,eta,status")
+          .select("id,contract_no,vessel,product_id,supplier_id,quantity,unit,eta,status,surveyor_id,port_id,carrier_id")
           .eq("id", contractId)
           .maybeSingle(),
         supabase.from("warehouses").select("id,name").eq("is_active", true).order("name"),
         supabase.from("products").select("id,name"),
-        supabase.from("companies").select("id,name"),
+        supabase.from("companies").select("id,name,type").order("name"),
         supabase.from("profile_names").select("id,full_name"),
         supabase.auth.getUser(),
       ]);
@@ -113,7 +131,11 @@ export function ShipOpsPage({ contractId }: { contractId: string }) {
       setContract((c.data as Contract | null) ?? null);
       setWarehouses((w.data as Ref[]) || []);
       setProducts((p.data as Ref[]) || []);
-      setCompanies((co.data as Ref[]) || []);
+      setCompanies((co.data as CompanyRef[]) || []);
+      const cd = c.data as Contract | null;
+      setSurveyorId(cd?.surveyor_id ?? "");
+      setPortId(cd?.port_id ?? "");
+      setCarrierId(cd?.carrier_id ?? "");
       const names: Record<string, string> = {};
       ((pn.data as { id: string; full_name: string | null }[] | null) || []).forEach((x) => {
         names[x.id] = x.full_name || "—";
@@ -134,6 +156,14 @@ export function ShipOpsPage({ contractId }: { contractId: string }) {
   const wName = (id: string | null) => warehouses.find(w => w.id === id)?.name || "—";
   const cName = (id: string | null) => companies.find(c => c.id === id)?.name || "—";
   const creatorName = (id: string | null) => (id && creatorNames[id]) || "—";
+
+  const surveyors = useMemo(() => companies.filter(c => c.type === "surveyor"), [companies]);
+  const ports     = useMemo(() => companies.filter(c => c.type === "port"), [companies]);
+  const carriers  = useMemo(() => companies.filter(c => c.type === "carrier"), [companies]);
+  const partiesDirty =
+    surveyorId !== (contract?.surveyor_id ?? "") ||
+    portId     !== (contract?.port_id ?? "") ||
+    carrierId  !== (contract?.carrier_id ?? "");
 
   const totalDrawn = useMemo(
     () => movements.reduce((a, m) => a + (Number(m.quantity) || 0), 0),
@@ -219,6 +249,28 @@ export function ShipOpsPage({ contractId }: { contractId: string }) {
     setContract(prev => prev ? { ...prev, status: "completed" } : prev);
   };
 
+  const saveParties = async () => {
+    if (!contract) return;
+    setAssignSaving(true);
+    setAssignErr(null);
+    const { error: err } = await supabase.rpc("assign_ship_parties", {
+      p_contract_id: contract.id,
+      p_surveyor_id: surveyorId || null,
+      p_port_id:     portId || null,
+      p_carrier_id:  carrierId || null,
+    });
+    if (err) { setAssignSaving(false); setAssignErr(err.message); return; }
+    setContract(prev => prev ? {
+      ...prev,
+      surveyor_id: surveyorId || null,
+      port_id:     portId || null,
+      carrier_id:  carrierId || null,
+    } : prev);
+    setAssignSaving(false);
+    setAssignFlash("Atamalar kaydedildi");
+    setTimeout(() => setAssignFlash(null), 1800);
+  };
+
   const exportCsv = () => {
     if (!contract) return;
     const headers = ["Sıra", "Tarih", "Saat Girişi", "Plaka", "Şoför", "Depo / Fabrika", `Miktar (${unit})`];
@@ -258,13 +310,17 @@ export function ShipOpsPage({ contractId }: { contractId: string }) {
   const diffPct = contracted > 0 ? ((totalDrawn - contracted) / contracted) * 100 : 0;
 
   return (
-    <div className="mx-auto max-w-5xl space-y-4 print:max-w-none print:space-y-3">
+    <div className={embedded ? "space-y-4 print:space-y-3" : "mx-auto max-w-5xl space-y-4 print:max-w-none print:space-y-3"}>
 
       {/* ── Aksiyon çubuğu ── */}
       <div className="flex items-center justify-between gap-3 print:hidden">
-        <Link href="/operations" className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700">
-          <ArrowLeft className="h-4 w-4" /> Operasyon
-        </Link>
+        {embedded ? (
+          <span />
+        ) : (
+          <Link href="/operations" className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700">
+            <ArrowLeft className="h-4 w-4" /> Operasyon
+          </Link>
+        )}
         <div className="flex items-center gap-2">
           <button
             onClick={exportCsv}
@@ -310,6 +366,57 @@ export function ShipOpsPage({ contractId }: { contractId: string }) {
           {statusOpt && <Badge color={statusOpt.color}>{statusOpt.label}</Badge>}
         </div>
       </div>
+
+      {/* ── Gözetim / Liman / Nakliyeci ── */}
+      <Card className="p-4 print:hidden">
+        <div className="mb-3 text-sm font-semibold">Operasyon Tarafları</div>
+        <div className="grid gap-3 sm:grid-cols-3">
+          <Field label="Gözetim Şirketi">
+            {canWrite && contract.status !== "completed" ? (
+              <Select value={surveyorId} onChange={e => setSurveyorId(e.target.value)}>
+                <option value="">Seçiniz...</option>
+                {surveyors.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+              </Select>
+            ) : (
+              <div className="rounded-lg border border-border bg-gray-50 px-3 py-2 text-sm">{cName(contract.surveyor_id)}</div>
+            )}
+          </Field>
+          <Field label="Liman">
+            {canWrite && contract.status !== "completed" ? (
+              <Select value={portId} onChange={e => setPortId(e.target.value)}>
+                <option value="">Seçiniz...</option>
+                {ports.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </Select>
+            ) : (
+              <div className="rounded-lg border border-border bg-gray-50 px-3 py-2 text-sm">{cName(contract.port_id)}</div>
+            )}
+          </Field>
+          <Field label="Nakliyeci">
+            {canWrite && contract.status !== "completed" ? (
+              <Select value={carrierId} onChange={e => setCarrierId(e.target.value)}>
+                <option value="">Seçiniz...</option>
+                {carriers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </Select>
+            ) : (
+              <div className="rounded-lg border border-border bg-gray-50 px-3 py-2 text-sm">{cName(contract.carrier_id)}</div>
+            )}
+          </Field>
+        </div>
+        {canWrite && contract.status !== "completed" && (
+          <div className="mt-3 flex items-center gap-3">
+            <Button onClick={saveParties} disabled={assignSaving || !partiesDirty} size="sm">
+              {assignSaving ? "Kaydediliyor..." : "Atamaları Kaydet"}
+            </Button>
+            {assignErr && <span className="text-sm text-red-600">{assignErr}</span>}
+            {assignFlash && <span className="text-sm font-medium text-emerald-600">✓ {assignFlash}</span>}
+          </div>
+        )}
+        {(surveyors.length === 0 && ports.length === 0 && carriers.length === 0) && canWrite && (
+          <div className="mt-2 text-xs text-gray-500">
+            Henüz gözetim/liman/nakliyeci firması yok. Operasyon → İş Ortakları sekmesinden ekleyebilirsiniz.
+          </div>
+        )}
+      </Card>
 
       {/* ── Operasyon durumu banner ── */}
       {movements.length > 0 && contract.status !== "completed" && (

@@ -86,6 +86,9 @@ export interface PurchaseContract {
   principal_id: string | null;
   contract_file_url: string | null;
   assigned_to: string | null;
+  surveyor_id: string | null;
+  port_id: string | null;
+  carrier_id: string | null;
   created_at: string;
   notes: string | null;
 }
