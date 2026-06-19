@@ -5,7 +5,6 @@ import { Tabs } from "./ui";
 import { ResourceManager } from "./resource-manager";
 import { OperasyonSummary } from "./function-summary";
 import { PendingArrivals } from "./pending-arrivals";
-import { OperationsCrm } from "./operations-crm";
 import { stockMovementsResource } from "@/lib/resources";
 import type { Role } from "@/lib/types";
 
@@ -21,7 +20,6 @@ export function OperationsTabs({ role }: { role: Role }) {
           { key: "arrivals", label: "Bekleyen Gelişler" },
           { key: "ozet", label: "Özet" },
           { key: "movements", label: "Stok Hareketleri" },
-          { key: "crm", label: "İş Ortakları" },
         ]}
       />
       {tab === "arrivals" && <PendingArrivals role={role} />}
@@ -29,7 +27,6 @@ export function OperationsTabs({ role }: { role: Role }) {
       {tab === "movements" && (
         <ResourceManager config={stockMovementsResource} role={role} hideTitle />
       )}
-      {tab === "crm" && <OperationsCrm role={role} />}
     </div>
   );
 }
