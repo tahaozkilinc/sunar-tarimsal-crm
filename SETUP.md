@@ -13,10 +13,13 @@ Aşağıdaki 3 dosyanın içeriğini **sırayla** yapıştırıp her birini **Ru
 2. `supabase/migrations/0002_policies.sql` → güvenlik (RLS) politikaları
 3. `supabase/migrations/0003_seed.sql`     → örnek ürünler/depolar + **admin hesabı**
 
-> Not: 3. dosya admin kullanıcısını otomatik oluşturur. Eğer ortamında hata
+> Not: 3. dosya admin kullanıcısını otomatik oluşturur ve rastgele bir şifre
+> üretir; bu şifre SQL Editor'ün **NOTICE/Messages** çıktısında bir kez
+> gösterilir — kopyalayıp not edin (tekrar gösterilmez). Eğer ortamında hata
 > verirse, panelde **Authentication → Users → Add user** ile
-> `taha.ozkilinc@sunaryatirim.com.tr` / `Sunar19*` kullanıcısını ("Auto Confirm
-> User" işaretli) oluştur; sistem onu otomatik **admin** yapar.
+> `taha.ozkilinc@sunaryatirim.com.tr` kullanıcısını kendi belirleyeceğin bir
+> şifreyle ("Auto Confirm User" işaretli) oluştur; sistem onu otomatik
+> **admin** yapar.
 
 ---
 
@@ -53,7 +56,8 @@ reposunu **Import** et. Framework otomatik **Next.js** algılanır, ek ayar gere
 Yayınlanan adrese git → **Giriş Yap**:
 
 - **E-posta:** `taha.ozkilinc@sunaryatirim.com.tr`
-- **Şifre:** `Sunar19*`
+- **Şifre:** Adım 1'de SQL çalıştırırken NOTICE çıktısında gösterilen geçici
+  şifre (ya da panelden manuel oluşturduysanız kendi belirlediğiniz şifre).
 
 Admin olarak tüm modülleri görürsün. **Yönetim → Kullanıcılar**'dan ekibe
 kullanıcı ekleyip rol atayabilirsin.

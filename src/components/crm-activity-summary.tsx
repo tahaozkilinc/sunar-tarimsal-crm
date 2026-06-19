@@ -33,7 +33,7 @@ function Tile({
 }
 
 // CRM aktiviteleri için özet: açık / bugün / gecikmiş + dikkat gerektiren liste.
-export function CrmActivitySummary({ module }: { module: "purchasing" | "sales" }) {
+export function CrmActivitySummary({ module }: { module: "purchasing" | "sales" | "operations" }) {
   const supabase = useMemo(() => createClient(), []);
   const [rows, setRows] = useState<Act[]>([]);
   const [companies, setCompanies] = useState<Record<string, string>>({});

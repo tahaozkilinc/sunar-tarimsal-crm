@@ -488,16 +488,20 @@ from (values
 where not exists (select 1 from public.warehouses w where w.name = v.name);
 
 -- Admin kullanıcısı (başarısız olursa panelden oluşturun)
+-- Şifre repoya yazılmaz: rastgele üretilir ve sadece bu sorgunun NOTICE
+-- çıktısında bir kez gösterilir. Not edip ilk girişten sonra değiştirin.
 do $$
 declare
   v_uid uuid;
   v_email text := 'taha.ozkilinc@sunaryatirim.com.tr';
+  v_temp_password text;
 begin
   select id into v_uid from auth.users where email = v_email;
 
   if v_uid is null then
     begin
       v_uid := gen_random_uuid();
+      v_temp_password := encode(extensions.gen_random_bytes(12), 'hex');
       insert into auth.users (
         instance_id, id, aud, role, email, encrypted_password,
         email_confirmed_at, created_at, updated_at,
@@ -506,7 +510,7 @@ begin
       ) values (
         '00000000-0000-0000-0000-000000000000', v_uid, 'authenticated', 'authenticated',
         v_email,
-        extensions.crypt('Sunar19*', extensions.gen_salt('bf')),
+        extensions.crypt(v_temp_password, extensions.gen_salt('bf')),
         now(), now(), now(),
         '{"provider":"email","providers":["email"]}'::jsonb,
         jsonb_build_object('full_name', 'Taha Özkılınç', 'role', 'admin'),
@@ -519,8 +523,9 @@ begin
         jsonb_build_object('sub', v_uid::text, 'email', v_email, 'email_verified', true),
         'email', now(), now(), now()
       );
+      raise notice 'Admin oluşturuldu: % — geçici şifre: % (kopyalayın; tekrar gösterilmeyecek, ilk girişten sonra hemen değiştirin)', v_email, v_temp_password;
     exception when others then
-      raise notice 'Admin SQL ile oluşturulamadı (%): Supabase panelinden Authentication > Users > Add user (Auto Confirm) ile % / Sunar19* oluşturun.', sqlerrm, v_email;
+      raise notice 'Admin SQL ile oluşturulamadı (%): Supabase panelinden Authentication > Users > Add user (Auto Confirm) ile % için kendi belirleyeceğiniz bir şifreyle oluşturun.', sqlerrm, v_email;
       v_uid := null;
     end;
   end if;
@@ -1020,7 +1025,222 @@ grant select on public.sellable_contracts to authenticated;
 
 
 -- ============================================================
+-- BÖLÜM 16/16 — Finans: ödeme onayı (ödendi işareti + ödeme ID)
+-- finans rolüne SADECE ödeme alanlarını güncelleyen SECURITY DEFINER
+-- fonksiyon ile "ödendi" işaretleme + ödeme ID girme yetkisi verir.
+-- ============================================================
+
+alter table public.purchase_contracts
+  add column if not exists is_paid     boolean not null default false,
+  add column if not exists payment_ref text,
+  add column if not exists paid_at     timestamptz;
+
+create or replace function public.set_contract_paid(
+  p_contract_id  uuid,
+  p_paid         boolean,
+  p_payment_ref  text default null
+)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  if public.auth_base_role() not in ('admin', 'finans') then
+    raise exception 'Bu işlem için yetkiniz yok';
+  end if;
+
+  if p_paid and (p_payment_ref is null or length(btrim(p_payment_ref)) = 0) then
+    raise exception 'Ödeme ID girmeden ödendi işaretlenemez';
+  end if;
+
+  update public.purchase_contracts
+  set is_paid     = p_paid,
+      payment_ref = case when p_paid then btrim(p_payment_ref) else payment_ref end,
+      paid_at     = case when p_paid then now() else null end
+  where id = p_contract_id;
+
+  if not found then
+    raise exception 'Bağlantı bulunamadı';
+  end if;
+end $$;
+
+grant execute on function public.set_contract_paid(uuid, boolean, text) to authenticated;
+
+drop view if exists public.payment_schedule cascade;
+create view public.payment_schedule
+with (security_invoker = off) as
+  select
+    pc.id,
+    pc.contract_no,
+    pc.vessel,
+    pc.payment_due_date,
+    pc.eta,
+    pc.status,
+    pc.quantity,
+    pc.price,
+    pc.currency,
+    pc.usd_try,
+    pc.eur_try,
+    pc.is_paid,
+    pc.payment_ref,
+    pc.paid_at,
+    co.name  as supplier_name,
+    pr.name  as product_name
+  from public.purchase_contracts pc
+  left join public.companies co on co.id = pc.supplier_id
+  left join public.products  pr on pr.id = pc.product_id
+  where public.auth_base_role() in ('admin', 'finans', 'viewer')
+    and pc.payment_due_date is not null
+    and pc.status <> 'cancelled';
+
+grant select on public.payment_schedule to authenticated;
+
+
+-- ============================================================
+-- BÖLÜM 17/17 — Güvenlik düzeltmesi: "_view" rolleri yazabiliyordu
+-- can_see_company() bu dosyada daha sonra (yukarıda) auth_base_role()
+-- kullanacak şekilde değiştirildi; companies_update/companies_delete/
+-- contacts_write politikaları (BÖLÜM 2/12) aynı fonksiyona dayandığından
+-- purchasing_view/operations_view/sales_view rolleri -- salt-okunur
+-- olmaları gerekirken -- yazabiliyordu. Bu bölüm o politikaları "_view"
+-- rolünü açıkça reddedecek şekilde düzeltir (okuma tarafı değişmez).
+-- ============================================================
+
+create or replace function public.is_view_role()
+returns boolean language sql stable security definer set search_path = public as $$
+  select coalesce(
+    (select right(role::text, 5) = '_view' from public.profiles where id = auth.uid()),
+    false
+  );
+$$;
+
+drop policy if exists companies_update on public.companies;
+create policy companies_update on public.companies for update to authenticated
+  using (public.can_see_company(id) and not public.is_view_role())
+  with check (public.can_see_company(id) and not public.is_view_role());
+
+drop policy if exists companies_delete on public.companies;
+create policy companies_delete on public.companies for delete to authenticated
+  using (public.is_admin() or (public.can_see_company(id) and not public.is_view_role()));
+
+drop policy if exists contacts_write on public.contacts;
+create policy contacts_write on public.contacts for all to authenticated
+  using (public.can_see_company(company_id) and not public.is_view_role())
+  with check (public.can_see_company(company_id) and not public.is_view_role());
+
+
+-- ============================================================
+-- BÖLÜM 18/18 — Operasyon CRM'i (gözetim/liman/nakliyeci) + "kim girdi"
+-- company_type: surveyor/port/carrier, crm_module: operations eklenir.
+-- profile_names: stock_movements.created_by için dar kapsamlı ad dizini.
+-- ============================================================
+
+alter type public.company_type add value if not exists 'surveyor';
+alter type public.company_type add value if not exists 'port';
+alter type public.company_type add value if not exists 'carrier';
+alter type public.crm_module   add value if not exists 'operations';
+
+create or replace function public.can_see_company(cid uuid)
+returns boolean language sql stable security definer set search_path = public as $$
+  select case
+    when public.is_admin() then true
+    when cid is null then public.auth_base_role() in ('purchasing','operations','sales')
+    else exists (
+      select 1 from public.companies c
+      where c.id = cid and (
+        (public.auth_base_role() in ('purchasing','operations') and c.type in ('supplier','both')) or
+        (public.auth_base_role() = 'sales' and c.type in ('customer','both')) or
+        (public.auth_base_role() = 'operations' and c.type in ('surveyor','port','carrier'))
+      )
+    )
+  end;
+$$;
+
+drop policy if exists companies_insert on public.companies;
+create policy companies_insert on public.companies for insert to authenticated
+  with check (
+    public.is_admin()
+    or (public.auth_role() = 'purchasing' and type in ('supplier','both'))
+    or (public.auth_role() = 'sales' and type in ('customer','both'))
+    or (public.auth_role() = 'operations' and type in ('surveyor','port','carrier'))
+  );
+
+drop policy if exists act_select on public.crm_activities;
+create policy act_select on public.crm_activities for select to authenticated
+  using (
+    public.is_admin()
+    or public.auth_base_role() = 'viewer'
+    or (public.auth_base_role() = 'purchasing' and module = 'purchasing')
+    or (public.auth_base_role() = 'sales' and module = 'sales')
+    or (public.auth_base_role() = 'operations' and module = 'operations')
+  );
+
+drop policy if exists act_write on public.crm_activities;
+create policy act_write on public.crm_activities for all to authenticated
+  using (
+    public.is_admin()
+    or (public.auth_role() = 'purchasing' and module = 'purchasing')
+    or (public.auth_role() = 'sales' and module = 'sales')
+    or (public.auth_role() = 'operations' and module = 'operations')
+  )
+  with check (
+    public.is_admin()
+    or (public.auth_role() = 'purchasing' and module = 'purchasing')
+    or (public.auth_role() = 'sales' and module = 'sales')
+    or (public.auth_role() = 'operations' and module = 'operations')
+  );
+
+create or replace view public.profile_names
+with (security_invoker = off) as
+  select id, full_name from public.profiles;
+grant select on public.profile_names to authenticated;
+
+
+-- ============================================================
+-- BÖLÜM 20/20 — Gemiye gözetim/liman/nakliyeci atama
+-- purchase_contracts'a üç firma referansı + sadece bu kolonları güncelleyen
+-- SECURITY DEFINER fonksiyon (admin + erişimi olan operasyon).
+-- ============================================================
+
+alter table public.purchase_contracts
+  add column if not exists surveyor_id uuid references public.companies(id) on delete set null,
+  add column if not exists port_id     uuid references public.companies(id) on delete set null,
+  add column if not exists carrier_id  uuid references public.companies(id) on delete set null;
+
+create index if not exists idx_pc_surveyor on public.purchase_contracts(surveyor_id);
+create index if not exists idx_pc_port     on public.purchase_contracts(port_id);
+create index if not exists idx_pc_carrier  on public.purchase_contracts(carrier_id);
+
+create or replace function public.assign_ship_parties(
+  p_contract_id uuid,
+  p_surveyor_id uuid default null,
+  p_port_id     uuid default null,
+  p_carrier_id  uuid default null
+)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  if not (
+    public.is_admin()
+    or (public.auth_role() = 'operations' and public.can_access_ship(p_contract_id))
+  ) then
+    raise exception 'Bu işlem için yetkiniz yok';
+  end if;
+
+  update public.purchase_contracts
+  set surveyor_id = p_surveyor_id,
+      port_id     = p_port_id,
+      carrier_id  = p_carrier_id
+  where id = p_contract_id;
+
+  if not found then
+    raise exception 'Gemi bulunamadı';
+  end if;
+end $$;
+
+grant execute on function public.assign_ship_parties(uuid, uuid, uuid, uuid) to authenticated;
+
+
+-- ============================================================
 -- KURULUM TAMAMLANDI
--- Admin: taha.ozkilinc@sunaryatirim.com.tr / Sunar19*
--- (Admin kullanıcısı oluşturulamazsa yukarıdaki NOTICE mesajını okuyun.)
+-- Admin: taha.ozkilinc@sunaryatirim.com.tr
+-- Şifre: BÖLÜM 3/12 çalışırken NOTICE çıktısında bir kez gösterilen geçici
+-- şifre (kaçırdıysanız veya admin SQL ile oluşturulamadıysa yukarıdaki
+-- NOTICE mesajını okuyup panelden oluşturun). İlk girişten sonra değiştirin.
 -- ============================================================

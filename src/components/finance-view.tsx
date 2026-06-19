@@ -2,11 +2,12 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { Card, EmptyState, Input, Spinner } from "./ui";
+import { Badge, Button, Card, EmptyState, Field, Input, Modal, Spinner } from "./ui";
 import { formatDate, formatMoney, formatNumber } from "@/lib/format";
 import { formatUsd, toUsd } from "@/lib/fx";
 import { CONTRACT_STATUS_OPTIONS } from "@/lib/resources";
-import { Search } from "lucide-react";
+import type { Role } from "@/lib/types";
+import { CheckCircle2, Search } from "lucide-react";
 
 type Row = {
   id: string;
@@ -22,6 +23,9 @@ type Row = {
   eur_try: number | null;
   supplier_name: string | null;
   product_name: string | null;
+  is_paid: boolean | null;
+  payment_ref: string | null;
+  paid_at: string | null;
 };
 
 const MONTHS_TR_FULL = [
@@ -36,7 +40,7 @@ function paymentAmount(r: Row): { native: number; usd: number | null } {
   return { native, usd };
 }
 
-export function FinanceView() {
+export function FinanceView({ role }: { role: Role }) {
   const supabase = useMemo(() => createClient(), []);
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
@@ -45,10 +49,18 @@ export function FinanceView() {
   // Eski sürüm view tespiti: view tutar kolonlarını döndürmüyorsa (migration
   // 0016 çalıştırılmadıysa) "price" anahtarı satır nesnesinde hiç bulunmaz.
   const [needsMigration, setNeedsMigration] = useState(false);
+  // 0017 (ödeme onayı) çalıştırılmadıysa "is_paid" anahtarı hiç bulunmaz.
+  const [needsPaidMigration, setNeedsPaidMigration] = useState(false);
   const [calMonth, setCalMonth] = useState(() => {
     const d = new Date();
     return new Date(d.getFullYear(), d.getMonth(), 1);
   });
+
+  const canConfirm = role === "admin" || role === "finans";
+  const [payRow, setPayRow] = useState<Row | null>(null);
+  const [payRef, setPayRef] = useState("");
+  const [paySaving, setPaySaving] = useState(false);
+  const [payErr, setPayErr] = useState<string | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -60,9 +72,44 @@ export function FinanceView() {
       const list = (data as Row[]) || [];
       setRows(list);
       setNeedsMigration(list.length > 0 && !("price" in list[0]));
+      setNeedsPaidMigration(list.length > 0 && !("is_paid" in list[0]));
       setLoading(false);
     })();
   }, [supabase]);
+
+  const openPayModal = (row: Row) => {
+    setPayRow(row);
+    setPayRef(row.payment_ref || "");
+    setPayErr(null);
+  };
+
+  const confirmPaid = async () => {
+    if (!payRow) return;
+    if (!payRef.trim()) { setPayErr("Ödeme ID girin."); return; }
+    setPaySaving(true);
+    setPayErr(null);
+    const { error: err } = await supabase.rpc("set_contract_paid", {
+      p_contract_id: payRow.id,
+      p_paid: true,
+      p_payment_ref: payRef.trim(),
+    });
+    setPaySaving(false);
+    if (err) { setPayErr(err.message); return; }
+    setRows(prev => prev.map(r => r.id === payRow.id
+      ? { ...r, is_paid: true, payment_ref: payRef.trim(), paid_at: new Date().toISOString() }
+      : r));
+    setPayRow(null);
+  };
+
+  const unmarkPaid = async (row: Row) => {
+    if (!window.confirm("Bu bağlantı ödenmedi olarak işaretlensin mi?")) return;
+    const { error: err } = await supabase.rpc("set_contract_paid", {
+      p_contract_id: row.id,
+      p_paid: false,
+    });
+    if (err) { setError(err.message); return; }
+    setRows(prev => prev.map(r => r.id === row.id ? { ...r, is_paid: false, paid_at: null } : r));
+  };
 
   const calItems = useMemo(() => {
     const map = new Map<string, Row[]>();
@@ -142,6 +189,17 @@ export function FinanceView() {
             Supabase → SQL Editor&apos;de{" "}
             <code className="rounded bg-red-100 px-1">supabase/migrations/0016_payment_schedule_v2.sql</code>{" "}
             dosyasını çalıştırın. Bu güncelleme yapılmadan tutarlar görünmez (yalnızca tarihler).
+          </div>
+        </div>
+      )}
+
+      {needsPaidMigration && (
+        <div className="rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800">
+          <div className="font-semibold">Ödeme onayı için veritabanı güncellemesi gerekiyor.</div>
+          <div className="mt-1 text-red-700">
+            Supabase → SQL Editor&apos;de{" "}
+            <code className="rounded bg-red-100 px-1">supabase/migrations/0017_payment_confirmation.sql</code>{" "}
+            dosyasını çalıştırın. Bu güncelleme yapılmadan &quot;ödendi&quot; işaretlenemez.
           </div>
         </div>
       )}
@@ -293,6 +351,7 @@ export function FinanceView() {
                 <th className="px-4 py-3 font-medium">Ödeme Tarihi</th>
                 <th className="px-4 py-3 font-medium">ETA</th>
                 <th className="px-4 py-3 font-medium">Durum</th>
+                <th className="px-4 py-3 font-medium">Ödeme</th>
               </tr>
             </thead>
             <tbody>
@@ -328,6 +387,32 @@ export function FinanceView() {
                     </td>
                     <td className="px-4 py-3 text-gray-600">{formatDate(r.eta)}</td>
                     <td className="px-4 py-3">{statusLabel(r.status)}</td>
+                    <td className="px-4 py-3">
+                      {needsPaidMigration ? (
+                        <Badge color="gray">—</Badge>
+                      ) : r.is_paid ? (
+                        <div>
+                          <Badge color="green">✓ Ödendi</Badge>
+                          {r.payment_ref && (
+                            <div className="mt-1 text-xs text-gray-500">ID: {r.payment_ref}</div>
+                          )}
+                          {canConfirm && (
+                            <button
+                              onClick={() => unmarkPaid(r)}
+                              className="mt-1 block text-xs text-gray-400 hover:text-red-500 hover:underline"
+                            >
+                              Geri al
+                            </button>
+                          )}
+                        </div>
+                      ) : canConfirm ? (
+                        <Button size="sm" variant="secondary" onClick={() => openPayModal(r)}>
+                          <CheckCircle2 className="h-3.5 w-3.5" /> Ödendi İşaretle
+                        </Button>
+                      ) : (
+                        <Badge color="yellow">Bekliyor</Badge>
+                      )}
+                    </td>
                   </tr>
                 );
               })}
@@ -344,12 +429,40 @@ export function FinanceView() {
                     return u !== null ? a + u : a;
                   }, 0), 0)}
                 </td>
-                <td colSpan={3} />
+                <td colSpan={4} />
               </tr>
             </tfoot>
           </table>
         </div>
       )}
+
+      <Modal open={!!payRow} onClose={() => setPayRow(null)} title="Ödendi İşaretle">
+        {payRow && (
+          <div className="space-y-3">
+            <div className="text-sm text-gray-600">
+              <span className="font-medium">{payRow.vessel || payRow.contract_no || "—"}</span>
+              {" "}için ödeme onayı. Ödemeye ait ID/referansı girin.
+            </div>
+            <Field label="Ödeme ID" required>
+              <Input
+                autoFocus
+                value={payRef}
+                onChange={(e) => setPayRef(e.target.value)}
+                placeholder="Banka referans no, dekont no..."
+                onKeyDown={(e) => { if (e.key === "Enter") confirmPaid(); }}
+              />
+            </Field>
+            {payErr && (
+              <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                {payErr}
+              </div>
+            )}
+            <Button onClick={confirmPaid} disabled={paySaving} className="w-full">
+              {paySaving ? "Kaydediliyor..." : "Ödendi Olarak Kaydet"}
+            </Button>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }

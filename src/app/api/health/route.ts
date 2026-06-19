@@ -54,9 +54,9 @@ export async function GET() {
     auth: { autoRefreshToken: false, persistSession: false },
   });
 
-  const { error, count } = await db
+  const { error } = await db
     .from("profiles")
-    .select("id", { count: "exact", head: true });
+    .select("id", { head: true });
 
   if (error) {
     const tableMissing =
@@ -87,7 +87,6 @@ export async function GET() {
       .from("profiles")
       .select("id", { count: "exact", head: true })
       .eq("role", "admin");
-    database.profileCount = count ?? 0;
     database.adminExists = (adminCount ?? 0) > 0;
     if (!adminCount) {
       result.status = "error";

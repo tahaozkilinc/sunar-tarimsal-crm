@@ -2,7 +2,8 @@
 -- Sunar Tarımsal CRM - Başlangıç Verisi + Admin Hesabı
 -- Sıra: 3/3 -> 0002_policies.sql'den SONRA çalıştırın.
 --
--- Admin: taha.ozkilinc@sunaryatirim.com.tr / Sunar19*
+-- Admin: taha.ozkilinc@sunaryatirim.com.tr (şifre rastgele üretilir, aşağıdaki
+-- bloğun NOTICE çıktısında bir kez gösterilir; repoya yazılmaz)
 -- (Bu blok idempotent'tir; tekrar çalıştırmak güvenlidir.)
 -- =============================================================================
 
@@ -37,6 +38,7 @@ do $$
 declare
   v_uid uuid;
   v_email text := 'taha.ozkilinc@sunaryatirim.com.tr';
+  v_temp_password text;
 begin
   select id into v_uid from auth.users where email = v_email;
 
@@ -45,6 +47,7 @@ begin
     -- script'in geri kalanını bozmadan atla (panelden manuel oluşturulabilir).
     begin
       v_uid := gen_random_uuid();
+      v_temp_password := encode(extensions.gen_random_bytes(12), 'hex');
 
       insert into auth.users (
         instance_id, id, aud, role, email, encrypted_password,
@@ -54,7 +57,7 @@ begin
       ) values (
         '00000000-0000-0000-0000-000000000000', v_uid, 'authenticated', 'authenticated',
         v_email,
-        extensions.crypt('Sunar19*', extensions.gen_salt('bf')),
+        extensions.crypt(v_temp_password, extensions.gen_salt('bf')),
         now(), now(), now(),
         '{"provider":"email","providers":["email"]}'::jsonb,
         jsonb_build_object('full_name', 'Taha Özkılınç', 'role', 'admin'),
@@ -68,8 +71,10 @@ begin
         jsonb_build_object('sub', v_uid::text, 'email', v_email, 'email_verified', true),
         'email', now(), now(), now()
       );
+
+      raise notice 'Admin oluşturuldu: % — geçici şifre: % (kopyalayın; tekrar gösterilmeyecek, ilk girişten sonra hemen değiştirin)', v_email, v_temp_password;
     exception when others then
-      raise notice 'Admin kullanıcısı SQL ile oluşturulamadı (%). Lütfen Supabase panelinden Authentication > Users > Add user ile % / Sunar19* oluşturun; sistem otomatik admin yapacaktır.', sqlerrm, v_email;
+      raise notice 'Admin kullanıcısı SQL ile oluşturulamadı (%). Lütfen Supabase panelinden Authentication > Users > Add user ile % için kendi belirleyeceğiniz bir şifreyle oluşturun; sistem otomatik admin yapacaktır.', sqlerrm, v_email;
       v_uid := null;
     end;
   end if;
