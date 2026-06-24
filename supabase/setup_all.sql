@@ -1238,6 +1238,73 @@ grant execute on function public.assign_ship_parties(uuid, uuid, uuid, uuid) to 
 
 
 -- ============================================================
+-- BÖLÜM 21 — Araç (stok hareketi) bazlı fotoğraflar (irsaliye/numune)
+-- Her araç girişine private "movement-photos" kovasına yüklenen, tarayıcıda
+-- sıkıştırılmış fotoğraflar. Erişim stock_movements ile aynı kurala uyar.
+-- ============================================================
+
+insert into storage.buckets (id, name, public)
+values ('movement-photos', 'movement-photos', false)
+on conflict (id) do nothing;
+
+create table if not exists public.movement_photos (
+  id           uuid primary key default gen_random_uuid(),
+  movement_id  uuid not null references public.stock_movements(id) on delete cascade,
+  path         text not null,
+  label        text,
+  created_by   uuid default auth.uid() references public.profiles(id) on delete set null,
+  created_at   timestamptz not null default now()
+);
+create index if not exists idx_mp_movement on public.movement_photos(movement_id);
+
+alter table public.movement_photos enable row level security;
+
+create or replace function public.can_access_movement(p_movement_id uuid)
+returns boolean language sql stable security invoker set search_path = public as $$
+  select exists (select 1 from public.stock_movements m where m.id = p_movement_id);
+$$;
+
+create or replace function public.can_write_movement(p_movement_id uuid)
+returns boolean language sql stable security definer set search_path = public as $$
+  select exists (
+    select 1 from public.stock_movements m
+    where m.id = p_movement_id
+      and (
+        public.is_admin()
+        or (public.auth_role() = 'operations' and public.can_access_ship(m.contract_id))
+      )
+  );
+$$;
+
+grant execute on function public.can_access_movement(uuid) to authenticated;
+grant execute on function public.can_write_movement(uuid) to authenticated;
+
+drop policy if exists mp_select on public.movement_photos;
+create policy mp_select on public.movement_photos for select to authenticated
+  using (public.can_access_movement(movement_id));
+
+drop policy if exists mp_insert on public.movement_photos;
+create policy mp_insert on public.movement_photos for insert to authenticated
+  with check (public.can_write_movement(movement_id));
+
+drop policy if exists mp_delete on public.movement_photos;
+create policy mp_delete on public.movement_photos for delete to authenticated
+  using (public.can_write_movement(movement_id));
+
+drop policy if exists movement_photos_read on storage.objects;
+create policy movement_photos_read on storage.objects for select to authenticated
+  using (bucket_id = 'movement-photos');
+
+drop policy if exists movement_photos_insert on storage.objects;
+create policy movement_photos_insert on storage.objects for insert to authenticated
+  with check (bucket_id = 'movement-photos' and public.auth_role() in ('admin','operations'));
+
+drop policy if exists movement_photos_delete on storage.objects;
+create policy movement_photos_delete on storage.objects for delete to authenticated
+  using (bucket_id = 'movement-photos' and public.auth_role() in ('admin','operations'));
+
+
+-- ============================================================
 -- KURULUM TAMAMLANDI
 -- Admin: taha.ozkilinc@sunaryatirim.com.tr
 -- Şifre: BÖLÜM 3/12 çalışırken NOTICE çıktısında bir kez gösterilen geçici

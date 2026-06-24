@@ -1,12 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { Badge, Button, Card, EmptyState, Field, Input, Select, Spinner } from "./ui";
+import { MovementPhotos, type MovementPhoto } from "./movement-photos";
 import { formatDate, formatNumber } from "@/lib/format";
 import { CONTRACT_STATUS_OPTIONS } from "@/lib/resources";
-import { ArrowLeft, CheckCircle, Download, Leaf, Printer, Trash2 } from "lucide-react";
+import { ArrowLeft, Camera, CheckCircle, Download, Leaf, Printer, Trash2 } from "lucide-react";
 
 type Contract = {
   id: string;
@@ -69,6 +70,8 @@ export function ShipOpsPage({
 
   const [contract, setContract]   = useState<Contract | null>(null);
   const [movements, setMovements] = useState<Movement[]>([]);
+  const [photosByMovement, setPhotosByMovement] = useState<Record<string, MovementPhoto[]>>({});
+  const [openPhotos, setOpenPhotos] = useState<Set<string>>(new Set());
   const [warehouses, setWarehouses] = useState<Ref[]>([]);
   const [products, setProducts]   = useState<Ref[]>([]);
   const [companies, setCompanies] = useState<CompanyRef[]>([]);
@@ -103,6 +106,26 @@ export function ShipOpsPage({
   const [assignErr, setAssignErr] = useState<string | null>(null);
   const [assignFlash, setAssignFlash] = useState<string | null>(null);
 
+  const loadPhotos = useCallback(
+    async (ids: string[]) => {
+      if (ids.length === 0) {
+        setPhotosByMovement({});
+        return;
+      }
+      const { data } = await supabase
+        .from("movement_photos")
+        .select("id,movement_id,path,label,created_at")
+        .in("movement_id", ids)
+        .order("created_at", { ascending: true });
+      const map: Record<string, MovementPhoto[]> = {};
+      ((data as MovementPhoto[] | null) || []).forEach((p) => {
+        (map[p.movement_id] ||= []).push(p);
+      });
+      setPhotosByMovement(map);
+    },
+    [supabase],
+  );
+
   const loadMovements = useCallback(async () => {
     const { data } = await supabase
       .from("stock_movements")
@@ -110,8 +133,10 @@ export function ShipOpsPage({
       .eq("contract_id", contractId)
       .eq("movement_type", "inbound")
       .order("created_at", { ascending: true });
-    setMovements((data as Movement[]) || []);
-  }, [supabase, contractId]);
+    const rows = (data as Movement[]) || [];
+    setMovements(rows);
+    await loadPhotos(rows.map((r) => r.id));
+  }, [supabase, contractId, loadPhotos]);
 
   useEffect(() => {
     (async () => {
@@ -236,8 +261,20 @@ export function ShipOpsPage({
 
   const deleteMov = async (id: string) => {
     if (!window.confirm("Bu çekim kaydı silinsin mi?")) return;
+    // Araca bağlı fotoğrafları depolamadan temizle (DB satırları cascade ile gider).
+    const paths = (photosByMovement[id] || []).map((p) => p.path);
+    if (paths.length) await supabase.storage.from("movement-photos").remove(paths);
     await supabase.from("stock_movements").delete().eq("id", id);
     await loadMovements();
+  };
+
+  const togglePhotos = (id: string) => {
+    setOpenPhotos((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   };
 
   const finishShip = async () => {
@@ -504,38 +541,69 @@ export function ShipOpsPage({
                     <th className="px-3 py-2.5 font-medium">Depo / Fabrika</th>
                     <th className="px-3 py-2.5 font-medium">Giren</th>
                     <th className="px-3 py-2.5 text-right font-medium">Miktar</th>
-                    {canWrite && <th className="px-2 py-2.5 print:hidden" />}
+                    <th className="px-2 py-2.5 print:hidden" />
                   </tr>
                 </thead>
                 <tbody>
-                  {movements.map((m, i) => (
-                    <tr key={m.id} className="border-b border-border last:border-0 hover:bg-gray-50">
-                      <td className="px-3 py-2 text-gray-400">{i + 1}</td>
-                      <td className="px-3 py-2 text-xs">
-                        <div>{formatDate(m.movement_date)}</div>
-                        <div className="text-gray-400">{timeFmt(m.created_at)}</div>
-                      </td>
-                      <td className="px-3 py-2 font-medium tracking-wider">
-                        {m.vehicle_plate || <span className="text-gray-400">—</span>}
-                      </td>
-                      <td className="px-3 py-2">{m.driver_name || <span className="text-gray-400">—</span>}</td>
-                      <td className="px-3 py-2 text-xs">{wName(m.warehouse_id)}</td>
-                      <td className="px-3 py-2 text-xs text-gray-500">{creatorName(m.created_by)}</td>
-                      <td className="px-3 py-2 text-right font-semibold">
-                        {formatNumber(m.quantity)} <span className="text-xs font-normal text-gray-400">{unit}</span>
-                      </td>
-                      {canWrite && (
-                        <td className="px-2 py-2 print:hidden">
-                          <button
-                            onClick={() => deleteMov(m.id)}
-                            className="rounded p-1 text-gray-400 hover:bg-red-50 hover:text-red-500"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
-                        </td>
-                      )}
-                    </tr>
-                  ))}
+                  {movements.map((m, i) => {
+                    const count = photosByMovement[m.id]?.length || 0;
+                    const open = openPhotos.has(m.id);
+                    return (
+                      <Fragment key={m.id}>
+                        <tr className="border-b border-border last:border-0 hover:bg-gray-50">
+                          <td className="px-3 py-2 text-gray-400">{i + 1}</td>
+                          <td className="px-3 py-2 text-xs">
+                            <div>{formatDate(m.movement_date)}</div>
+                            <div className="text-gray-400">{timeFmt(m.created_at)}</div>
+                          </td>
+                          <td className="px-3 py-2 font-medium tracking-wider">
+                            {m.vehicle_plate || <span className="text-gray-400">—</span>}
+                          </td>
+                          <td className="px-3 py-2">{m.driver_name || <span className="text-gray-400">—</span>}</td>
+                          <td className="px-3 py-2 text-xs">{wName(m.warehouse_id)}</td>
+                          <td className="px-3 py-2 text-xs text-gray-500">{creatorName(m.created_by)}</td>
+                          <td className="px-3 py-2 text-right font-semibold">
+                            {formatNumber(m.quantity)} <span className="text-xs font-normal text-gray-400">{unit}</span>
+                          </td>
+                          <td className="px-2 py-2 print:hidden">
+                            <div className="flex items-center gap-0.5">
+                              <button
+                                onClick={() => togglePhotos(m.id)}
+                                className={`inline-flex items-center gap-1 rounded p-1 hover:bg-brand/10 hover:text-brand ${
+                                  count > 0 || open ? "text-brand" : "text-gray-400"
+                                }`}
+                                title="Fotoğraflar (irsaliye / numune)"
+                              >
+                                <Camera className="h-3.5 w-3.5" />
+                                {count > 0 && <span className="text-xs font-medium">{count}</span>}
+                              </button>
+                              {canWrite && (
+                                <button
+                                  onClick={() => deleteMov(m.id)}
+                                  className="rounded p-1 text-gray-400 hover:bg-red-50 hover:text-red-500"
+                                  title="Aracı sil"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                        {open && (
+                          <tr className="border-b border-border bg-gray-50/60 print:hidden">
+                            <td colSpan={8} className="px-3 py-3">
+                              <MovementPhotos
+                                movementId={m.id}
+                                photos={photosByMovement[m.id]}
+                                canWrite={canWrite}
+                                onChanged={() => loadPhotos(movements.map((mm) => mm.id))}
+                              />
+                            </td>
+                          </tr>
+                        )}
+                      </Fragment>
+                    );
+                  })}
                 </tbody>
                 <tfoot>
                   <tr className="border-t-2 border-border">
@@ -543,7 +611,7 @@ export function ShipOpsPage({
                     <td className="px-3 py-2 text-right font-bold">
                       {formatNumber(totalDrawn)} <span className="text-xs font-normal text-gray-400">{unit}</span>
                     </td>
-                    {canWrite && <td className="print:hidden" />}
+                    <td className="print:hidden" />
                   </tr>
                 </tfoot>
               </table>
