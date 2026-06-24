@@ -5,6 +5,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { Badge, Button, Card, EmptyState, Field, Input, Select, Spinner } from "./ui";
 import { MovementPhotos, type MovementPhoto } from "./movement-photos";
+import { PhotoGallery } from "./photo-gallery";
 import { formatDate, formatNumber } from "@/lib/format";
 import { CONTRACT_STATUS_OPTIONS } from "@/lib/resources";
 import { ArrowLeft, Camera, CheckCircle, Download, Leaf, Printer, Trash2 } from "lucide-react";
@@ -453,6 +454,20 @@ export function ShipOpsPage({
             Henüz gözetim/liman/nakliyeci firması yok. Operasyon → İş Ortakları sekmesinden ekleyebilirsiniz.
           </div>
         )}
+      </Card>
+
+      {/* ── Numune Fotoğrafları (gemi bazlı) ── */}
+      <Card className="p-4 print:hidden">
+        <div className="mb-3 text-sm font-semibold">Numune Fotoğrafları</div>
+        <PhotoGallery
+          bucket="contract-photos"
+          table="contract_photos"
+          fkColumn="contract_id"
+          fkValue={contract.id}
+          canWrite={canWrite}
+          labels={["Numune", "Diğer"]}
+          emptyText="Bu gemiye ait numune fotoğrafı yok."
+        />
       </Card>
 
       {/* ── Operasyon durumu banner ── */}
