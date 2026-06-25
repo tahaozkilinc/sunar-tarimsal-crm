@@ -177,7 +177,10 @@ export const contactsResource: ResourceConfig = {
   table: "contacts",
   title: "Kişiler",
   singular: "Kişi",
-  writeRoles: ["admin", "purchasing", "sales"],
+  // companiesResource ile aynı: firma açabilen rol, o firmaya kişi de ekleyebilmeli.
+  // RLS (contacts_write 0018 + can_see_company 0019) operasyona zaten izin veriyor;
+  // burada UI'daki "Ekle" düğmesi de açılır. (_view rolleri ham rolle hariç kalır.)
+  writeRoles: ["admin", "purchasing", "sales", "operations"],
   orderBy: { column: "full_name", ascending: true },
   searchFields: ["full_name", "title", "phone"],
   listFields: ["full_name", "title", "company_id", "phone"],
