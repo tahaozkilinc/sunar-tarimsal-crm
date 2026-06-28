@@ -2,9 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { compressImage } from "@/lib/image";
+import { compressImage, isImagePath } from "@/lib/image";
 import { Spinner } from "./ui";
-import { Plus, Trash2 } from "lucide-react";
+import { FileText, Plus, Trash2 } from "lucide-react";
 
 // Genel amaçlı fotoğraf galerisi. Kendi verisini yükler; bir üst kaydın
 // (gemi, araç vb.) fotoğraflarını gösterir/ekler/siler. Fotoğraflar tarayıcıda
@@ -132,7 +132,7 @@ export function PhotoGallery({
     <div className="space-y-2">
       {canWrite && (
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs font-medium text-gray-500">Fotoğraf ekle:</span>
+          <span className="text-xs font-medium text-gray-500">Foto / PDF ekle:</span>
           {labels.map((l) => (
             <button
               key={l}
@@ -148,7 +148,7 @@ export function PhotoGallery({
           <input
             ref={inputRef}
             type="file"
-            accept="image/*"
+            accept="image/*,application/pdf"
             multiple
             hidden
             onChange={(e) => {
@@ -175,9 +175,14 @@ export function PhotoGallery({
                 target="_blank"
                 rel="noopener noreferrer"
                 className="block"
-                title={p.label || "Fotoğraf"}
+                title={p.label || "Dosya"}
               >
-                {urls[p.path] ? (
+                {!isImagePath(p.path) ? (
+                  <div className="flex h-24 w-24 flex-col items-center justify-center gap-1 rounded-lg border border-border bg-red-50 text-red-600">
+                    <FileText className="h-8 w-8" />
+                    <span className="text-[10px] font-semibold">PDF</span>
+                  </div>
+                ) : urls[p.path] ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
                     src={urls[p.path]}

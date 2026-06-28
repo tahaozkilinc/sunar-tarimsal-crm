@@ -456,17 +456,17 @@ export function ShipOpsPage({
         )}
       </Card>
 
-      {/* ── Numune Fotoğrafları (gemi bazlı) ── */}
+      {/* ── Numune / Ürün görselleri & dosyalar (gemi bazlı) ── */}
       <Card className="p-4 print:hidden">
-        <div className="mb-3 text-sm font-semibold">Numune Fotoğrafları</div>
+        <div className="mb-3 text-sm font-semibold">Numune / Ürün Görselleri &amp; Dosyalar</div>
         <PhotoGallery
           bucket="contract-photos"
           table="contract_photos"
           fkColumn="contract_id"
           fkValue={contract.id}
           canWrite={canWrite}
-          labels={["Numune", "Diğer"]}
-          emptyText="Bu gemiye ait numune fotoğrafı yok."
+          labels={["Numune", "Ürün", "Belge"]}
+          emptyText="Bu gemiye ait görsel / dosya yok."
         />
       </Card>
 
@@ -678,14 +678,14 @@ export function ShipOpsPage({
                           <span className="inline-flex overflow-hidden rounded-md border border-border text-xs">
                             <button
                               type="button"
-                              onClick={() => setQtyUnit("ton")}
+                              onClick={() => { setQtyUnit("ton"); setQty(""); }}
                               className={`px-2 py-0.5 font-medium ${qtyUnit === "ton" ? "bg-brand text-white" : "bg-white text-gray-500"}`}
                             >
                               Ton
                             </button>
                             <button
                               type="button"
-                              onClick={() => setQtyUnit("kg")}
+                              onClick={() => { setQtyUnit("kg"); setQty(""); }}
                               className={`px-2 py-0.5 font-medium ${qtyUnit === "kg" ? "bg-brand text-white" : "bg-white text-gray-500"}`}
                             >
                               KG
@@ -697,11 +697,15 @@ export function ShipOpsPage({
                     >
                       <Input
                         id="ship-ops-qty"
-                        type="number"
-                        step="any"
-                        min={0}
+                        type="text"
+                        inputMode="decimal"
                         value={qty}
-                        onChange={e => setQty(e.target.value)}
+                        onChange={e => {
+                          // En fazla 6 rakam. Ton modunda 2. haneden sonra otomatik
+                          // nokta (ör. 26540 -> 26.540). KG modunda düz tamsayı.
+                          const d = e.target.value.replace(/\D/g, "").slice(0, 6);
+                          setQty(qtyUnit === "ton" && d.length > 2 ? `${d.slice(0, 2)}.${d.slice(2)}` : d);
+                        }}
                         placeholder={
                           remaining > 0
                             ? `Kalan: ${formatNumber(qtyUnit === "kg" ? remaining * 1000 : remaining, qtyUnit === "kg" ? 0 : 2)} ${qtyUnit === "kg" ? "kg" : unit}`

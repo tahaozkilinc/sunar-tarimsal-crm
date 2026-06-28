@@ -2,9 +2,9 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { compressImage } from "@/lib/image";
+import { compressImage, isImagePath } from "@/lib/image";
 import { Spinner } from "./ui";
-import { Plus, Trash2 } from "lucide-react";
+import { FileText, Plus, Trash2 } from "lucide-react";
 
 // Bir araç girişine (stock_movements) bağlı fotoğraflar: irsaliye, numune vb.
 // Fotoğraf tarayıcıda sıkıştırılıp private "movement-photos" kovasına yüklenir,
@@ -112,7 +112,7 @@ export function MovementPhotos({
     <div className="space-y-2">
       {canWrite && (
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs font-medium text-gray-500">Fotoğraf ekle:</span>
+          <span className="text-xs font-medium text-gray-500">Foto / PDF ekle:</span>
           {PRESET_LABELS.map((l) => (
             <button
               key={l}
@@ -128,7 +128,7 @@ export function MovementPhotos({
           <input
             ref={inputRef}
             type="file"
-            accept="image/*"
+            accept="image/*,application/pdf"
             multiple
             hidden
             onChange={(e) => {
@@ -141,7 +141,7 @@ export function MovementPhotos({
       {err && <div className="text-xs text-red-600">{err}</div>}
 
       {list.length === 0 ? (
-        <div className="text-xs text-gray-400">Bu araç için fotoğraf yok.</div>
+        <div className="text-xs text-gray-400">Bu araç için foto / irsaliye yok.</div>
       ) : (
         <div className="flex flex-wrap gap-2">
           {list.map((p) => (
@@ -151,9 +151,14 @@ export function MovementPhotos({
                 target="_blank"
                 rel="noopener noreferrer"
                 className="block"
-                title={p.label || "Fotoğraf"}
+                title={p.label || "Dosya"}
               >
-                {urls[p.path] ? (
+                {!isImagePath(p.path) ? (
+                  <div className="flex h-20 w-20 flex-col items-center justify-center gap-1 rounded-lg border border-border bg-red-50 text-red-600">
+                    <FileText className="h-7 w-7" />
+                    <span className="text-[10px] font-semibold">PDF</span>
+                  </div>
+                ) : urls[p.path] ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
                     src={urls[p.path]}

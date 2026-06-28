@@ -5,6 +5,12 @@
 
 export type CompressedImage = { blob: Blob; ext: string; contentType: string };
 
+// Depodaki yolun (uzantısına göre) görsel olup olmadığı. Görsel ise küçük resim
+// gösterilir; değilse (ör. PDF irsaliye) dosya/PDF rozeti gösterilir.
+export function isImagePath(path: string): boolean {
+  return /\.(jpe?g|png|gif|webp|heic|heif|bmp|avif)$/i.test(path);
+}
+
 function extOf(name: string): string {
   const m = name.split(".").pop();
   return m && m.length > 0 && m.length <= 5 ? m.toLowerCase() : "jpg";
