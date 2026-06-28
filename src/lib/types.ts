@@ -8,6 +8,7 @@ export type Role =
   | "finans"
   | "maliyet"
   | "viewer"
+  | "nakliyeci"
   | "purchasing_view"
   | "operations_view"
   | "sales_view"
@@ -20,6 +21,7 @@ export interface Profile {
   role: Role;
   phone: string | null;
   is_active: boolean;
+  company_id: string | null; // nakliyeci -> bağlı olduğu 'carrier' firma
   created_at: string;
 }
 

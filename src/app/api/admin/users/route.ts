@@ -37,7 +37,7 @@ export async function POST(req: Request) {
   const auth = await authorizeAdmin();
   if ("error" in auth) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
-  const { email, password, full_name, role } = await req.json();
+  const { email, password, full_name, role, company_id } = await req.json();
   if (!email || !password || !role)
     return NextResponse.json({ error: "E-posta, şifre ve rol zorunludur." }, { status: 400 });
 
@@ -49,8 +49,11 @@ export async function POST(req: Request) {
   });
   if (error) return NextResponse.json({ error: error.message }, { status: 400 });
 
-  // Trigger profili oluşturur; rol/ismi garanti et.
-  await auth.admin.from("profiles").update({ role, full_name }).eq("id", data.user.id);
+  // Trigger profili oluşturur; rol/ismi (ve nakliyeci ise firmasını) garanti et.
+  await auth.admin
+    .from("profiles")
+    .update({ role, full_name, company_id: company_id || null })
+    .eq("id", data.user.id);
 
   return NextResponse.json({ ok: true, id: data.user.id });
 }

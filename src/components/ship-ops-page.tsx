@@ -77,7 +77,8 @@ export function ShipOpsPage({
   const [products, setProducts]   = useState<Ref[]>([]);
   const [companies, setCompanies] = useState<CompanyRef[]>([]);
   const [creatorNames, setCreatorNames] = useState<Record<string, string>>({});
-  const [canWrite, setCanWrite]   = useState(false);
+  const [canWrite, setCanWrite]   = useState(false); // araç tonajı + irsaliye (admin/operations/nakliyeci)
+  const [canManage, setCanManage] = useState(false); // taraf atama, gemiyi bitir, numune galerisi (admin/operations)
   const [loading, setLoading]     = useState(true);
   const [error, setError]         = useState<string | null>(null);
 
@@ -171,7 +172,8 @@ export function ShipOpsPage({
         const { data: prof } = await supabase
           .from("profiles").select("role").eq("id", au.user.id).maybeSingle();
         const r = (prof as { role?: string } | null)?.role || "";
-        setCanWrite(r === "admin" || r === "operations");
+        setCanManage(r === "admin" || r === "operations");
+        setCanWrite(r === "admin" || r === "operations" || r === "nakliyeci");
       }
       await loadMovements();
       setLoading(false);
@@ -405,7 +407,8 @@ export function ShipOpsPage({
         </div>
       </div>
 
-      {/* ── Gözetim / Liman / Nakliyeci ── */}
+      {/* ── Gözetim / Liman / Nakliyeci (yalnızca admin/operasyon atar) ── */}
+      {canManage && (
       <Card className="p-4 print:hidden">
         <div className="mb-3 text-sm font-semibold">Operasyon Tarafları</div>
         <div className="grid gap-3 sm:grid-cols-3">
@@ -455,6 +458,7 @@ export function ShipOpsPage({
           </div>
         )}
       </Card>
+      )}
 
       {/* ── Numune / Ürün görselleri & dosyalar (gemi bazlı) ── */}
       <Card className="p-4 print:hidden">
@@ -464,7 +468,7 @@ export function ShipOpsPage({
           table="contract_photos"
           fkColumn="contract_id"
           fkValue={contract.id}
-          canWrite={canWrite}
+          canWrite={canManage}
           labels={["Numune", "Ürün", "Belge"]}
           emptyText="Bu gemiye ait görsel / dosya yok."
         />
@@ -773,7 +777,7 @@ export function ShipOpsPage({
                 </div>
               </Card>
 
-              {canWrite && (
+              {canManage && (
                 <Button
                   onClick={finishShip}
                   disabled={contract.status === "completed"}
