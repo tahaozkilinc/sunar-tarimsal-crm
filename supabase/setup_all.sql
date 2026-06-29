@@ -1499,6 +1499,44 @@ create policy contract_photos_read on storage.objects for select to authenticate
 
 
 -- ============================================================
+-- BÖLÜM 25 — Fonksiyon EXECUTE yetkisi sertleştirmesi
+-- SECURITY DEFINER fonksiyonların anon/RPC erişimini daralt; trigger
+-- fonksiyonlarından tüm rol erişimini kaldır.
+-- ============================================================
+
+grant execute on function public.auth_role() to authenticated;
+revoke execute on function public.auth_role() from anon, public;
+grant execute on function public.auth_base_role() to authenticated;
+revoke execute on function public.auth_base_role() from anon, public;
+grant execute on function public.is_admin() to authenticated;
+revoke execute on function public.is_admin() from anon, public;
+grant execute on function public.is_view_role() to authenticated;
+revoke execute on function public.is_view_role() from anon, public;
+grant execute on function public.my_company_id() to authenticated;
+revoke execute on function public.my_company_id() from anon, public;
+grant execute on function public.can_access_ship(uuid) to authenticated;
+revoke execute on function public.can_access_ship(uuid) from anon, public;
+grant execute on function public.can_see_company(uuid) to authenticated;
+revoke execute on function public.can_see_company(uuid) from anon, public;
+grant execute on function public.can_write_movement(uuid) to authenticated;
+revoke execute on function public.can_write_movement(uuid) from anon, public;
+grant execute on function public.is_my_carrier_ship(uuid) to authenticated;
+revoke execute on function public.is_my_carrier_ship(uuid) from anon, public;
+grant execute on function public.assign_ship_parties(uuid, uuid, uuid, uuid) to authenticated;
+revoke execute on function public.assign_ship_parties(uuid, uuid, uuid, uuid) from anon, public;
+grant execute on function public.set_contract_paid(uuid, boolean, text) to authenticated;
+revoke execute on function public.set_contract_paid(uuid, boolean, text) from anon, public;
+grant execute on function public.update_my_profile(text) to authenticated;
+revoke execute on function public.update_my_profile(text) from anon, public;
+revoke execute on function public.handle_new_user() from anon, authenticated, public;
+revoke execute on function public.mark_contract_arrived() from anon, authenticated, public;
+revoke execute on function public.fn_audit() from anon, authenticated, public;
+revoke execute on function public.rls_auto_enable() from anon, authenticated, public;
+alter function public.set_updated_at() set search_path = public;
+revoke execute on function public.set_updated_at() from anon, authenticated, public;
+
+
+-- ============================================================
 -- KURULUM TAMAMLANDI
 -- Admin: taha.ozkilinc@sunaryatirim.com.tr
 -- Şifre: BÖLÜM 3/12 çalışırken NOTICE çıktısında bir kez gösterilen geçici
