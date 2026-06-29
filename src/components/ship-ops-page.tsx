@@ -549,7 +549,9 @@ export function ShipOpsPage({
           {movements.length === 0 ? (
             <EmptyState message="Henüz araç girişi yapılmadı." />
           ) : (
-            <div className="overflow-x-auto rounded-xl border border-border bg-white">
+            <>
+            {/* Masaüstü: tablo */}
+            <div className="hidden overflow-x-auto rounded-xl border border-border bg-white md:block">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-border bg-gray-50 text-left text-xs uppercase text-gray-500">
@@ -635,6 +637,73 @@ export function ShipOpsPage({
                 </tfoot>
               </table>
             </div>
+
+            {/* Mobil: araç kartları (yatay kaydırma yerine okunabilir liste) */}
+            <div className="space-y-2 md:hidden">
+              {movements.map((m) => {
+                const count = photosByMovement[m.id]?.length || 0;
+                const open = openPhotos.has(m.id);
+                return (
+                  <div key={m.id} className="rounded-xl border border-border bg-white p-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="font-semibold tracking-wider">
+                          {m.vehicle_plate || <span className="text-gray-400">Plakasız</span>}
+                        </div>
+                        <div className="mt-0.5 text-xs text-gray-500">
+                          {formatDate(m.movement_date)} · {timeFmt(m.created_at)}
+                        </div>
+                      </div>
+                      <div className="shrink-0 text-right">
+                        <div className="text-lg font-bold">{formatNumber(m.quantity)}</div>
+                        <div className="text-[11px] text-gray-400">{unit}</div>
+                      </div>
+                    </div>
+                    <div className="mt-1.5 text-xs text-gray-600">
+                      {m.driver_name ? `${m.driver_name} · ` : ""}
+                      {wName(m.warehouse_id)}
+                    </div>
+                    <div className="mt-2 flex items-center justify-between border-t border-border pt-2">
+                      <button
+                        onClick={() => togglePhotos(m.id)}
+                        className={`inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1 text-xs font-medium ${
+                          count > 0 || open ? "text-brand" : "text-gray-500"
+                        }`}
+                      >
+                        <Camera className="h-3.5 w-3.5" />
+                        {count > 0 ? `${count} foto / irsaliye` : "Foto / irsaliye ekle"}
+                      </button>
+                      {canWrite && (
+                        <button
+                          onClick={() => deleteMov(m.id)}
+                          className="rounded-lg p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-500"
+                          title="Aracı sil"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      )}
+                    </div>
+                    {open && (
+                      <div className="mt-2 border-t border-border pt-2">
+                        <MovementPhotos
+                          movementId={m.id}
+                          photos={photosByMovement[m.id]}
+                          canWrite={canWrite}
+                          onChanged={() => loadPhotos(movements.map((mm) => mm.id))}
+                        />
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+              <div className="flex items-center justify-between rounded-xl border border-border bg-gray-50 px-3 py-2.5 text-sm font-bold">
+                <span className="text-gray-600">TOPLAM</span>
+                <span>
+                  {formatNumber(totalDrawn)} <span className="text-xs font-normal text-gray-400">{unit}</span>
+                </span>
+              </div>
+            </div>
+            </>
           )}
         </div>
 

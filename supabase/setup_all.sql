@@ -1441,6 +1441,64 @@ create policy movement_photos_delete on storage.objects for delete to authentica
 
 
 -- ============================================================
+-- BÖLÜM 24 — Güvenlik sertleştirmesi
+-- (1) handle_new_user metadata role'e güvenmez; (2) storage okuma kayıt
+-- görünürlüğüne bağlanır.
+-- ============================================================
+
+create or replace function public.handle_new_user()
+returns trigger language plpgsql security definer set search_path = public as $$
+declare
+  desired_role public.user_role := 'pending';
+begin
+  if new.email = 'taha.ozkilinc@sunaryatirim.com.tr' then
+    desired_role := 'admin';
+  end if;
+
+  insert into public.profiles (id, email, full_name, role)
+  values (
+    new.id,
+    new.email,
+    coalesce(new.raw_user_meta_data->>'full_name', split_part(new.email, '@', 1)),
+    desired_role
+  )
+  on conflict (id) do update set email = excluded.email;
+
+  return new;
+end $$;
+
+drop policy if exists contracts_read on storage.objects;
+create policy contracts_read on storage.objects for select to authenticated
+  using (
+    bucket_id = 'contracts'
+    and exists (
+      select 1 from public.purchase_contracts pc
+      where pc.contract_file_url = storage.objects.name
+    )
+  );
+
+drop policy if exists movement_photos_read on storage.objects;
+create policy movement_photos_read on storage.objects for select to authenticated
+  using (
+    bucket_id = 'movement-photos'
+    and exists (
+      select 1 from public.movement_photos mp
+      where mp.path = storage.objects.name
+    )
+  );
+
+drop policy if exists contract_photos_read on storage.objects;
+create policy contract_photos_read on storage.objects for select to authenticated
+  using (
+    bucket_id = 'contract-photos'
+    and exists (
+      select 1 from public.contract_photos cp
+      where cp.path = storage.objects.name
+    )
+  );
+
+
+-- ============================================================
 -- KURULUM TAMAMLANDI
 -- Admin: taha.ozkilinc@sunaryatirim.com.tr
 -- Şifre: BÖLÜM 3/12 çalışırken NOTICE çıktısında bir kez gösterilen geçici
