@@ -37,6 +37,9 @@ type Movement = {
 type Ref = { id: string; name: string };
 type CompanyRef = { id: string; name: string; type: string };
 
+// Bir araç en fazla 40 ton (40.000 kg) yük taşıyabilir.
+const MAX_TON = 40;
+
 function durFmt(ms: number, showSec = false): string {
   if (ms < 0) ms = 0;
   const s = Math.floor(ms / 1000) % 60;
@@ -233,6 +236,10 @@ export function ShipOpsPage({
     const raw = parseFloat(qty.replace(",", "."));
     if (!qty || isNaN(raw) || raw <= 0) { setFormErr("Geçerli bir miktar girin."); return; }
     const q = qtyUnit === "kg" ? raw / 1000 : raw;
+    if (q > MAX_TON) {
+      setFormErr(`Bir araç en fazla ${MAX_TON} ton (40.000 kg) olabilir.`);
+      return;
+    }
     setSaving(true);
     setFormErr(null);
     const { error: err } = await supabase.from("stock_movements").insert({
@@ -732,8 +739,8 @@ export function ShipOpsPage({
                     <Field label="Şoför Adı">
                       <Input
                         value={driver}
-                        onChange={e => setDriver(e.target.value)}
-                        placeholder="Ad Soyad"
+                        onChange={e => setDriver(e.target.value.toLocaleUpperCase("tr"))}
+                        placeholder="AD SOYAD"
                       />
                     </Field>
                     <Field label="Depo / Fabrika" required>
@@ -776,8 +783,11 @@ export function ShipOpsPage({
                         onChange={e => {
                           // En fazla 6 rakam. Ton modunda 2. haneden sonra otomatik
                           // nokta (ör. 26540 -> 26.540). KG modunda düz tamsayı.
+                          // 40 ton (40.000 kg) üstü giriş kabul edilmez (araç limiti).
                           const d = e.target.value.replace(/\D/g, "").slice(0, 6);
-                          setQty(qtyUnit === "ton" && d.length > 2 ? `${d.slice(0, 2)}.${d.slice(2)}` : d);
+                          const next = qtyUnit === "ton" && d.length > 2 ? `${d.slice(0, 2)}.${d.slice(2)}` : d;
+                          const tons = qtyUnit === "kg" ? Number(d) / 1000 : Number(next);
+                          if (next === "" || (Number.isFinite(tons) && tons <= MAX_TON)) setQty(next);
                         }}
                         placeholder={
                           remaining > 0
@@ -791,6 +801,7 @@ export function ShipOpsPage({
                           ≈ {formatNumber(parseFloat(qty.replace(",", ".")) / 1000, 3)} {unit}
                         </div>
                       )}
+                      <div className="mt-1 text-xs text-gray-400">Bir araç en fazla 40 ton (40.000 kg)</div>
                     </Field>
                     <Field label="Tarih">
                       <Input
