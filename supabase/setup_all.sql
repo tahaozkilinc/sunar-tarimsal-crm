@@ -1537,6 +1537,23 @@ revoke execute on function public.set_updated_at() from anon, authenticated, pub
 
 
 -- ============================================================
+-- BÖLÜM 26 — SECURITY DEFINER view'lerden anon erişimini kaldır
+-- profile_names/sellable_contracts/payment_schedule yalnızca authenticated.
+-- (Bu view'ler bilinçli definer; anon erişimi kapatılır, definer korunur.)
+-- ============================================================
+
+revoke all on public.profile_names      from anon, public;
+revoke all on public.sellable_contracts from anon, public;
+revoke all on public.payment_schedule   from anon, public;
+revoke insert, update, delete, truncate, references, trigger on public.profile_names      from authenticated;
+revoke insert, update, delete, truncate, references, trigger on public.sellable_contracts from authenticated;
+revoke insert, update, delete, truncate, references, trigger on public.payment_schedule   from authenticated;
+grant select on public.profile_names      to authenticated;
+grant select on public.sellable_contracts to authenticated;
+grant select on public.payment_schedule   to authenticated;
+
+
+-- ============================================================
 -- KURULUM TAMAMLANDI
 -- Admin: taha.ozkilinc@sunaryatirim.com.tr
 -- Şifre: BÖLÜM 3/12 çalışırken NOTICE çıktısında bir kez gösterilen geçici
