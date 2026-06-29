@@ -1,12 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { Badge, Button, Card, EmptyState, Field, Input, Select, Spinner } from "./ui";
+import { MovementPhotos, type MovementPhoto } from "./movement-photos";
+import { PhotoGallery } from "./photo-gallery";
 import { formatDate, formatNumber } from "@/lib/format";
 import { CONTRACT_STATUS_OPTIONS } from "@/lib/resources";
-import { ArrowLeft, CheckCircle, Download, Leaf, Printer, Trash2 } from "lucide-react";
+import { ArrowLeft, Camera, CheckCircle, Download, Leaf, Printer, Trash2 } from "lucide-react";
 
 type Contract = {
   id: string;
@@ -34,6 +36,9 @@ type Movement = {
 };
 type Ref = { id: string; name: string };
 type CompanyRef = { id: string; name: string; type: string };
+
+// Bir araç en fazla 40 ton (40.000 kg) yük taşıyabilir.
+const MAX_TON = 40;
 
 function durFmt(ms: number, showSec = false): string {
   if (ms < 0) ms = 0;
@@ -69,11 +74,14 @@ export function ShipOpsPage({
 
   const [contract, setContract]   = useState<Contract | null>(null);
   const [movements, setMovements] = useState<Movement[]>([]);
+  const [photosByMovement, setPhotosByMovement] = useState<Record<string, MovementPhoto[]>>({});
+  const [openPhotos, setOpenPhotos] = useState<Set<string>>(new Set());
   const [warehouses, setWarehouses] = useState<Ref[]>([]);
   const [products, setProducts]   = useState<Ref[]>([]);
   const [companies, setCompanies] = useState<CompanyRef[]>([]);
   const [creatorNames, setCreatorNames] = useState<Record<string, string>>({});
-  const [canWrite, setCanWrite]   = useState(false);
+  const [canWrite, setCanWrite]   = useState(false); // araç tonajı + irsaliye (admin/operations/nakliyeci)
+  const [canManage, setCanManage] = useState(false); // taraf atama, gemiyi bitir, numune galerisi (admin/operations)
   const [loading, setLoading]     = useState(true);
   const [error, setError]         = useState<string | null>(null);
 
@@ -103,6 +111,26 @@ export function ShipOpsPage({
   const [assignErr, setAssignErr] = useState<string | null>(null);
   const [assignFlash, setAssignFlash] = useState<string | null>(null);
 
+  const loadPhotos = useCallback(
+    async (ids: string[]) => {
+      if (ids.length === 0) {
+        setPhotosByMovement({});
+        return;
+      }
+      const { data } = await supabase
+        .from("movement_photos")
+        .select("id,movement_id,path,label,created_at")
+        .in("movement_id", ids)
+        .order("created_at", { ascending: true });
+      const map: Record<string, MovementPhoto[]> = {};
+      ((data as MovementPhoto[] | null) || []).forEach((p) => {
+        (map[p.movement_id] ||= []).push(p);
+      });
+      setPhotosByMovement(map);
+    },
+    [supabase],
+  );
+
   const loadMovements = useCallback(async () => {
     const { data } = await supabase
       .from("stock_movements")
@@ -110,8 +138,10 @@ export function ShipOpsPage({
       .eq("contract_id", contractId)
       .eq("movement_type", "inbound")
       .order("created_at", { ascending: true });
-    setMovements((data as Movement[]) || []);
-  }, [supabase, contractId]);
+    const rows = (data as Movement[]) || [];
+    setMovements(rows);
+    await loadPhotos(rows.map((r) => r.id));
+  }, [supabase, contractId, loadPhotos]);
 
   useEffect(() => {
     (async () => {
@@ -145,7 +175,8 @@ export function ShipOpsPage({
         const { data: prof } = await supabase
           .from("profiles").select("role").eq("id", au.user.id).maybeSingle();
         const r = (prof as { role?: string } | null)?.role || "";
-        setCanWrite(r === "admin" || r === "operations");
+        setCanManage(r === "admin" || r === "operations");
+        setCanWrite(r === "admin" || r === "operations" || r === "nakliyeci");
       }
       await loadMovements();
       setLoading(false);
@@ -205,6 +236,10 @@ export function ShipOpsPage({
     const raw = parseFloat(qty.replace(",", "."));
     if (!qty || isNaN(raw) || raw <= 0) { setFormErr("Geçerli bir miktar girin."); return; }
     const q = qtyUnit === "kg" ? raw / 1000 : raw;
+    if (q > MAX_TON) {
+      setFormErr(`Bir araç en fazla ${MAX_TON} ton (40.000 kg) olabilir.`);
+      return;
+    }
     setSaving(true);
     setFormErr(null);
     const { error: err } = await supabase.from("stock_movements").insert({
@@ -236,8 +271,20 @@ export function ShipOpsPage({
 
   const deleteMov = async (id: string) => {
     if (!window.confirm("Bu çekim kaydı silinsin mi?")) return;
+    // Araca bağlı fotoğrafları depolamadan temizle (DB satırları cascade ile gider).
+    const paths = (photosByMovement[id] || []).map((p) => p.path);
+    if (paths.length) await supabase.storage.from("movement-photos").remove(paths);
     await supabase.from("stock_movements").delete().eq("id", id);
     await loadMovements();
+  };
+
+  const togglePhotos = (id: string) => {
+    setOpenPhotos((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   };
 
   const finishShip = async () => {
@@ -367,7 +414,8 @@ export function ShipOpsPage({
         </div>
       </div>
 
-      {/* ── Gözetim / Liman / Nakliyeci ── */}
+      {/* ── Gözetim / Liman / Nakliyeci (yalnızca admin/operasyon atar) ── */}
+      {canManage && (
       <Card className="p-4 print:hidden">
         <div className="mb-3 text-sm font-semibold">Operasyon Tarafları</div>
         <div className="grid gap-3 sm:grid-cols-3">
@@ -416,6 +464,21 @@ export function ShipOpsPage({
             Henüz gözetim/liman/nakliyeci firması yok. Operasyon → İş Ortakları sekmesinden ekleyebilirsiniz.
           </div>
         )}
+      </Card>
+      )}
+
+      {/* ── Numune / Ürün görselleri & dosyalar (gemi bazlı) ── */}
+      <Card className="p-4 print:hidden">
+        <div className="mb-3 text-sm font-semibold">Numune / Ürün Görselleri &amp; Dosyalar</div>
+        <PhotoGallery
+          bucket="contract-photos"
+          table="contract_photos"
+          fkColumn="contract_id"
+          fkValue={contract.id}
+          canWrite={canManage}
+          labels={["Numune", "Ürün", "Belge"]}
+          emptyText="Bu gemiye ait görsel / dosya yok."
+        />
       </Card>
 
       {/* ── Operasyon durumu banner ── */}
@@ -493,7 +556,9 @@ export function ShipOpsPage({
           {movements.length === 0 ? (
             <EmptyState message="Henüz araç girişi yapılmadı." />
           ) : (
-            <div className="overflow-x-auto rounded-xl border border-border bg-white">
+            <>
+            {/* Masaüstü: tablo */}
+            <div className="hidden overflow-x-auto rounded-xl border border-border bg-white md:block">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-border bg-gray-50 text-left text-xs uppercase text-gray-500">
@@ -504,38 +569,69 @@ export function ShipOpsPage({
                     <th className="px-3 py-2.5 font-medium">Depo / Fabrika</th>
                     <th className="px-3 py-2.5 font-medium">Giren</th>
                     <th className="px-3 py-2.5 text-right font-medium">Miktar</th>
-                    {canWrite && <th className="px-2 py-2.5 print:hidden" />}
+                    <th className="px-2 py-2.5 print:hidden" />
                   </tr>
                 </thead>
                 <tbody>
-                  {movements.map((m, i) => (
-                    <tr key={m.id} className="border-b border-border last:border-0 hover:bg-gray-50">
-                      <td className="px-3 py-2 text-gray-400">{i + 1}</td>
-                      <td className="px-3 py-2 text-xs">
-                        <div>{formatDate(m.movement_date)}</div>
-                        <div className="text-gray-400">{timeFmt(m.created_at)}</div>
-                      </td>
-                      <td className="px-3 py-2 font-medium tracking-wider">
-                        {m.vehicle_plate || <span className="text-gray-400">—</span>}
-                      </td>
-                      <td className="px-3 py-2">{m.driver_name || <span className="text-gray-400">—</span>}</td>
-                      <td className="px-3 py-2 text-xs">{wName(m.warehouse_id)}</td>
-                      <td className="px-3 py-2 text-xs text-gray-500">{creatorName(m.created_by)}</td>
-                      <td className="px-3 py-2 text-right font-semibold">
-                        {formatNumber(m.quantity)} <span className="text-xs font-normal text-gray-400">{unit}</span>
-                      </td>
-                      {canWrite && (
-                        <td className="px-2 py-2 print:hidden">
-                          <button
-                            onClick={() => deleteMov(m.id)}
-                            className="rounded p-1 text-gray-400 hover:bg-red-50 hover:text-red-500"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
-                        </td>
-                      )}
-                    </tr>
-                  ))}
+                  {movements.map((m, i) => {
+                    const count = photosByMovement[m.id]?.length || 0;
+                    const open = openPhotos.has(m.id);
+                    return (
+                      <Fragment key={m.id}>
+                        <tr className="border-b border-border last:border-0 hover:bg-gray-50">
+                          <td className="px-3 py-2 text-gray-400">{i + 1}</td>
+                          <td className="px-3 py-2 text-xs">
+                            <div>{formatDate(m.movement_date)}</div>
+                            <div className="text-gray-400">{timeFmt(m.created_at)}</div>
+                          </td>
+                          <td className="px-3 py-2 font-medium tracking-wider">
+                            {m.vehicle_plate || <span className="text-gray-400">—</span>}
+                          </td>
+                          <td className="px-3 py-2">{m.driver_name || <span className="text-gray-400">—</span>}</td>
+                          <td className="px-3 py-2 text-xs">{wName(m.warehouse_id)}</td>
+                          <td className="px-3 py-2 text-xs text-gray-500">{creatorName(m.created_by)}</td>
+                          <td className="px-3 py-2 text-right font-semibold">
+                            {formatNumber(m.quantity)} <span className="text-xs font-normal text-gray-400">{unit}</span>
+                          </td>
+                          <td className="px-2 py-2 print:hidden">
+                            <div className="flex items-center gap-0.5">
+                              <button
+                                onClick={() => togglePhotos(m.id)}
+                                className={`inline-flex items-center gap-1 rounded p-1 hover:bg-brand/10 hover:text-brand ${
+                                  count > 0 || open ? "text-brand" : "text-gray-400"
+                                }`}
+                                title="Fotoğraflar (irsaliye / numune)"
+                              >
+                                <Camera className="h-3.5 w-3.5" />
+                                {count > 0 && <span className="text-xs font-medium">{count}</span>}
+                              </button>
+                              {canWrite && (
+                                <button
+                                  onClick={() => deleteMov(m.id)}
+                                  className="rounded p-1 text-gray-400 hover:bg-red-50 hover:text-red-500"
+                                  title="Aracı sil"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                        {open && (
+                          <tr className="border-b border-border bg-gray-50/60 print:hidden">
+                            <td colSpan={8} className="px-3 py-3">
+                              <MovementPhotos
+                                movementId={m.id}
+                                photos={photosByMovement[m.id]}
+                                canWrite={canWrite}
+                                onChanged={() => loadPhotos(movements.map((mm) => mm.id))}
+                              />
+                            </td>
+                          </tr>
+                        )}
+                      </Fragment>
+                    );
+                  })}
                 </tbody>
                 <tfoot>
                   <tr className="border-t-2 border-border">
@@ -543,11 +639,78 @@ export function ShipOpsPage({
                     <td className="px-3 py-2 text-right font-bold">
                       {formatNumber(totalDrawn)} <span className="text-xs font-normal text-gray-400">{unit}</span>
                     </td>
-                    {canWrite && <td className="print:hidden" />}
+                    <td className="print:hidden" />
                   </tr>
                 </tfoot>
               </table>
             </div>
+
+            {/* Mobil: araç kartları (yatay kaydırma yerine okunabilir liste) */}
+            <div className="space-y-2 md:hidden">
+              {movements.map((m) => {
+                const count = photosByMovement[m.id]?.length || 0;
+                const open = openPhotos.has(m.id);
+                return (
+                  <div key={m.id} className="rounded-xl border border-border bg-white p-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="font-semibold tracking-wider">
+                          {m.vehicle_plate || <span className="text-gray-400">Plakasız</span>}
+                        </div>
+                        <div className="mt-0.5 text-xs text-gray-500">
+                          {formatDate(m.movement_date)} · {timeFmt(m.created_at)}
+                        </div>
+                      </div>
+                      <div className="shrink-0 text-right">
+                        <div className="text-lg font-bold">{formatNumber(m.quantity)}</div>
+                        <div className="text-[11px] text-gray-400">{unit}</div>
+                      </div>
+                    </div>
+                    <div className="mt-1.5 text-xs text-gray-600">
+                      {m.driver_name ? `${m.driver_name} · ` : ""}
+                      {wName(m.warehouse_id)}
+                    </div>
+                    <div className="mt-2 flex items-center justify-between border-t border-border pt-2">
+                      <button
+                        onClick={() => togglePhotos(m.id)}
+                        className={`inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1 text-xs font-medium ${
+                          count > 0 || open ? "text-brand" : "text-gray-500"
+                        }`}
+                      >
+                        <Camera className="h-3.5 w-3.5" />
+                        {count > 0 ? `${count} foto / irsaliye` : "Foto / irsaliye ekle"}
+                      </button>
+                      {canWrite && (
+                        <button
+                          onClick={() => deleteMov(m.id)}
+                          className="rounded-lg p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-500"
+                          title="Aracı sil"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      )}
+                    </div>
+                    {open && (
+                      <div className="mt-2 border-t border-border pt-2">
+                        <MovementPhotos
+                          movementId={m.id}
+                          photos={photosByMovement[m.id]}
+                          canWrite={canWrite}
+                          onChanged={() => loadPhotos(movements.map((mm) => mm.id))}
+                        />
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+              <div className="flex items-center justify-between rounded-xl border border-border bg-gray-50 px-3 py-2.5 text-sm font-bold">
+                <span className="text-gray-600">TOPLAM</span>
+                <span>
+                  {formatNumber(totalDrawn)} <span className="text-xs font-normal text-gray-400">{unit}</span>
+                </span>
+              </div>
+            </div>
+            </>
           )}
         </div>
 
@@ -576,8 +739,8 @@ export function ShipOpsPage({
                     <Field label="Şoför Adı">
                       <Input
                         value={driver}
-                        onChange={e => setDriver(e.target.value)}
-                        placeholder="Ad Soyad"
+                        onChange={e => setDriver(e.target.value.toLocaleUpperCase("tr"))}
+                        placeholder="AD SOYAD"
                       />
                     </Field>
                     <Field label="Depo / Fabrika" required>
@@ -595,14 +758,14 @@ export function ShipOpsPage({
                           <span className="inline-flex overflow-hidden rounded-md border border-border text-xs">
                             <button
                               type="button"
-                              onClick={() => setQtyUnit("ton")}
+                              onClick={() => { setQtyUnit("ton"); setQty(""); }}
                               className={`px-2 py-0.5 font-medium ${qtyUnit === "ton" ? "bg-brand text-white" : "bg-white text-gray-500"}`}
                             >
                               Ton
                             </button>
                             <button
                               type="button"
-                              onClick={() => setQtyUnit("kg")}
+                              onClick={() => { setQtyUnit("kg"); setQty(""); }}
                               className={`px-2 py-0.5 font-medium ${qtyUnit === "kg" ? "bg-brand text-white" : "bg-white text-gray-500"}`}
                             >
                               KG
@@ -614,11 +777,18 @@ export function ShipOpsPage({
                     >
                       <Input
                         id="ship-ops-qty"
-                        type="number"
-                        step="any"
-                        min={0}
+                        type="text"
+                        inputMode="decimal"
                         value={qty}
-                        onChange={e => setQty(e.target.value)}
+                        onChange={e => {
+                          // En fazla 6 rakam. Ton modunda 2. haneden sonra otomatik
+                          // nokta (ör. 26540 -> 26.540). KG modunda düz tamsayı.
+                          // 40 ton (40.000 kg) üstü giriş kabul edilmez (araç limiti).
+                          const d = e.target.value.replace(/\D/g, "").slice(0, 6);
+                          const next = qtyUnit === "ton" && d.length > 2 ? `${d.slice(0, 2)}.${d.slice(2)}` : d;
+                          const tons = qtyUnit === "kg" ? Number(d) / 1000 : Number(next);
+                          if (next === "" || (Number.isFinite(tons) && tons <= MAX_TON)) setQty(next);
+                        }}
                         placeholder={
                           remaining > 0
                             ? `Kalan: ${formatNumber(qtyUnit === "kg" ? remaining * 1000 : remaining, qtyUnit === "kg" ? 0 : 2)} ${qtyUnit === "kg" ? "kg" : unit}`
@@ -631,6 +801,7 @@ export function ShipOpsPage({
                           ≈ {formatNumber(parseFloat(qty.replace(",", ".")) / 1000, 3)} {unit}
                         </div>
                       )}
+                      <div className="mt-1 text-xs text-gray-400">Bir araç en fazla 40 ton (40.000 kg)</div>
                     </Field>
                     <Field label="Tarih">
                       <Input
@@ -686,7 +857,7 @@ export function ShipOpsPage({
                 </div>
               </Card>
 
-              {canWrite && (
+              {canManage && (
                 <Button
                   onClick={finishShip}
                   disabled={contract.status === "completed"}

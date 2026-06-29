@@ -24,6 +24,7 @@ const ROLE_OPTIONS: Role[] = [
   "finans",
   "maliyet",
   "viewer",
+  "nakliyeci",
   "purchasing_view",
   "operations_view",
   "sales_view",
@@ -33,6 +34,7 @@ const ROLE_OPTIONS: Role[] = [
 export function UsersManager() {
   const supabase = useMemo(() => createClient(), []);
   const [users, setUsers] = useState<Profile[]>([]);
+  const [carriers, setCarriers] = useState<{ id: string; name: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -42,6 +44,7 @@ export function UsersManager() {
     password: "",
     full_name: "",
     role: "sales" as Role,
+    company_id: "",
   });
 
   const load = async () => {
@@ -56,6 +59,12 @@ export function UsersManager() {
 
   useEffect(() => {
     load();
+    supabase
+      .from("companies")
+      .select("id,name")
+      .eq("type", "carrier")
+      .order("name")
+      .then(({ data }) => setCarriers((data as { id: string; name: string }[]) || []));
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const createUser = async () => {
@@ -73,7 +82,7 @@ export function UsersManager() {
       return;
     }
     setModalOpen(false);
-    setForm({ email: "", password: "", full_name: "", role: "sales" });
+    setForm({ email: "", password: "", full_name: "", role: "sales", company_id: "" });
     load();
   };
 
@@ -142,6 +151,20 @@ export function UsersManager() {
                         </option>
                       ))}
                     </Select>
+                    {u.role === "nakliyeci" && (
+                      <Select
+                        value={u.company_id ?? ""}
+                        onChange={(e) => updateUser(u.id, { company_id: e.target.value || null })}
+                        className="mt-1 w-36 text-xs"
+                      >
+                        <option value="">Firma seç...</option>
+                        {carriers.map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.name}
+                          </option>
+                        ))}
+                      </Select>
+                    )}
                   </td>
                   <td className="px-4 py-3">
                     <button onClick={() => updateUser(u.id, { is_active: !u.is_active })}>
@@ -201,6 +224,27 @@ export function UsersManager() {
               ))}
             </Select>
           </Field>
+
+          {form.role === "nakliyeci" && (
+            <Field label="Nakliyeci Firması" required>
+              <Select
+                value={form.company_id}
+                onChange={(e) => setForm({ ...form, company_id: e.target.value })}
+              >
+                <option value="">Firma seç...</option>
+                {carriers.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </Select>
+              {carriers.length === 0 && (
+                <div className="mt-1 text-xs text-amber-600">
+                  Önce CRM → Nakliyeci sekmesinden bir nakliye firması ekleyin.
+                </div>
+              )}
+            </Field>
+          )}
 
           {error && (
             <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">

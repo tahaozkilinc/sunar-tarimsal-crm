@@ -1238,6 +1238,322 @@ grant execute on function public.assign_ship_parties(uuid, uuid, uuid, uuid) to 
 
 
 -- ============================================================
+-- BÖLÜM 21 — Araç (stok hareketi) bazlı fotoğraflar (irsaliye/numune)
+-- Her araç girişine private "movement-photos" kovasına yüklenen, tarayıcıda
+-- sıkıştırılmış fotoğraflar. Erişim stock_movements ile aynı kurala uyar.
+-- ============================================================
+
+insert into storage.buckets (id, name, public)
+values ('movement-photos', 'movement-photos', false)
+on conflict (id) do nothing;
+
+create table if not exists public.movement_photos (
+  id           uuid primary key default gen_random_uuid(),
+  movement_id  uuid not null references public.stock_movements(id) on delete cascade,
+  path         text not null,
+  label        text,
+  created_by   uuid default auth.uid() references public.profiles(id) on delete set null,
+  created_at   timestamptz not null default now()
+);
+create index if not exists idx_mp_movement on public.movement_photos(movement_id);
+
+alter table public.movement_photos enable row level security;
+
+create or replace function public.can_access_movement(p_movement_id uuid)
+returns boolean language sql stable security invoker set search_path = public as $$
+  select exists (select 1 from public.stock_movements m where m.id = p_movement_id);
+$$;
+
+create or replace function public.can_write_movement(p_movement_id uuid)
+returns boolean language sql stable security definer set search_path = public as $$
+  select exists (
+    select 1 from public.stock_movements m
+    where m.id = p_movement_id
+      and (
+        public.is_admin()
+        or (public.auth_role() = 'operations' and public.can_access_ship(m.contract_id))
+      )
+  );
+$$;
+
+grant execute on function public.can_access_movement(uuid) to authenticated;
+grant execute on function public.can_write_movement(uuid) to authenticated;
+
+drop policy if exists mp_select on public.movement_photos;
+create policy mp_select on public.movement_photos for select to authenticated
+  using (public.can_access_movement(movement_id));
+
+drop policy if exists mp_insert on public.movement_photos;
+create policy mp_insert on public.movement_photos for insert to authenticated
+  with check (public.can_write_movement(movement_id));
+
+drop policy if exists mp_delete on public.movement_photos;
+create policy mp_delete on public.movement_photos for delete to authenticated
+  using (public.can_write_movement(movement_id));
+
+drop policy if exists movement_photos_read on storage.objects;
+create policy movement_photos_read on storage.objects for select to authenticated
+  using (bucket_id = 'movement-photos');
+
+drop policy if exists movement_photos_insert on storage.objects;
+create policy movement_photos_insert on storage.objects for insert to authenticated
+  with check (bucket_id = 'movement-photos' and public.auth_role() in ('admin','operations'));
+
+drop policy if exists movement_photos_delete on storage.objects;
+create policy movement_photos_delete on storage.objects for delete to authenticated
+  using (bucket_id = 'movement-photos' and public.auth_role() in ('admin','operations'));
+
+
+-- ============================================================
+-- BÖLÜM 22 — Gemi (sözleşme) bazlı numune fotoğrafları
+-- Araç bazlı movement_photos'tan ayrı, doğrudan gemiye bağlı numune galerisi.
+-- Erişim purchase_contracts ile aynı kurala uyar.
+-- ============================================================
+
+insert into storage.buckets (id, name, public)
+values ('contract-photos', 'contract-photos', false)
+on conflict (id) do nothing;
+
+create table if not exists public.contract_photos (
+  id           uuid primary key default gen_random_uuid(),
+  contract_id  uuid not null references public.purchase_contracts(id) on delete cascade,
+  path         text not null,
+  label        text,
+  created_by   uuid default auth.uid() references public.profiles(id) on delete set null,
+  created_at   timestamptz not null default now()
+);
+create index if not exists idx_cp_contract on public.contract_photos(contract_id);
+
+alter table public.contract_photos enable row level security;
+
+create or replace function public.can_access_contract(p_contract_id uuid)
+returns boolean language sql stable security invoker set search_path = public as $$
+  select exists (select 1 from public.purchase_contracts c where c.id = p_contract_id);
+$$;
+grant execute on function public.can_access_contract(uuid) to authenticated;
+
+drop policy if exists cp_select on public.contract_photos;
+create policy cp_select on public.contract_photos for select to authenticated
+  using (public.can_access_contract(contract_id));
+
+drop policy if exists cp_insert on public.contract_photos;
+create policy cp_insert on public.contract_photos for insert to authenticated
+  with check (
+    public.is_admin()
+    or (public.auth_role() = 'operations' and public.can_access_ship(contract_id))
+  );
+
+drop policy if exists cp_delete on public.contract_photos;
+create policy cp_delete on public.contract_photos for delete to authenticated
+  using (
+    public.is_admin()
+    or (public.auth_role() = 'operations' and public.can_access_ship(contract_id))
+  );
+
+drop policy if exists contract_photos_read on storage.objects;
+create policy contract_photos_read on storage.objects for select to authenticated
+  using (bucket_id = 'contract-photos');
+
+drop policy if exists contract_photos_insert on storage.objects;
+create policy contract_photos_insert on storage.objects for insert to authenticated
+  with check (bucket_id = 'contract-photos' and public.auth_role() in ('admin','operations'));
+
+drop policy if exists contract_photos_delete on storage.objects;
+create policy contract_photos_delete on storage.objects for delete to authenticated
+  using (bucket_id = 'contract-photos' and public.auth_role() in ('admin','operations'));
+
+
+-- ============================================================
+-- BÖLÜM 23 — Nakliyeci rolü
+-- Sadece kendi firmasına atanmış gemilerde araç tonajı + irsaliye girer.
+-- ============================================================
+
+alter type public.user_role add value if not exists 'nakliyeci';
+
+alter table public.profiles
+  add column if not exists company_id uuid references public.companies(id) on delete set null;
+
+create or replace function public.my_company_id()
+returns uuid language sql stable security definer set search_path = public as $$
+  select company_id from public.profiles where id = auth.uid();
+$$;
+grant execute on function public.my_company_id() to authenticated;
+
+create or replace function public.is_my_carrier_ship(p_contract_id uuid)
+returns boolean language sql stable security definer set search_path = public as $$
+  select exists (
+    select 1 from public.purchase_contracts pc
+    where pc.id = p_contract_id
+      and pc.carrier_id is not null
+      and pc.carrier_id = public.my_company_id()
+  );
+$$;
+grant execute on function public.is_my_carrier_ship(uuid) to authenticated;
+
+drop policy if exists pc_select on public.purchase_contracts;
+create policy pc_select on public.purchase_contracts for select to authenticated
+  using (
+    public.auth_base_role() in ('admin','purchasing','operations','maliyet','viewer')
+    or (public.auth_base_role() = 'nakliyeci' and public.is_my_carrier_ship(id))
+  );
+
+drop policy if exists sm_select on public.stock_movements;
+create policy sm_select on public.stock_movements for select to authenticated
+  using (
+    public.auth_base_role() in ('admin','purchasing','sales','maliyet','viewer')
+    or (public.auth_base_role() = 'operations' and public.can_access_ship(contract_id))
+    or (public.auth_base_role() = 'nakliyeci' and public.is_my_carrier_ship(contract_id))
+  );
+
+drop policy if exists sm_write on public.stock_movements;
+create policy sm_write on public.stock_movements for all to authenticated
+  using (
+    public.auth_role() = 'admin'
+    or (public.auth_role() = 'operations' and public.can_access_ship(contract_id))
+    or (public.auth_role() = 'nakliyeci' and public.is_my_carrier_ship(contract_id))
+  )
+  with check (
+    public.auth_role() = 'admin'
+    or (public.auth_role() = 'operations' and public.can_access_ship(contract_id))
+    or (public.auth_role() = 'nakliyeci' and public.is_my_carrier_ship(contract_id))
+  );
+
+create or replace function public.can_write_movement(p_movement_id uuid)
+returns boolean language sql stable security definer set search_path = public as $$
+  select exists (
+    select 1 from public.stock_movements m
+    where m.id = p_movement_id
+      and (
+        public.is_admin()
+        or (public.auth_role() = 'operations' and public.can_access_ship(m.contract_id))
+        or (public.auth_role() = 'nakliyeci' and public.is_my_carrier_ship(m.contract_id))
+      )
+  );
+$$;
+
+drop policy if exists movement_photos_insert on storage.objects;
+create policy movement_photos_insert on storage.objects for insert to authenticated
+  with check (bucket_id = 'movement-photos' and public.auth_role() in ('admin','operations','nakliyeci'));
+
+drop policy if exists movement_photos_delete on storage.objects;
+create policy movement_photos_delete on storage.objects for delete to authenticated
+  using (bucket_id = 'movement-photos' and public.auth_role() in ('admin','operations','nakliyeci'));
+
+
+-- ============================================================
+-- BÖLÜM 24 — Güvenlik sertleştirmesi
+-- (1) handle_new_user metadata role'e güvenmez; (2) storage okuma kayıt
+-- görünürlüğüne bağlanır.
+-- ============================================================
+
+create or replace function public.handle_new_user()
+returns trigger language plpgsql security definer set search_path = public as $$
+declare
+  desired_role public.user_role := 'pending';
+begin
+  if new.email = 'taha.ozkilinc@sunaryatirim.com.tr' then
+    desired_role := 'admin';
+  end if;
+
+  insert into public.profiles (id, email, full_name, role)
+  values (
+    new.id,
+    new.email,
+    coalesce(new.raw_user_meta_data->>'full_name', split_part(new.email, '@', 1)),
+    desired_role
+  )
+  on conflict (id) do update set email = excluded.email;
+
+  return new;
+end $$;
+
+drop policy if exists contracts_read on storage.objects;
+create policy contracts_read on storage.objects for select to authenticated
+  using (
+    bucket_id = 'contracts'
+    and exists (
+      select 1 from public.purchase_contracts pc
+      where pc.contract_file_url = storage.objects.name
+    )
+  );
+
+drop policy if exists movement_photos_read on storage.objects;
+create policy movement_photos_read on storage.objects for select to authenticated
+  using (
+    bucket_id = 'movement-photos'
+    and exists (
+      select 1 from public.movement_photos mp
+      where mp.path = storage.objects.name
+    )
+  );
+
+drop policy if exists contract_photos_read on storage.objects;
+create policy contract_photos_read on storage.objects for select to authenticated
+  using (
+    bucket_id = 'contract-photos'
+    and exists (
+      select 1 from public.contract_photos cp
+      where cp.path = storage.objects.name
+    )
+  );
+
+
+-- ============================================================
+-- BÖLÜM 25 — Fonksiyon EXECUTE yetkisi sertleştirmesi
+-- SECURITY DEFINER fonksiyonların anon/RPC erişimini daralt; trigger
+-- fonksiyonlarından tüm rol erişimini kaldır.
+-- ============================================================
+
+grant execute on function public.auth_role() to authenticated;
+revoke execute on function public.auth_role() from anon, public;
+grant execute on function public.auth_base_role() to authenticated;
+revoke execute on function public.auth_base_role() from anon, public;
+grant execute on function public.is_admin() to authenticated;
+revoke execute on function public.is_admin() from anon, public;
+grant execute on function public.is_view_role() to authenticated;
+revoke execute on function public.is_view_role() from anon, public;
+grant execute on function public.my_company_id() to authenticated;
+revoke execute on function public.my_company_id() from anon, public;
+grant execute on function public.can_access_ship(uuid) to authenticated;
+revoke execute on function public.can_access_ship(uuid) from anon, public;
+grant execute on function public.can_see_company(uuid) to authenticated;
+revoke execute on function public.can_see_company(uuid) from anon, public;
+grant execute on function public.can_write_movement(uuid) to authenticated;
+revoke execute on function public.can_write_movement(uuid) from anon, public;
+grant execute on function public.is_my_carrier_ship(uuid) to authenticated;
+revoke execute on function public.is_my_carrier_ship(uuid) from anon, public;
+grant execute on function public.assign_ship_parties(uuid, uuid, uuid, uuid) to authenticated;
+revoke execute on function public.assign_ship_parties(uuid, uuid, uuid, uuid) from anon, public;
+grant execute on function public.set_contract_paid(uuid, boolean, text) to authenticated;
+revoke execute on function public.set_contract_paid(uuid, boolean, text) from anon, public;
+grant execute on function public.update_my_profile(text) to authenticated;
+revoke execute on function public.update_my_profile(text) from anon, public;
+revoke execute on function public.handle_new_user() from anon, authenticated, public;
+revoke execute on function public.mark_contract_arrived() from anon, authenticated, public;
+revoke execute on function public.fn_audit() from anon, authenticated, public;
+revoke execute on function public.rls_auto_enable() from anon, authenticated, public;
+alter function public.set_updated_at() set search_path = public;
+revoke execute on function public.set_updated_at() from anon, authenticated, public;
+
+
+-- ============================================================
+-- BÖLÜM 26 — SECURITY DEFINER view'lerden anon erişimini kaldır
+-- profile_names/sellable_contracts/payment_schedule yalnızca authenticated.
+-- (Bu view'ler bilinçli definer; anon erişimi kapatılır, definer korunur.)
+-- ============================================================
+
+revoke all on public.profile_names      from anon, public;
+revoke all on public.sellable_contracts from anon, public;
+revoke all on public.payment_schedule   from anon, public;
+revoke insert, update, delete, truncate, references, trigger on public.profile_names      from authenticated;
+revoke insert, update, delete, truncate, references, trigger on public.sellable_contracts from authenticated;
+revoke insert, update, delete, truncate, references, trigger on public.payment_schedule   from authenticated;
+grant select on public.profile_names      to authenticated;
+grant select on public.sellable_contracts to authenticated;
+grant select on public.payment_schedule   to authenticated;
+
+
+-- ============================================================
 -- KURULUM TAMAMLANDI
 -- Admin: taha.ozkilinc@sunaryatirim.com.tr
 -- Şifre: BÖLÜM 3/12 çalışırken NOTICE çıktısında bir kez gösterilen geçici

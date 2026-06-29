@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Tabs } from "./ui";
 import { ResourceManager } from "./resource-manager";
 import { CrmActivitySummary } from "./crm-activity-summary";
+import { OperationPartnerStats } from "./company-ship-stats";
 import { createClient } from "@/lib/supabase/client";
 import { activitiesResource, companiesResource } from "@/lib/resources";
 import type { Role } from "@/lib/types";
@@ -136,17 +137,25 @@ export function CrmTabs({ role }: { role: Role }) {
       />
 
       {tab === "companies" && (
-        <ResourceManager
-          key={`c-${effModule}`}
-          config={companiesResource}
-          role={role}
-          filter={{ type: meta.typeFilter }}
-          defaultValues={{ type: meta.companyType }}
-          title={meta.companyLabel}
-          hideTitle
-          hideFilters
-          rowHref={(row) => `/crm/${row.id}`}
-        />
+        <div className="space-y-4">
+          {isOps && (
+            <OperationPartnerStats
+              key={`ps-${effModule}`}
+              companyType={effModule as "surveyor" | "port" | "carrier"}
+            />
+          )}
+          <ResourceManager
+            key={`c-${effModule}`}
+            config={companiesResource}
+            role={role}
+            filter={{ type: meta.typeFilter }}
+            defaultValues={{ type: meta.companyType }}
+            title={meta.companyLabel}
+            hideTitle
+            hideFilters
+            rowHref={(row) => `/crm/${row.id}`}
+          />
+        </div>
       )}
       {tab === "activities" && (
         <div className="space-y-4">

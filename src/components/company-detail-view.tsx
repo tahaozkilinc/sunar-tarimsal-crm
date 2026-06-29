@@ -4,6 +4,7 @@ import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { ResourceManager } from "./resource-manager";
 import { CompanyReport } from "./company-report";
+import { CompanyShipStats } from "./company-ship-stats";
 import { Badge, Card } from "./ui";
 import { COMPANY_TYPE_OPTIONS, contactsResource } from "@/lib/resources";
 import type { Company, Role } from "@/lib/types";
@@ -70,7 +71,11 @@ export function CompanyDetailView({ company, role }: { company: Company; role: R
         />
       </div>
 
-      <CompanyReport companyId={company.id} />
+      {company.type === "surveyor" || company.type === "port" || company.type === "carrier" ? (
+        <CompanyShipStats companyId={company.id} companyType={company.type} />
+      ) : (
+        <CompanyReport companyId={company.id} />
+      )}
     </div>
   );
 }

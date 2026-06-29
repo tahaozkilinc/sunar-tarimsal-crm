@@ -6,10 +6,22 @@ import { ResourceManager } from "./resource-manager";
 import { OperasyonSummary } from "./function-summary";
 import { PendingArrivals } from "./pending-arrivals";
 import { stockMovementsResource } from "@/lib/resources";
+import { baseRole } from "@/lib/nav";
 import type { Role } from "@/lib/types";
 
 export function OperationsTabs({ role }: { role: Role }) {
   const [tab, setTab] = useState("arrivals");
+
+  // Nakliyeci yalnızca atandığı gemilerde tonaj girer: sadece "Bekleyen Gelişler".
+  if (baseRole(role) === "nakliyeci") {
+    return (
+      <div className="space-y-4">
+        <h1 className="text-xl font-bold">Operasyon</h1>
+        <PendingArrivals role={role} />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4">
       <h1 className="text-xl font-bold">Operasyon</h1>
