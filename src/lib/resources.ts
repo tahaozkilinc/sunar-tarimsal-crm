@@ -375,6 +375,7 @@ export const productsResource: ResourceConfig = {
     { name: "code", label: "Kod", type: "text", unique: true },
     { name: "category", label: "Kategori", type: "text" },
     { name: "unit", label: "Birim", type: "text" },
+    { name: "hs_code", label: "GTİP / HS Kodu", type: "text", placeholder: "100590000019" },
     { name: "is_active", label: "Aktif", type: "boolean" },
   ],
 };
