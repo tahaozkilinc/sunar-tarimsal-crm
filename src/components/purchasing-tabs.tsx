@@ -5,7 +5,7 @@ import { Tabs } from "./ui";
 import { ResourceManager } from "./resource-manager";
 import { ShipmentSchedule } from "./shipment-schedule";
 import { BaglantiSummary } from "./function-summary";
-import { purchaseContractsResource } from "@/lib/resources";
+import { combinedShipmentsResource, purchaseContractsResource } from "@/lib/resources";
 import type { Role } from "@/lib/types";
 
 export function PurchasingTabs({ role }: { role: Role }) {
@@ -19,12 +19,16 @@ export function PurchasingTabs({ role }: { role: Role }) {
         tabs={[
           { key: "ozet", label: "Özet" },
           { key: "contracts", label: "Sözleşmeler" },
+          { key: "combined", label: "Kombine Gemiler" },
           { key: "schedule", label: "Sevkiyat" },
         ]}
       />
       {tab === "ozet" && <BaglantiSummary />}
       {tab === "contracts" && (
         <ResourceManager config={purchaseContractsResource} role={role} hideTitle />
+      )}
+      {tab === "combined" && (
+        <ResourceManager config={combinedShipmentsResource} role={role} hideTitle />
       )}
       {tab === "schedule" && <ShipmentSchedule />}
     </div>

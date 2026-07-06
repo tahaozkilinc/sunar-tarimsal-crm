@@ -248,6 +248,28 @@ export const purchaseContractsResource: ResourceConfig = {
     { name: "usd_try", label: "USD/TRY (TCMB)", type: "number", placeholder: "Otomatik" },
     { name: "eur_try", label: "EUR/TRY (TCMB)", type: "number", placeholder: "Otomatik" },
     { name: "fx_date", label: "Kur Tarihi", type: "date" },
+    { name: "combined_shipment_id", label: "Kombine Gemi", type: "reference", ref: { table: "combined_shipments", labelField: "name" } },
+    { name: "notes", label: "Notlar", type: "textarea" },
+  ],
+};
+
+export const combinedShipmentsResource: ResourceConfig = {
+  table: "combined_shipments",
+  title: "Kombine Gemiler",
+  singular: "Kombine Gemi",
+  writeRoles: ["admin", "purchasing"],
+  orderBy: { column: "created_at", ascending: false },
+  searchFields: ["name", "vessel"],
+  filterFields: ["status"],
+  listFields: ["name", "vessel", "eta", "status"],
+  fields: [
+    { name: "name", label: "Kombine Gemi Adı", type: "text", required: true },
+    { name: "vessel", label: "Gemi Adı", type: "text" },
+    { name: "eta", label: "ETA (Tahmini Varış)", type: "date" },
+    { name: "status", label: "Durum", type: "select", options: CONTRACT_STATUS_OPTIONS, required: true },
+    { name: "surveyor_id", label: "Gözetim Şirketi", type: "reference", ref: { table: "companies", labelField: "name", filter: { type: ["surveyor"] } } },
+    { name: "port_id", label: "Liman", type: "reference", ref: { table: "companies", labelField: "name", filter: { type: ["port"] } } },
+    { name: "carrier_id", label: "Nakliyeci", type: "reference", ref: { table: "companies", labelField: "name", filter: { type: ["carrier"] } } },
     { name: "notes", label: "Notlar", type: "textarea" },
   ],
 };
