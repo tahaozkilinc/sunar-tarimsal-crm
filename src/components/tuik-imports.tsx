@@ -106,6 +106,11 @@ export function TuikImportsPage({ role }: { role: Role }) {
   const [saveErr, setSaveErr] = useState<string | null>(null);
   const [saveFlash, setSaveFlash] = useState(false);
 
+  // Otomatik çekme (BM Comtrade → tuik_monthly_imports)
+  const [syncing, setSyncing] = useState(false);
+  const [syncMsg, setSyncMsg] = useState<string | null>(null);
+  const [syncErr, setSyncErr] = useState<string | null>(null);
+
   // hs_code'u dolu ürünler — sayfanın karşılaştırabildiği ürün listesi
   useEffect(() => {
     (async () => {
@@ -242,6 +247,82 @@ export function TuikImportsPage({ role }: { role: Role }) {
     setSaving(false);
     setSaveFlash(true);
     setTimeout(() => setSaveFlash(false), 1800);
+  };
+
+  // Verilen GTİP/yıl için dış kaynaktan çekip DB'ye yazar (sunucu route'u).
+  const syncOne = async (hs: string, yr: number) => {
+    const res = await fetch("/api/imports/sync", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ hs_code: hs, year: yr, provider: "comtrade" }),
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(json?.error || `Hata (${res.status})`);
+    return json as { count: number; meta?: { granularity?: string } };
+  };
+
+  // Seçili ürünün verisini çek, ekranı tazele.
+  const syncCurrent = async () => {
+    if (!window.confirm(
+      `${productName} · ${year}\n\nBM Comtrade'den Türkiye ithalatı çekilecek ve bu yılın verisi ÜZERİNE YAZILACAK.\n\n` +
+      `Not: Comtrade 6 haneli GTİP (${hsCode.slice(0, 6)}) düzeyinde veri verir — 12 haneli koddan biraz farklı (üst küme) olabilir. ` +
+      `Birebir TÜİK rakamı için elle giriş kullanın.\n\nDevam edilsin mi?`,
+    )) return;
+    setSyncing(true); setSyncErr(null); setSyncMsg(null);
+    try {
+      const r = await syncOne(hsCode, year);
+      const { data } = await supabase
+        .from("tuik_monthly_imports")
+        .select("id,hs_code,year,month,quantity_ton")
+        .eq("hs_code", hsCode)
+        .eq("year", year);
+      const rows = (data as TuikRow[] | null) || [];
+      setTuikRows(rows);
+      const vals: string[] = Array(12).fill("");
+      rows.forEach((row) => { vals[row.month - 1] = String(row.quantity_ton); });
+      setEditVals(vals);
+      setSyncMsg(`✓ ${r.count} ay güncellendi (${r.meta?.granularity ?? "hs6"}).`);
+      setTimeout(() => setSyncMsg(null), 6000);
+    } catch (e) {
+      setSyncErr((e as Error).message);
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  // Tüm GTİP'li ürünleri tek seferde çek (yıl bazında toplu doldurma).
+  const syncAll = async () => {
+    if (!window.confirm(
+      `${products.length} ürünün ${year} yılı ithalatı BM Comtrade'den çekilecek ve üzerine yazılacak. Devam edilsin mi?`,
+    )) return;
+    setSyncing(true); setSyncErr(null); setSyncMsg(null);
+    const ok: string[] = [];
+    const fail: string[] = [];
+    for (const p of products) {
+      try {
+        const r = await syncOne(p.hs_code!, year);
+        ok.push(`${p.name} (${r.count} ay)`);
+      } catch (e) {
+        fail.push(`${p.name}: ${(e as Error).message}`);
+      }
+    }
+    // Seçili ürünü tazele
+    const { data } = await supabase
+      .from("tuik_monthly_imports")
+      .select("id,hs_code,year,month,quantity_ton")
+      .eq("hs_code", hsCode)
+      .eq("year", year);
+    const rows = (data as TuikRow[] | null) || [];
+    setTuikRows(rows);
+    const vals: string[] = Array(12).fill("");
+    rows.forEach((row) => { vals[row.month - 1] = String(row.quantity_ton); });
+    setEditVals(vals);
+    setSyncing(false);
+    if (fail.length) setSyncErr(`${fail.length} üründe hata: ${fail.join(" · ")}`);
+    if (ok.length) {
+      setSyncMsg(`✓ ${ok.length}/${products.length} ürün güncellendi.`);
+      setTimeout(() => setSyncMsg(null), 8000);
+    }
   };
 
   if (loading) return <div className="flex justify-center py-16"><Spinner /></div>;
@@ -528,18 +609,44 @@ export function TuikImportsPage({ role }: { role: Role }) {
         </div>
       </Card>
 
-      {/* TÜİK veri girişi — admin + satın alma */}
+      {/* TÜİK veri yönetimi — admin + satın alma */}
       {canEdit && (
         <Card className="p-4">
-          <button
-            onClick={() => setEditOpen((o) => !o)}
-            className="flex w-full items-center justify-between text-left"
-          >
-            <span className="text-sm font-semibold">TÜİK Verisi Gir — {productName}, {year}</span>
-            <span className="text-xs text-brand">{editOpen ? "Kapat" : "Aç"}</span>
-          </button>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="text-sm font-semibold">İthalat Verisi — {productName}, {year}</span>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button variant="secondary" size="sm" onClick={syncCurrent} disabled={syncing}>
+                {syncing ? "Çekiliyor..." : "Comtrade'den Çek"}
+              </Button>
+              <Button variant="secondary" size="sm" onClick={syncAll} disabled={syncing}>
+                Tüm GTİP&apos;leri Çek
+              </Button>
+              <Button variant="ghost" size="sm" onClick={() => setEditOpen((o) => !o)}>
+                {editOpen ? "Elle Girişi Kapat" : "Elle Gir"}
+              </Button>
+            </div>
+          </div>
+
+          {(syncMsg || syncErr) && (
+            <div
+              className={`mt-2 rounded-lg border px-3 py-2 text-xs ${
+                syncErr
+                  ? "border-red-200 bg-red-50 text-red-700"
+                  : "border-emerald-200 bg-emerald-50 text-emerald-700"
+              }`}
+            >
+              {syncErr || syncMsg}
+            </div>
+          )}
+
+          <p className="mt-2 text-[11px] text-gray-400">
+            Otomatik çekme, BM Comtrade&apos;den Türkiye&apos;nin 6 haneli GTİP ({hsCode.slice(0, 6)})
+            ithalatını alır (net ağırlık → ton) ve bu yılın verisinin üzerine yazar. 12 haneli GTİP&apos;in
+            birebir TÜİK rakamı için aşağıdan elle giriş yapın.
+          </p>
+
           {editOpen && (
-            <div className="mt-3 space-y-3">
+            <div className="mt-3 space-y-3 border-t border-border pt-3">
               <p className="text-xs text-gray-500">
                 bi.tuik.gov.tr → Dış Ticaret → GTİP {hsCode} sorgusundaki aylık <b>miktar</b> değerlerini
                 <b> ton</b> cinsinden girin (TÜİK kg gösteriyorsa 1.000&apos;e bölün). Binlik ayraçlı
