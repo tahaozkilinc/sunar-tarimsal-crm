@@ -1,24 +1,24 @@
 # =============================================================================
-# Supabase migration'larını OTOMATİK ve YALNIZCA BU PROJEYE uygula.
+# Supabase migration'larını GÜVENLİ ve YALNIZCA BU PROJEYE uygula.
 #
-# main dalına, supabase/migrations/ altında değişiklik içeren her push'ta
-# çalışır ve yeni migration'ları SADECE aşağıdaki bağlantı dizesinin işaret
-# ettiği veritabanına gönderir.
+# İki aşama:
+#   1) plan  -> "önizleme": ne uygulanacağını GÖSTERİR, hiçbir şeyi DEĞİŞTİRMEZ.
+#   2) apply -> gerçek uygulama. 'production' ortamına bağlı; bu ortama zorunlu
+#              onaylayıcı tanımlarsan, sen "Approve" demeden ÇALIŞMAZ.
 #
 # GÜVENLİK — neden hesap token'ı DEĞİL, bağlantı dizesi:
-#   Supabase access token'ı HESAP düzeyindedir; o hesaptaki TÜM projelere
-#   (birden fazla DB'ye) erişir. Bunun yerine tek bir projenin bağlantı dizesini
-#   kullanıyoruz; bu dize fiziksel olarak yalnızca O veritabanını işaret eder,
-#   başka bir DB'ye ulaşması imkânsızdır. Böylece "diğer DB'yi bozma" riski yok.
+#   Supabase access token'ı HESAP düzeyindedir (tüm projelere erişir). Bunun
+#   yerine tek bir projenin bağlantı dizesini kullanıyoruz; fiziksel olarak
+#   yalnızca O veritabanına ulaşır, hesaptaki diğer DB'ye ASLA dokunamaz.
 #
-# GEREKLİ tek GitHub Secret (repo → Settings → Secrets and variables → Actions):
+# GEREKLİ tek GitHub Secret (Settings → Secrets and variables → Actions):
 #   SUPABASE_DB_URL
 #     Supabase → proje (fjpvssfqvhkrisarcbhj) → Settings → Database →
-#     "Connection string" → URI. Şu biçimdedir:
-#       postgresql://postgres:[ŞİFRE]@db.fjpvssfqvhkrisarcbhj.supabase.co:5432/postgres
-#     ([ŞİFRE] yerine gerçek DB şifresini koy; tamamını secret olarak yapıştır.)
+#     Connection string → URI. [YOUR-PASSWORD] yerine gerçek DB şifresini koy.
 #
-# NOT: Bu iş yalnızca bu tek DB'ye dokunur; hesaptaki diğer proje etkilenmez.
+# ONAY KAPISI (önerilir):
+#   Settings → Environments → "production" oluştur → Required reviewers →
+#   kendini ekle. Böylece "apply" adımı, önizlemeyi görüp onaylayana dek bekler.
 # =============================================================================
 name: Supabase Migrations
 
@@ -27,18 +27,32 @@ on:
     branches: [main]
     paths:
       - "supabase/migrations/**"
-  workflow_dispatch: {} # gerekirse elle de tetiklenebilir
+  workflow_dispatch: {}
 
 jobs:
-  deploy:
+  # 1) ÖNİZLEME — sadece ne yapılacağını yazar, veritabanını DEĞİŞTİRMEZ.
+  plan:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - uses: supabase/setup-cli@v1
         with:
           version: latest
+      - name: Önizleme (hiçbir şey değiştirmez)
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: supabase db push --dry-run --db-url "$SUPABASE_DB_URL"
 
+  # 2) UYGULA — 'production' ortamına bağlı (onay gerektirebilir).
+  apply:
+    needs: plan
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
       - name: Migration'ları uygula (yalnızca bu projeye)
         env:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
