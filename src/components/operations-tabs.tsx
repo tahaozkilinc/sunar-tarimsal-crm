@@ -12,8 +12,8 @@ import type { Role } from "@/lib/types";
 export function OperationsTabs({ role }: { role: Role }) {
   const [tab, setTab] = useState("arrivals");
 
-  // Nakliyeci yalnızca atandığı gemilerde tonaj girer: sadece "Bekleyen Gelişler".
-  if (baseRole(role) === "nakliyeci") {
+  // Nakliyeci / Gözetim yalnızca atandığı gemilerde tonaj girer: sadece "Bekleyen Gelişler".
+  if (baseRole(role) === "nakliyeci" || baseRole(role) === "gozetim") {
     return (
       <div className="space-y-4">
         <h1 className="text-xl font-bold">Operasyon</h1>

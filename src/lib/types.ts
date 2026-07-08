@@ -9,6 +9,7 @@ export type Role =
   | "maliyet"
   | "viewer"
   | "nakliyeci"
+  | "gozetim"
   | "purchasing_view"
   | "operations_view"
   | "sales_view"
@@ -21,7 +22,7 @@ export interface Profile {
   role: Role;
   phone: string | null;
   is_active: boolean;
-  company_id: string | null; // nakliyeci -> bağlı olduğu 'carrier' firma
+  company_id: string | null; // nakliyeci/gozetim -> bağlı olduğu 'carrier'/'surveyor' firma
   created_at: string;
 }
 
@@ -54,6 +55,7 @@ export interface Product {
   code: string | null;
   category: string | null;
   unit: string;
+  hs_code: string | null; // GTİP kodu (TUİK karşılaştırması için)
   is_active: boolean;
 }
 
@@ -91,6 +93,7 @@ export interface PurchaseContract {
   surveyor_id: string | null;
   port_id: string | null;
   carrier_id: string | null;
+  combined_shipment_id: string | null;
   created_at: string;
   notes: string | null;
 }

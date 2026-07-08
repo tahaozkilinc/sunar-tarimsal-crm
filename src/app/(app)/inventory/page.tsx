@@ -1,7 +1,7 @@
 import { requireAccess } from "@/lib/auth";
-import { InventoryView } from "@/components/inventory-view";
+import { InventoryTabs } from "@/components/inventory-tabs";
 
 export default async function InventoryPage() {
-  await requireAccess("/inventory");
-  return <InventoryView />;
+  const profile = await requireAccess("/inventory");
+  return <InventoryTabs role={profile.role} />;
 }

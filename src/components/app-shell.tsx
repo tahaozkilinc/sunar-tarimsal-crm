@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 import { navForRole, ROLE_LABELS, type NavItem } from "@/lib/nav";
 import type { Profile } from "@/lib/types";
 import {
+  BarChart3,
   Boxes,
   Calculator,
   LayoutDashboard,
@@ -22,6 +23,7 @@ import {
   X,
 } from "lucide-react";
 const ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
+  BarChart3,
   LayoutDashboard,
   Users,
   Truck,

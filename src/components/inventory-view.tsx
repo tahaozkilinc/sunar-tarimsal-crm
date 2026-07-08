@@ -17,7 +17,7 @@ type InventoryRow = {
   available_qty: number;
 };
 
-export function InventoryView() {
+export function InventoryView({ hideTitle = false }: { hideTitle?: boolean }) {
   const supabase = useMemo(() => createClient(), []);
   const [rows, setRows] = useState<InventoryRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -48,8 +48,8 @@ export function InventoryView() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-xl font-bold">Stok Durumu</h1>
+      <div className={`flex flex-wrap items-center gap-3 ${hideTitle ? "justify-end" : "justify-between"}`}>
+        {!hideTitle && <h1 className="text-xl font-bold">Stok Durumu</h1>}
         <div className="relative">
           <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
           <Input

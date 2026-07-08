@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { Badge, Button, Card, EmptyState, Field, Input, Select, Spinner } from "./ui";
@@ -23,9 +23,11 @@ type Contract = {
   surveyor_id: string | null;
   port_id: string | null;
   carrier_id: string | null;
+  combined_shipment_id: string | null;
 };
 type Movement = {
   id: string;
+  contract_id: string;
   warehouse_id: string | null;
   quantity: number | null;
   vehicle_plate: string | null;
@@ -80,8 +82,13 @@ export function ShipOpsPage({
   const [products, setProducts]   = useState<Ref[]>([]);
   const [companies, setCompanies] = useState<CompanyRef[]>([]);
   const [creatorNames, setCreatorNames] = useState<Record<string, string>>({});
-  const [canWrite, setCanWrite]   = useState(false); // araç tonajı + irsaliye (admin/operations/nakliyeci)
+  const [canWrite, setCanWrite]   = useState(false); // araç tonajı + irsaliye (admin/operations/nakliyeci/gozetim)
   const [canManage, setCanManage] = useState(false); // taraf atama, gemiyi bitir, numune galerisi (admin/operations)
+  // Kombine gemi desteği
+  const siblingIdsRef = useRef<string[]>([]);
+  const [siblings, setSiblings]   = useState<Contract[]>([]);
+  const [combinedName, setCombinedName] = useState<string | null>(null);
+  const [selectedContractId, setSelectedContractId] = useState(contractId);
   const [loading, setLoading]     = useState(true);
   const [error, setError]         = useState<string | null>(null);
 
@@ -132,10 +139,11 @@ export function ShipOpsPage({
   );
 
   const loadMovements = useCallback(async () => {
+    const ids = [contractId, ...siblingIdsRef.current];
     const { data } = await supabase
       .from("stock_movements")
-      .select("id,warehouse_id,quantity,vehicle_plate,driver_name,movement_date,created_at,created_by")
-      .eq("contract_id", contractId)
+      .select("id,contract_id,warehouse_id,quantity,vehicle_plate,driver_name,movement_date,created_at,created_by")
+      .in("contract_id", ids)
       .eq("movement_type", "inbound")
       .order("created_at", { ascending: true });
     const rows = (data as Movement[]) || [];
@@ -148,7 +156,7 @@ export function ShipOpsPage({
       const [c, w, p, co, pn, { data: au }] = await Promise.all([
         supabase
           .from("purchase_contracts")
-          .select("id,contract_no,vessel,product_id,supplier_id,quantity,unit,eta,status,surveyor_id,port_id,carrier_id")
+          .select("id,contract_no,vessel,product_id,supplier_id,quantity,unit,eta,status,surveyor_id,port_id,carrier_id,combined_shipment_id")
           .eq("id", contractId)
           .maybeSingle(),
         supabase.from("warehouses").select("id,name").eq("is_active", true).order("name"),
@@ -158,11 +166,11 @@ export function ShipOpsPage({
         supabase.auth.getUser(),
       ]);
       if (c.error) { setError(c.error.message); setLoading(false); return; }
-      setContract((c.data as Contract | null) ?? null);
+      const cd = c.data as Contract | null;
+      setContract(cd ?? null);
       setWarehouses((w.data as Ref[]) || []);
       setProducts((p.data as Ref[]) || []);
       setCompanies((co.data as CompanyRef[]) || []);
-      const cd = c.data as Contract | null;
       setSurveyorId(cd?.surveyor_id ?? "");
       setPortId(cd?.port_id ?? "");
       setCarrierId(cd?.carrier_id ?? "");
@@ -176,7 +184,26 @@ export function ShipOpsPage({
           .from("profiles").select("role").eq("id", au.user.id).maybeSingle();
         const r = (prof as { role?: string } | null)?.role || "";
         setCanManage(r === "admin" || r === "operations");
-        setCanWrite(r === "admin" || r === "operations" || r === "nakliyeci");
+        setCanWrite(r === "admin" || r === "operations" || r === "nakliyeci" || r === "gozetim");
+      }
+      // Kombine gemi: diğer sözleşmeleri yükle
+      if (cd?.combined_shipment_id) {
+        const [sibRes, csRes] = await Promise.all([
+          supabase
+            .from("purchase_contracts")
+            .select("id,contract_no,vessel,product_id,supplier_id,quantity,unit,eta,status,surveyor_id,port_id,carrier_id,combined_shipment_id")
+            .eq("combined_shipment_id", cd.combined_shipment_id)
+            .neq("id", contractId),
+          supabase.from("combined_shipments").select("name").eq("id", cd.combined_shipment_id).maybeSingle(),
+        ]);
+        const sibs = (sibRes.data as Contract[] | null) || [];
+        siblingIdsRef.current = sibs.map((s) => s.id);
+        setSiblings(sibs);
+        setCombinedName((csRes.data as { name: string } | null)?.name ?? null);
+      } else {
+        siblingIdsRef.current = [];
+        setSiblings([]);
+        setCombinedName(null);
       }
       await loadMovements();
       setLoading(false);
@@ -200,9 +227,30 @@ export function ShipOpsPage({
     () => movements.reduce((a, m) => a + (Number(m.quantity) || 0), 0),
     [movements],
   );
-  const contracted = Number(contract?.quantity) || 0;
+  const isCombined = !!(contract?.combined_shipment_id && siblings.length > 0);
+  const allContracts = useMemo(
+    () => (contract ? [contract, ...siblings] : siblings),
+    [contract, siblings],
+  );
+  const contracted = isCombined
+    ? allContracts.reduce((a, c) => a + (Number(c.quantity) || 0), 0)
+    : Number(contract?.quantity) || 0;
   const remaining  = contracted - totalDrawn;
   const unit       = contract?.unit || "ton";
+
+  // Per-contract breakdown for kombine view
+  const perContractStats = useMemo(() => {
+    if (!isCombined) return new Map<string, { contracted: number; drawn: number; unit: string }>();
+    const map = new Map<string, { contracted: number; drawn: number; unit: string }>();
+    allContracts.forEach((c) => {
+      map.set(c.id, { contracted: Number(c.quantity) || 0, drawn: 0, unit: c.unit || "ton" });
+    });
+    movements.forEach((m) => {
+      const s = map.get(m.contract_id);
+      if (s) s.drawn += Number(m.quantity) || 0;
+    });
+    return map;
+  }, [isCombined, allContracts, movements]);
 
   const byWarehouse = useMemo(() => {
     const map = new Map<string, number>();
@@ -242,21 +290,30 @@ export function ShipOpsPage({
     }
     setSaving(true);
     setFormErr(null);
+    const isCombined = !!(contract.combined_shipment_id && siblings.length > 0);
+    const targetId = isCombined ? selectedContractId : contract.id;
+    const targetContract = isCombined
+      ? ([contract, ...siblings].find((c) => c.id === targetId) ?? contract)
+      : contract;
     const { error: err } = await supabase.from("stock_movements").insert({
-      contract_id:    contract.id,
-      product_id:     contract.product_id,
+      contract_id:    targetId,
+      product_id:     targetContract.product_id,
       warehouse_id:   wh,
       movement_type:  "inbound",
       quantity:       q,
-      unit,
+      unit:           targetContract.unit || unit,
       vehicle_plate:  plate.trim() || null,
       driver_name:    driver.trim() || null,
       movement_date:  date,
     });
     if (err) { setSaving(false); setFormErr(err.message); return; }
-    if (contract.status !== "arrived" && contract.status !== "completed") {
-      await supabase.from("purchase_contracts").update({ status: "arrived" }).eq("id", contract.id);
-      setContract(prev => prev ? { ...prev, status: "arrived" } : prev);
+    if (targetContract.status !== "arrived" && targetContract.status !== "completed") {
+      await supabase.from("purchase_contracts").update({ status: "arrived" }).eq("id", targetId);
+      if (targetId === contract.id) {
+        setContract(prev => prev ? { ...prev, status: "arrived" } : prev);
+      } else {
+        setSiblings(prev => prev.map((s) => s.id === targetId ? { ...s, status: "arrived" } : s));
+      }
     }
     const msg = `${formatNumber(q)} ${unit} eklendi`;
     setFlash(msg);
@@ -289,30 +346,47 @@ export function ShipOpsPage({
 
   const finishShip = async () => {
     if (!contract) return;
+    const isCombined = !!(contract.combined_shipment_id && siblings.length > 0);
     if (remaining > 0 && !window.confirm(
       `${formatNumber(remaining)} ${unit} hâlâ boşaltılmadı. Gemiyi tamamlandı olarak işaretlemek istiyor musunuz?`
     )) return;
-    await supabase.from("purchase_contracts").update({ status: "completed" }).eq("id", contract.id);
-    setContract(prev => prev ? { ...prev, status: "completed" } : prev);
+    if (isCombined) {
+      const allIds = [contract.id, ...siblings.map((s) => s.id)];
+      await supabase.from("purchase_contracts").update({ status: "completed" }).in("id", allIds);
+      setContract(prev => prev ? { ...prev, status: "completed" } : prev);
+      setSiblings(prev => prev.map((s) => ({ ...s, status: "completed" })));
+    } else {
+      await supabase.from("purchase_contracts").update({ status: "completed" }).eq("id", contract.id);
+      setContract(prev => prev ? { ...prev, status: "completed" } : prev);
+    }
   };
 
   const saveParties = async () => {
     if (!contract) return;
     setAssignSaving(true);
     setAssignErr(null);
-    const { error: err } = await supabase.rpc("assign_ship_parties", {
-      p_contract_id: contract.id,
-      p_surveyor_id: surveyorId || null,
-      p_port_id:     portId || null,
-      p_carrier_id:  carrierId || null,
-    });
-    if (err) { setAssignSaving(false); setAssignErr(err.message); return; }
-    setContract(prev => prev ? {
-      ...prev,
+    const isCombined = !!(contract.combined_shipment_id && siblings.length > 0);
+    const rpcResult = isCombined
+      ? await supabase.rpc("assign_combined_ship_parties", {
+          p_combined_id: contract.combined_shipment_id!,
+          p_surveyor_id: surveyorId || null,
+          p_port_id:     portId || null,
+          p_carrier_id:  carrierId || null,
+        })
+      : await supabase.rpc("assign_ship_parties", {
+          p_contract_id: contract.id,
+          p_surveyor_id: surveyorId || null,
+          p_port_id:     portId || null,
+          p_carrier_id:  carrierId || null,
+        });
+    if (rpcResult.error) { setAssignSaving(false); setAssignErr(rpcResult.error.message); return; }
+    const parties = {
       surveyor_id: surveyorId || null,
       port_id:     portId || null,
       carrier_id:  carrierId || null,
-    } : prev);
+    };
+    setContract(prev => prev ? { ...prev, ...parties } : prev);
+    if (isCombined) setSiblings(prev => prev.map((s) => ({ ...s, ...parties })));
     setAssignSaving(false);
     setAssignFlash("Atamalar kaydedildi");
     setTimeout(() => setAssignFlash(null), 1800);
@@ -320,16 +394,16 @@ export function ShipOpsPage({
 
   const exportCsv = () => {
     if (!contract) return;
-    const headers = ["Sıra", "Tarih", "Saat Girişi", "Plaka", "Şoför", "Depo / Fabrika", `Miktar (${unit})`];
-    const body = movements.map((m, i) => [
-      i + 1,
-      formatDate(m.movement_date),
-      timeFmt(m.created_at),
-      m.vehicle_plate || "",
-      m.driver_name || "",
-      wName(m.warehouse_id),
-      Number(m.quantity) || 0,
-    ]);
+    const headers = isCombined
+      ? ["Sıra", "Bağlantı", "Tarih", "Saat Girişi", "Plaka", "Şoför", "Depo / Fabrika", `Miktar (${unit})`]
+      : ["Sıra", "Tarih", "Saat Girişi", "Plaka", "Şoför", "Depo / Fabrika", `Miktar (${unit})`];
+    const body = movements.map((m, i) => {
+      const cInfo = isCombined ? (allContracts.find((c) => c.id === m.contract_id)) : null;
+      const cLabel = cInfo ? `${pName(cInfo.product_id)} (${cInfo.contract_no || "—"})` : "";
+      return isCombined
+        ? [i + 1, cLabel, formatDate(m.movement_date), timeFmt(m.created_at), m.vehicle_plate || "", m.driver_name || "", wName(m.warehouse_id), Number(m.quantity) || 0]
+        : [i + 1, formatDate(m.movement_date), timeFmt(m.created_at), m.vehicle_plate || "", m.driver_name || "", wName(m.warehouse_id), Number(m.quantity) || 0];
+    });
     const depotRows = byWarehouse.map(bw => ["", "", "", "", "", bw.name + " (toplam)", bw.qty]);
     const csv = [headers, ...body, [], ["", "", "", "", "", "TOPLAM", totalDrawn], ...depotRows]
       .map(row => row.map(c => `"${String(c ?? "").replace(/"/g, '""')}"`).join(";"))
@@ -400,15 +474,35 @@ export function ShipOpsPage({
 
       {/* ── Gemi bilgisi ── */}
       <div className="rounded-xl border border-border bg-white p-4">
+        {isCombined && (
+          <div className="mb-2 flex items-center gap-2">
+            <Badge color="blue">Kombine Gemi</Badge>
+            {combinedName && <span className="text-sm font-semibold text-gray-700">{combinedName}</span>}
+            <span className="text-xs text-gray-400">({allContracts.length} bağlantı)</span>
+          </div>
+        )}
         <div className="flex flex-wrap items-start justify-between gap-2">
           <div>
-            <h1 className="text-xl font-bold">{title}</h1>
-            <div className="mt-0.5 text-sm text-gray-500">
-              {pName(contract.product_id)}
-              {contract.contract_no && ` · Söz. ${contract.contract_no}`}
-              {contract.supplier_id && ` · ${cName(contract.supplier_id)}`}
-              {contract.eta && ` · ETA ${formatDate(contract.eta)}`}
-            </div>
+            <h1 className="text-xl font-bold">{isCombined ? (combinedName || title) : title}</h1>
+            {isCombined ? (
+              <div className="mt-1 space-y-0.5">
+                {allContracts.map((c) => (
+                  <div key={c.id} className="text-sm text-gray-500">
+                    {pName(c.product_id)}
+                    {c.contract_no && ` · ${c.contract_no}`}
+                    {c.supplier_id && ` · ${cName(c.supplier_id)}`}
+                    {` · ${formatNumber(c.quantity)} ${c.unit || unit}`}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="mt-0.5 text-sm text-gray-500">
+                {pName(contract.product_id)}
+                {contract.contract_no && ` · Söz. ${contract.contract_no}`}
+                {contract.supplier_id && ` · ${cName(contract.supplier_id)}`}
+                {contract.eta && ` · ETA ${formatDate(contract.eta)}`}
+              </div>
+            )}
           </div>
           {statusOpt && <Badge color={statusOpt.color}>{statusOpt.label}</Badge>}
         </div>
@@ -417,7 +511,10 @@ export function ShipOpsPage({
       {/* ── Gözetim / Liman / Nakliyeci (yalnızca admin/operasyon atar) ── */}
       {canManage && (
       <Card className="p-4 print:hidden">
-        <div className="mb-3 text-sm font-semibold">Operasyon Tarafları</div>
+        <div className="mb-3 flex items-center justify-between">
+          <span className="text-sm font-semibold">Operasyon Tarafları</span>
+          {isCombined && <span className="text-xs text-gray-400">Kombine gemideki tüm bağlantılara uygulanır</span>}
+        </div>
         <div className="grid gap-3 sm:grid-cols-3">
           <Field label="Gözetim Şirketi">
             {canWrite && contract.status !== "completed" ? (
@@ -534,6 +631,43 @@ export function ShipOpsPage({
         </Card>
       </div>
 
+      {/* ── Kombine: bağlantı bazlı döküm ── */}
+      {isCombined && (
+        <div className="overflow-x-auto rounded-xl border border-border bg-white print:hidden">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border bg-gray-50 text-left text-xs uppercase text-gray-500">
+                <th className="px-3 py-2 font-medium">Bağlantı / Ürün</th>
+                <th className="px-3 py-2 font-medium">Tedarikçi</th>
+                <th className="px-3 py-2 text-right font-medium">Sözleşme</th>
+                <th className="px-3 py-2 text-right font-medium">Çekilen</th>
+                <th className="px-3 py-2 text-right font-medium">Kalan</th>
+              </tr>
+            </thead>
+            <tbody>
+              {allContracts.map((c) => {
+                const s = perContractStats.get(c.id);
+                const rem = (s?.contracted ?? 0) - (s?.drawn ?? 0);
+                return (
+                  <tr key={c.id} className="border-b border-border last:border-0">
+                    <td className="px-3 py-2">
+                      <div className="font-medium">{pName(c.product_id)}</div>
+                      <div className="text-xs text-gray-400">{c.contract_no || "—"}</div>
+                    </td>
+                    <td className="px-3 py-2 text-gray-600 text-xs">{cName(c.supplier_id)}</td>
+                    <td className="px-3 py-2 text-right">{formatNumber(s?.contracted)} {s?.unit}</td>
+                    <td className="px-3 py-2 text-right text-brand">{formatNumber(s?.drawn)}</td>
+                    <td className={`px-3 py-2 text-right font-semibold ${rem < 0 ? "text-red-600" : rem === 0 && (s?.drawn ?? 0) > 0 ? "text-emerald-600" : "text-amber-600"}`}>
+                      {rem < 0 ? `+${formatNumber(-rem)}` : formatNumber(rem)}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
       {/* ── Depo bazlı dağılım ── */}
       {byWarehouse.length > 0 && (
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
@@ -564,6 +698,7 @@ export function ShipOpsPage({
                   <tr className="border-b border-border bg-gray-50 text-left text-xs uppercase text-gray-500">
                     <th className="px-3 py-2.5 font-medium">#</th>
                     <th className="px-3 py-2.5 font-medium">Tarih / Saat</th>
+                    {isCombined && <th className="px-3 py-2.5 font-medium">Bağlantı</th>}
                     <th className="px-3 py-2.5 font-medium">Plaka</th>
                     <th className="px-3 py-2.5 font-medium">Şoför</th>
                     <th className="px-3 py-2.5 font-medium">Depo / Fabrika</th>
@@ -584,6 +719,11 @@ export function ShipOpsPage({
                             <div>{formatDate(m.movement_date)}</div>
                             <div className="text-gray-400">{timeFmt(m.created_at)}</div>
                           </td>
+                          {isCombined && (
+                            <td className="px-3 py-2 text-xs text-gray-600">
+                              {pName(allContracts.find((c) => c.id === m.contract_id)?.product_id ?? null)}
+                            </td>
+                          )}
                           <td className="px-3 py-2 font-medium tracking-wider">
                             {m.vehicle_plate || <span className="text-gray-400">—</span>}
                           </td>
@@ -619,7 +759,7 @@ export function ShipOpsPage({
                         </tr>
                         {open && (
                           <tr className="border-b border-border bg-gray-50/60 print:hidden">
-                            <td colSpan={8} className="px-3 py-3">
+                            <td colSpan={isCombined ? 9 : 8} className="px-3 py-3">
                               <MovementPhotos
                                 movementId={m.id}
                                 photos={photosByMovement[m.id]}
@@ -635,7 +775,7 @@ export function ShipOpsPage({
                 </tbody>
                 <tfoot>
                   <tr className="border-t-2 border-border">
-                    <td colSpan={6} className="px-3 py-2 text-xs font-semibold text-gray-600">TOPLAM</td>
+                    <td colSpan={isCombined ? 7 : 6} className="px-3 py-2 text-xs font-semibold text-gray-600">TOPLAM</td>
                     <td className="px-3 py-2 text-right font-bold">
                       {formatNumber(totalDrawn)} <span className="text-xs font-normal text-gray-400">{unit}</span>
                     </td>
@@ -726,6 +866,18 @@ export function ShipOpsPage({
                   </div>
                 ) : (
                   <Card className="space-y-3 p-4">
+                    {isCombined && (
+                      <Field label="Bağlantı / Ürün" required>
+                        <Select value={selectedContractId} onChange={e => setSelectedContractId(e.target.value)}>
+                          {allContracts.map((c) => (
+                            <option key={c.id} value={c.id}>
+                              {pName(c.product_id)}{c.contract_no ? ` — ${c.contract_no}` : ""}
+                              {c.supplier_id ? ` (${cName(c.supplier_id)})` : ""}
+                            </option>
+                          ))}
+                        </Select>
+                      </Field>
+                    )}
                     <Field label="Araç Plakası">
                       <Input
                         id="ship-ops-plate"
