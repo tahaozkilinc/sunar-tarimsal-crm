@@ -1,16 +1,24 @@
 # =============================================================================
-# Supabase migration'larını OTOMATİK uygula.
+# Supabase migration'larını OTOMATİK ve YALNIZCA BU PROJEYE uygula.
 #
 # main dalına, supabase/migrations/ altında değişiklik içeren her push'ta
-# çalışır ve yeni migration'ları Supabase veritabanına gönderir (supabase db push).
-# Böylece SQL'i elle çalıştırmana gerek kalmaz.
+# çalışır ve yeni migration'ları SADECE aşağıdaki bağlantı dizesinin işaret
+# ettiği veritabanına gönderir.
 #
-# GEREKLİ GitHub Secrets (repo → Settings → Secrets and variables → Actions):
-#   SUPABASE_ACCESS_TOKEN  -> https://supabase.com/dashboard/account/tokens
-#   SUPABASE_DB_PASSWORD   -> Supabase proje → Settings → Database → şifre
+# GÜVENLİK — neden hesap token'ı DEĞİL, bağlantı dizesi:
+#   Supabase access token'ı HESAP düzeyindedir; o hesaptaki TÜM projelere
+#   (birden fazla DB'ye) erişir. Bunun yerine tek bir projenin bağlantı dizesini
+#   kullanıyoruz; bu dize fiziksel olarak yalnızca O veritabanını işaret eder,
+#   başka bir DB'ye ulaşması imkânsızdır. Böylece "diğer DB'yi bozma" riski yok.
 #
-# Proje referansı (project ref), veritabanı URL'inin alt alan adıdır:
-#   https://fjpvssfqvhkrisarcbhj.supabase.co  ->  fjpvssfqvhkrisarcbhj
+# GEREKLİ tek GitHub Secret (repo → Settings → Secrets and variables → Actions):
+#   SUPABASE_DB_URL
+#     Supabase → proje (fjpvssfqvhkrisarcbhj) → Settings → Database →
+#     "Connection string" → URI. Şu biçimdedir:
+#       postgresql://postgres:[ŞİFRE]@db.fjpvssfqvhkrisarcbhj.supabase.co:5432/postgres
+#     ([ŞİFRE] yerine gerçek DB şifresini koy; tamamını secret olarak yapıştır.)
+#
+# NOT: Bu iş yalnızca bu tek DB'ye dokunur; hesaptaki diğer proje etkilenmez.
 # =============================================================================
 name: Supabase Migrations
 
@@ -24,10 +32,6 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    env:
-      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
-      PROJECT_REF: fjpvssfqvhkrisarcbhj
     steps:
       - uses: actions/checkout@v4
 
@@ -35,8 +39,7 @@ jobs:
         with:
           version: latest
 
-      - name: Projeye bağlan
-        run: supabase link --project-ref "$PROJECT_REF"
-
-      - name: Migration'ları uygula
-        run: supabase db push
+      - name: Migration'ları uygula (yalnızca bu projeye)
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: supabase db push --db-url "$SUPABASE_DB_URL"
