@@ -1,0 +1,42 @@
+# =============================================================================
+# Supabase migration'larını OTOMATİK uygula.
+#
+# main dalına, supabase/migrations/ altında değişiklik içeren her push'ta
+# çalışır ve yeni migration'ları Supabase veritabanına gönderir (supabase db push).
+# Böylece SQL'i elle çalıştırmana gerek kalmaz.
+#
+# GEREKLİ GitHub Secrets (repo → Settings → Secrets and variables → Actions):
+#   SUPABASE_ACCESS_TOKEN  -> https://supabase.com/dashboard/account/tokens
+#   SUPABASE_DB_PASSWORD   -> Supabase proje → Settings → Database → şifre
+#
+# Proje referansı (project ref), veritabanı URL'inin alt alan adıdır:
+#   https://fjpvssfqvhkrisarcbhj.supabase.co  ->  fjpvssfqvhkrisarcbhj
+# =============================================================================
+name: Supabase Migrations
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "supabase/migrations/**"
+  workflow_dispatch: {} # gerekirse elle de tetiklenebilir
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      PROJECT_REF: fjpvssfqvhkrisarcbhj
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Projeye bağlan
+        run: supabase link --project-ref "$PROJECT_REF"
+
+      - name: Migration'ları uygula
+        run: supabase db push
