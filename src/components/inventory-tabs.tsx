@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Tabs } from "./ui";
 import { ResourceManager } from "./resource-manager";
 import { InventoryView } from "./inventory-view";
+import { StockMap } from "./stock-map";
 import { stockMovementsResource, warehousesResource } from "@/lib/resources";
 import { baseRole } from "@/lib/nav";
 import type { Role } from "@/lib/types";
@@ -11,12 +12,13 @@ import type { Role } from "@/lib/types";
 export function InventoryTabs({ role }: { role: Role }) {
   const [tab, setTab] = useState("stock");
 
-  // Stok hareketi + depo/fabrika yönetimi yalnızca yönetebilenlere (admin/operasyon)
-  // gösterilir; satış/görüntüleyici sadece stok durumunu görür.
+  // Stok hareketi + depo/fabrika yönetimi yalnızca yönetebilenlere (admin/operasyon).
+  // Stok Durumu ve Harita herkese görünür (görüntüleme).
   const canManage = ["admin", "operations"].includes(baseRole(role));
 
   const tabs = [
     { key: "stock", label: "Stok Durumu" },
+    { key: "map", label: "Harita" },
     ...(canManage
       ? [
           { key: "movements", label: "Stok Hareketleri" },
@@ -28,9 +30,11 @@ export function InventoryTabs({ role }: { role: Role }) {
   return (
     <div className="space-y-4">
       <h1 className="text-xl font-bold">Stok</h1>
-      {canManage && <Tabs value={tab} onChange={setTab} tabs={tabs} />}
+      <Tabs value={tab} onChange={setTab} tabs={tabs} />
 
-      {tab === "stock" && <InventoryView hideTitle={canManage} />}
+      {tab === "stock" && <InventoryView hideTitle />}
+
+      {tab === "map" && <StockMap />}
 
       {tab === "movements" && canManage && (
         <div className="space-y-3">
