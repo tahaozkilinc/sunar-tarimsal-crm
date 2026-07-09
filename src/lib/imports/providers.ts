@@ -135,12 +135,119 @@ async function fetchComtrade(hsCode: string, year: number): Promise<ProviderResu
 }
 
 // TÜİK doğrudan çekme — henüz hazır değil (Qlik protokolü canlı incelenmeli).
-async function fetchTuik(): Promise<ProviderResult> {
-  throw new Error(
-    "TÜİK doğrudan çekme henüz etkin değil: bi.tuik.gov.tr Qlik tabanlı bir uygulamadır ve " +
-      "verisi oturum-bağımlı WebSocket protokolünden gelir; güvenilir bir entegrasyon için canlı " +
-      "inceleme gerekir. Şimdilik 'comtrade' sağlayıcısını kullanın veya değerleri elle girin.",
+// TÜİK yeni veri portalı (veriportali.tuik.gov.tr) SDMX REST API'sinden çeker.
+// Yapılandırma env ile yapılır (endpoint TÜİK'e özgü olduğundan koda gömülmez):
+//   TUIK_API_KEY         : abonelik anahtarı (portaldan)
+//   TUIK_SDMX_TEMPLATE   : tam sorgu URL şablonu; {hs} {start} {end} {year} yer
+//                          tutucularını içerir. Portalın "API / SDMX / Paylaş"
+//                          çıktısındaki URL'de somut GTİP/tarihleri bu yer
+//                          tutucularla değiştirerek elde edilir. Örn:
+//     https://veriportali.tuik.gov.tr/rest/data/TR1,DF_DIS_TICARET,1.0/{hs}.M.M....?startPeriod={start}&endPeriod={end}
+//   TUIK_API_KEY_HEADER  : anahtar başlığı adı (varsayılan Ocp-Apim-Subscription-Key)
+//   TUIK_QTY_DIVISOR     : miktar birimi düzeltmesi (kg dönerse 1000; varsayılan 1)
+//
+// Yanıt SDMX-JSON (2.x) beklenir; observation/series ve zaman boyutundan aylık
+// miktar türetilir. Gerçek yanıt görüldüğünde ölçü/birim seçimi netleştirilebilir.
+async function fetchTuik(hsCode: string, year: number): Promise<ProviderResult> {
+  const key = process.env.TUIK_API_KEY;
+  const template = process.env.TUIK_SDMX_TEMPLATE;
+  const keyHeader = process.env.TUIK_API_KEY_HEADER || "Ocp-Apim-Subscription-Key";
+  const divisor = Number(process.env.TUIK_QTY_DIVISOR || "1") || 1;
+  if (!key || !template) {
+    throw new Error(
+      "TÜİK SDMX yapılandırılmadı. Vercel ortam değişkenlerine TUIK_API_KEY ve " +
+        "TUIK_SDMX_TEMPLATE (sorgu URL şablonu, {hs}/{start}/{end} yer tutuculu) ekleyin.",
+    );
+  }
+  const start = `${year}-01`;
+  const end = `${year}-12`;
+  const url = template
+    .replaceAll("{hs}", encodeURIComponent(hsCode))
+    .replaceAll("{start}", start)
+    .replaceAll("{end}", end)
+    .replaceAll("{year}", String(year));
+
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let json: any;
+  try {
+    const res = await fetch(url, {
+      cache: "no-store",
+      signal: ctrl.signal,
+      headers: {
+        [keyHeader]: key,
+        Accept: "application/vnd.sdmx.data+json, application/json",
+      },
+    });
+    if (!res.ok) throw new Error(`TÜİK SDMX HTTP ${res.status}`);
+    json = await res.json();
+  } catch (e) {
+    if ((e as Error).name === "AbortError") throw new Error("TÜİK SDMX zaman aşımına uğradı.");
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
+
+  const byMonth = parseSdmxMonthly(json, year);
+  const data = Array.from(byMonth.entries())
+    .map(([month, val]) => ({ month, ton: Math.round((val / divisor) * 1000) / 1000 }))
+    .sort((a, b) => a.month - b.month);
+
+  return {
+    data,
+    meta: {
+      provider: "tuik",
+      granularity: "hs12",
+      hsQueried: hsCode,
+      note: `Kaynak: TÜİK SDMX (veriportali.tuik.gov.tr), GTİP ${hsCode} (12 haneli — birebir).`,
+      fetchedFrom: "tuik-sdmx",
+    },
+  };
+}
+
+// SDMX-JSON (2.x) yanıtından zaman boyutunu bulup ay -> değer toplar.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function parseSdmxMonthly(json: any, year: number): Map<number, number> {
+  const byMonth = new Map<number, number>();
+  const ds = json?.data?.dataSets?.[0] ?? json?.dataSets?.[0];
+  const struct = json?.data?.structures?.[0] ?? json?.data?.structure ?? json?.structure;
+  if (!ds || !struct) return byMonth;
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const obsDims: any[] = struct?.dimensions?.observation ?? struct?.dimensions?.series ?? [];
+  const timeIdx = Math.max(
+    0,
+    obsDims.findIndex((d) => /TIME|PERIOD|DONEM|DÖNEM|AY|MONTH/i.test(d?.id || "")),
   );
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const periods: string[] = (obsDims[timeIdx]?.values ?? []).map((v: any) => v?.id ?? v?.name ?? "");
+
+  const monthOf = (periodId: string): number | null => {
+    const m = /(\d{4})[-_]?[MmAa]?(\d{1,2})/.exec(String(periodId));
+    if (!m || Number(m[1]) !== year) return null;
+    const mm = Number(m[2]);
+    return mm >= 1 && mm <= 12 ? mm : null;
+  };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const addObs = (obsKey: string, val: any) => {
+    const idxs = obsKey.split(":").map(Number);
+    const periodId = periods[idxs[timeIdx] ?? idxs[0]] ?? periods[0];
+    const month = monthOf(periodId);
+    if (month === null) return;
+    const num = Array.isArray(val) ? Number(val[0]) : Number(val);
+    if (Number.isFinite(num)) byMonth.set(month, (byMonth.get(month) || 0) + num);
+  };
+
+  if (ds.observations && typeof ds.observations === "object") {
+    for (const [k, v] of Object.entries(ds.observations)) addObs(k, v);
+  } else if (ds.series && typeof ds.series === "object") {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    for (const s of Object.values(ds.series) as any[]) {
+      for (const [k, v] of Object.entries(s?.observations ?? {})) addObs(k, v);
+    }
+  }
+  return byMonth;
 }
 
 export async function fetchMonthlyImports(
@@ -152,7 +259,7 @@ export async function fetchMonthlyImports(
     case "comtrade":
       return fetchComtrade(hsCode, year);
     case "tuik":
-      return fetchTuik();
+      return fetchTuik(hsCode, year);
     default:
       throw new Error(`Bilinmeyen sağlayıcı: ${provider}`);
   }
