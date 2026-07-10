@@ -5,11 +5,12 @@ import "leaflet/dist/leaflet.css";
 import { createClient } from "@/lib/supabase/client";
 import { Badge, Card, EmptyState, Spinner } from "./ui";
 import { formatNumber } from "@/lib/format";
-import { CITY_COORDS, TURKEY_CENTER, geocodeCity } from "@/lib/turkey-cities";
+import { TURKEY_CENTER, geocodeLocation } from "@/lib/turkey-cities";
 
 // Stok haritası: her depo/fabrika konumunda toplam tonaj + ürün kırılımı.
-// Konum, deponun 'city' alanından türetilir (geocodeCity). Şehri eşleşmeyen
-// depolar harita altındaki "konumu belirsiz" listesinde gösterilir.
+// Konum, deponun city+country alanından türetilir (geocodeLocation): TR illeri,
+// yurtdışı liman/şehirler, olmazsa ülke merkezi. Eşleşmeyenler listede kalır.
+// Kapsam filtresi: Tümü / Yurtiçi / Yurtdışı.
 
 type InvRow = {
   warehouse_id: string;
@@ -25,6 +26,7 @@ type WhAgg = {
   name: string;
   type: "warehouse" | "factory" | "foreign";
   city: string | null;
+  country: string | null;
   coords: [number, number] | null;
   total: number;
   products: ProductQty[];
@@ -37,7 +39,8 @@ const FOREIGN = "#ca8a04"; // yurtdışı depo (sarı)
 export function StockMap() {
   const supabase = useMemo(() => createClient(), []);
   const [rows, setRows] = useState<InvRow[]>([]);
-  const [cityByWh, setCityByWh] = useState<Record<string, string | null>>({});
+  const [locByWh, setLocByWh] = useState<Record<string, { city: string | null; country: string | null }>>({});
+  const [scope, setScope] = useState<"all" | "domestic" | "foreign">("all");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [tilesFailed, setTilesFailed] = useState(false);
@@ -52,15 +55,15 @@ export function StockMap() {
         supabase
           .from("inventory")
           .select("warehouse_id,warehouse_name,location_type,product_name,available_qty"),
-        supabase.from("warehouses").select("id,city"),
+        supabase.from("warehouses").select("id,city,country"),
       ]);
       if (inv.error) { setError(inv.error.message); setLoading(false); return; }
       setRows((inv.data as InvRow[]) || []);
-      const cmap: Record<string, string | null> = {};
-      ((wh.data as { id: string; city: string | null }[] | null) || []).forEach((w) => {
-        cmap[w.id] = w.city;
+      const cmap: Record<string, { city: string | null; country: string | null }> = {};
+      ((wh.data as { id: string; city: string | null; country: string | null }[] | null) || []).forEach((w) => {
+        cmap[w.id] = { city: w.city, country: w.country };
       });
-      setCityByWh(cmap);
+      setLocByWh(cmap);
       setLoading(false);
     })();
   }, [supabase]);
@@ -73,13 +76,14 @@ export function StockMap() {
       if (av <= 0) continue;
       let e = map.get(r.warehouse_id);
       if (!e) {
-        const city = cityByWh[r.warehouse_id] ?? null;
+        const loc = locByWh[r.warehouse_id] ?? { city: null, country: null };
         e = {
           id: r.warehouse_id,
           name: r.warehouse_name,
           type: r.location_type,
-          city,
-          coords: geocodeCity(city),
+          city: loc.city,
+          country: loc.country,
+          coords: geocodeLocation(loc.city, loc.country),
           total: 0,
           products: [],
         };
@@ -91,9 +95,16 @@ export function StockMap() {
     const list = Array.from(map.values());
     list.forEach((w) => w.products.sort((a, b) => b.ton - a.ton));
     return list.sort((a, b) => b.total - a.total);
-  }, [rows, cityByWh]);
+  }, [rows, locByWh]);
 
-  const onMap = useMemo(() => warehouses.filter((w) => w.coords), [warehouses]);
+  const scoped = useMemo(
+    () =>
+      warehouses.filter((w) =>
+        scope === "all" ? true : scope === "foreign" ? w.type === "foreign" : w.type !== "foreign",
+      ),
+    [warehouses, scope],
+  );
+  const onMap = useMemo(() => scoped.filter((w) => w.coords), [scoped]);
   const maxTon = useMemo(() => Math.max(1, ...onMap.map((w) => w.total)), [onMap]);
 
   // Leaflet haritasını kur (yalnızca tarayıcıda, dinamik import ile).
@@ -136,7 +147,7 @@ export function StockMap() {
           `<div style="min-width:180px">
              <div style="font-weight:700;margin-bottom:2px">${escapeHtml(w.name)}</div>
              <div style="font-size:11px;color:#6b7280;margin-bottom:6px">
-               ${w.type === "factory" ? "Fabrika" : w.type === "foreign" ? "Yurtdışı Depo" : "Depo"}${w.city ? " · " + escapeHtml(w.city) : ""}
+               ${w.type === "factory" ? "Fabrika" : w.type === "foreign" ? "Yurtdışı Depo" : "Depo"}${[w.city, w.country].filter(Boolean).length ? " · " + escapeHtml([w.city, w.country].filter(Boolean).join(", ")) : ""}
              </div>
              ${list}
              <div style="border-top:1px solid #e5e7eb;margin-top:6px;padding-top:4px;display:flex;justify-content:space-between">
@@ -171,6 +182,18 @@ export function StockMap() {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="inline-flex overflow-hidden rounded-lg border border-border text-xs">
+          {([["all", "Tümü"], ["domestic", "Yurtiçi"], ["foreign", "Yurtdışı"]] as const).map(([k, label]) => (
+            <button
+              key={k}
+              type="button"
+              onClick={() => setScope(k)}
+              className={`px-3 py-1.5 font-medium ${scope === k ? "bg-brand text-white" : "bg-white text-gray-600 hover:bg-gray-50"}`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
         <div className="flex items-center gap-4 text-xs text-gray-600">
           <span className="inline-flex items-center gap-1.5">
             <span className="h-3 w-3 rounded-full border-2 border-white" style={{ background: BRAND }} /> Depo
@@ -185,13 +208,20 @@ export function StockMap() {
         </div>
       </div>
 
-      {onMap.length > 0 ? (
+      {scoped.length === 0 ? (
+        <div className="rounded-lg border border-border bg-gray-50 px-3 py-2 text-sm text-gray-500">
+          {scope === "foreign"
+            ? "Stoklu yurtdışı depo yok. Stok → Depolar / Fabrikalar'dan tür 'Yurtdışı Depo' olan bir depo ekleyin; Operasyon → Yurtdışı Yükleme ile stok girildiğinde burada görünür."
+            : "Bu kapsamda stoklu depo yok."}
+        </div>
+      ) : onMap.length > 0 ? (
         <div className="overflow-hidden rounded-xl border border-border">
           <div ref={mapDivRef} style={{ height: 460, width: "100%" }} />
         </div>
       ) : (
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
-          Hiçbir deponun şehri haritada eşleşmedi. Depolara Yönetim/Stok → Depolar&apos;dan şehir ekleyin.
+          Bu kapsamdaki depoların konumu eşleşmedi. Depolara Stok → Depolar&apos;dan şehir/ülke ekleyin
+          (yurtdışı için liman şehri veya ülke adı yeterli).
         </div>
       )}
 
@@ -207,7 +237,7 @@ export function StockMap() {
           Konum bazında stok
         </div>
         <div className="divide-y divide-border">
-          {warehouses.map((w) => (
+          {scoped.map((w) => (
             <div key={w.id} className="px-4 py-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
@@ -215,8 +245,10 @@ export function StockMap() {
                   <Badge color={w.type === "factory" ? "purple" : w.type === "foreign" ? "yellow" : "blue"}>
                     {w.type === "factory" ? "Fabrika" : w.type === "foreign" ? "Yurtdışı" : "Depo"}
                   </Badge>
-                  {w.city && <span className="text-xs text-gray-500">{w.city}</span>}
-                  {!w.coords && <span className="text-xs text-amber-600">(harita dışı — şehir eşleşmedi)</span>}
+                  {(w.city || w.country) && (
+                    <span className="text-xs text-gray-500">{[w.city, w.country].filter(Boolean).join(", ")}</span>
+                  )}
+                  {!w.coords && <span className="text-xs text-amber-600">(harita dışı — şehir/ülke eşleşmedi)</span>}
                 </div>
                 <span className="font-semibold">{formatNumber(w.total)} ton</span>
               </div>
