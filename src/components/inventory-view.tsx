@@ -9,12 +9,18 @@ import { Search } from "lucide-react";
 type InventoryRow = {
   warehouse_id: string;
   warehouse_name: string;
-  location_type: "warehouse" | "factory";
+  location_type: "warehouse" | "factory" | "foreign";
   product_id: string;
   product_name: string;
   received_qty: number;
   sold_qty: number;
   available_qty: number;
+};
+
+const LOC_BADGE: Record<string, { color: "blue" | "purple" | "yellow"; label: string }> = {
+  warehouse: { color: "blue", label: "Depo" },
+  factory: { color: "purple", label: "Fabrika" },
+  foreign: { color: "yellow", label: "Yurtdışı" },
 };
 
 export function InventoryView({ hideTitle = false }: { hideTitle?: boolean }) {
@@ -95,8 +101,8 @@ export function InventoryView({ hideTitle = false }: { hideTitle?: boolean }) {
                   >
                     <td className="px-4 py-3">
                       <span className="mr-2">{r.warehouse_name}</span>
-                      <Badge color={r.location_type === "factory" ? "purple" : "blue"}>
-                        {r.location_type === "factory" ? "Fabrika" : "Depo"}
+                      <Badge color={(LOC_BADGE[r.location_type] || LOC_BADGE.warehouse).color}>
+                        {(LOC_BADGE[r.location_type] || LOC_BADGE.warehouse).label}
                       </Badge>
                     </td>
                     <td className="px-4 py-3">{r.product_name}</td>
@@ -120,7 +126,7 @@ export function InventoryView({ hideTitle = false }: { hideTitle?: boolean }) {
               >
                 <div className="mb-2 flex items-center justify-between border-b border-border pb-2">
                   <span className="font-semibold">{r.product_name}</span>
-                  <Badge color={r.location_type === "factory" ? "purple" : "blue"}>
+                  <Badge color={(LOC_BADGE[r.location_type] || LOC_BADGE.warehouse).color}>
                     {r.warehouse_name}
                   </Badge>
                 </div>

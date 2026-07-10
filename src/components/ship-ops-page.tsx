@@ -161,7 +161,8 @@ export function ShipOpsPage({
           .select("id,contract_no,vessel,product_id,supplier_id,quantity,unit,eta,status,surveyor_id,port_id,carrier_id,agent_id,combined_shipment_id")
           .eq("id", contractId)
           .maybeSingle(),
-        supabase.from("warehouses").select("id,name").eq("is_active", true).order("name"),
+        // Boşaltma hedefi yurtiçi depo/fabrikadır; yurtdışı depolar bu listede yer almaz.
+        supabase.from("warehouses").select("id,name").eq("is_active", true).neq("type", "foreign").order("name"),
         supabase.from("products").select("id,name"),
         supabase.from("companies").select("id,name,type").order("name"),
         supabase.from("profile_names").select("id,full_name"),

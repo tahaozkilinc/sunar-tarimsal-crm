@@ -14,7 +14,7 @@ import { CITY_COORDS, TURKEY_CENTER, geocodeCity } from "@/lib/turkey-cities";
 type InvRow = {
   warehouse_id: string;
   warehouse_name: string;
-  location_type: "warehouse" | "factory";
+  location_type: "warehouse" | "factory" | "foreign";
   product_name: string;
   available_qty: number | null;
 };
@@ -23,7 +23,7 @@ type ProductQty = { name: string; ton: number };
 type WhAgg = {
   id: string;
   name: string;
-  type: "warehouse" | "factory";
+  type: "warehouse" | "factory" | "foreign";
   city: string | null;
   coords: [number, number] | null;
   total: number;
@@ -32,6 +32,7 @@ type WhAgg = {
 
 const BRAND = "#15803d";
 const FACTORY = "#7c3aed";
+const FOREIGN = "#ca8a04"; // yurtdışı depo (sarı)
 
 export function StockMap() {
   const supabase = useMemo(() => createClient(), []);
@@ -118,7 +119,7 @@ export function StockMap() {
       for (const w of onMap) {
         if (!w.coords) continue;
         const r = 8 + 26 * Math.sqrt(w.total / maxTon);
-        const color = w.type === "factory" ? FACTORY : BRAND;
+        const color = w.type === "factory" ? FACTORY : w.type === "foreign" ? FOREIGN : BRAND;
         const marker = L.circleMarker(w.coords, {
           radius: r,
           color: "#ffffff",
@@ -135,7 +136,7 @@ export function StockMap() {
           `<div style="min-width:180px">
              <div style="font-weight:700;margin-bottom:2px">${escapeHtml(w.name)}</div>
              <div style="font-size:11px;color:#6b7280;margin-bottom:6px">
-               ${w.type === "factory" ? "Fabrika" : "Depo"}${w.city ? " · " + escapeHtml(w.city) : ""}
+               ${w.type === "factory" ? "Fabrika" : w.type === "foreign" ? "Yurtdışı Depo" : "Depo"}${w.city ? " · " + escapeHtml(w.city) : ""}
              </div>
              ${list}
              <div style="border-top:1px solid #e5e7eb;margin-top:6px;padding-top:4px;display:flex;justify-content:space-between">
@@ -177,6 +178,9 @@ export function StockMap() {
           <span className="inline-flex items-center gap-1.5">
             <span className="h-3 w-3 rounded-full border-2 border-white" style={{ background: FACTORY }} /> Fabrika
           </span>
+          <span className="inline-flex items-center gap-1.5">
+            <span className="h-3 w-3 rounded-full border-2 border-white" style={{ background: FOREIGN }} /> Yurtdışı
+          </span>
           <span className="text-gray-400">Daire büyüklüğü ≈ tonaj · üstüne gelince / tıklayınca ürün kırılımı</span>
         </div>
       </div>
@@ -208,8 +212,8 @@ export function StockMap() {
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
                   <span className="font-medium">{w.name}</span>
-                  <Badge color={w.type === "factory" ? "purple" : "blue"}>
-                    {w.type === "factory" ? "Fabrika" : "Depo"}
+                  <Badge color={w.type === "factory" ? "purple" : w.type === "foreign" ? "yellow" : "blue"}>
+                    {w.type === "factory" ? "Fabrika" : w.type === "foreign" ? "Yurtdışı" : "Depo"}
                   </Badge>
                   {w.city && <span className="text-xs text-gray-500">{w.city}</span>}
                   {!w.coords && <span className="text-xs text-amber-600">(harita dışı — şehir eşleşmedi)</span>}
