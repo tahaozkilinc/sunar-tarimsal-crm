@@ -6,7 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { Badge, EmptyState, Spinner } from "./ui";
 import { formatDate, formatMoney, formatNumber } from "@/lib/format";
 import { formatUsd, toUsd } from "@/lib/fx";
-import { CONTRACT_STATUS_OPTIONS } from "@/lib/resources";
+import { CONTRACT_STATUS_OPTIONS, EXPENSE_TYPE_OPTIONS } from "@/lib/resources";
 import { ArrowLeft, Leaf, Printer } from "lucide-react";
 
 type PC = {
@@ -44,6 +44,17 @@ type SM = {
   quantity: number | null;
   movement_type: string | null;
 };
+type WE = {
+  id: string;
+  warehouse_id: string | null;
+  expense_type: string | null;
+  amount: number | null;
+  currency: string | null;
+  usd_try: number | null;
+  eur_try: number | null;
+  expense_date: string | null;
+  notes: string | null;
+};
 
 type CustomerLine = {
   id: string;
@@ -59,18 +70,20 @@ export function ContractReport({ contractId }: { contractId: string }) {
   const [pc, setPc] = useState<PC | null>(null);
   const [sales, setSales] = useState<SO[]>([]);
   const [moves, setMoves] = useState<SM[]>([]);
+  const [expenses, setExpenses] = useState<WE[]>([]);
   const [names, setNames] = useState<{
     products: Record<string, string>;
     companies: Record<string, string>;
     principals: Record<string, string>;
-  }>({ products: {}, companies: {}, principals: {} });
+    warehouses: Record<string, string>;
+  }>({ products: {}, companies: {}, principals: {}, warehouses: {} });
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let on = true;
     (async () => {
       setLoading(true);
-      const [c, so, sm, pr, co, pri] = await Promise.all([
+      const [c, so, sm, we, pr, co, pri, wh] = await Promise.all([
         supabase.from("purchase_contracts").select("*").eq("id", contractId).maybeSingle(),
         supabase
           .from("sales_orders")
@@ -80,14 +93,21 @@ export function ContractReport({ contractId }: { contractId: string }) {
           .from("stock_movements")
           .select("id,quantity,movement_type")
           .eq("contract_id", contractId),
+        supabase
+          .from("warehouse_expenses")
+          .select("id,warehouse_id,expense_type,amount,currency,usd_try,eur_try,expense_date,notes")
+          .eq("contract_id", contractId)
+          .order("expense_date", { ascending: true }),
         supabase.from("products").select("id,name"),
         supabase.from("companies").select("id,name"),
         supabase.from("principals").select("id,name"),
+        supabase.from("warehouses").select("id,name"),
       ]);
       if (!on) return;
       setPc((c.data as PC | null) ?? null);
       setSales((so.data as SO[] | null) || []);
       setMoves((sm.data as SM[] | null) || []);
+      setExpenses((we.data as WE[] | null) || []);
       const toMap = (rows: { id: string; name: string }[] | null) => {
         const m: Record<string, string> = {};
         (rows || []).forEach((r) => (m[r.id] = r.name));
@@ -97,6 +117,7 @@ export function ContractReport({ contractId }: { contractId: string }) {
         products: toMap(pr.data as { id: string; name: string }[] | null),
         companies: toMap(co.data as { id: string; name: string }[] | null),
         principals: toMap(pri.data as { id: string; name: string }[] | null),
+        warehouses: toMap(wh.data as { id: string; name: string }[] | null),
       });
       setLoading(false);
     })();
@@ -155,8 +176,20 @@ export function ContractReport({ contractId }: { contractId: string }) {
       })
       .sort((a, b) => b.ton - a.ton);
 
+    // Depo masrafları (bu bağlantıya bağlı): USD toplamı; kârdan tam düşülür.
+    let masrafUsd = 0;
+    let masrafFxMissing = false;
+    expenses.forEach((e) => {
+      const u = toUsd(Number(e.amount) || 0, e.currency, e.usd_try, e.eur_try);
+      if (u === null) masrafFxMissing = true;
+      else masrafUsd += u;
+    });
+
     const allocCostTotal = costPerTonUsd !== null ? satisTon * costPerTonUsd : null;
-    const karUsd = satisUsd !== null && allocCostTotal !== null ? satisUsd - allocCostTotal : null;
+    const karUsd =
+      satisUsd !== null && allocCostTotal !== null
+        ? satisUsd - allocCostTotal - masrafUsd
+        : null;
     const karTonUsd = karUsd !== null && satisTon > 0 ? karUsd / satisTon : null;
 
     const bosaltilan = moves
@@ -171,14 +204,16 @@ export function ContractReport({ contractId }: { contractId: string }) {
       alisUsd,
       satisTon,
       satisUsd,
+      masrafUsd,
       karUsd,
       karTonUsd,
       bosaltilan,
       kalanSatilabilir: alisTon - satisTon,
       customers,
-      fxMissing: (alisBirim > 0 && alisUsd === null) || satisUsd === null,
+      fxMissing:
+        (alisBirim > 0 && alisUsd === null) || satisUsd === null || masrafFxMissing,
     };
-  }, [pc, sales, moves, names.companies]);
+  }, [pc, sales, moves, expenses, names.companies]);
 
   if (loading)
     return (
@@ -250,7 +285,7 @@ export function ContractReport({ contractId }: { contractId: string }) {
         </div>
 
         {/* Finansal özet (USD) */}
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
           <div className="rounded-xl bg-gray-50 p-3 print:border print:border-border">
             <div className="text-[11px] uppercase tracking-wide text-gray-500">Toplam Maliyet</div>
             <div className="mt-1 text-lg font-bold">{formatUsd(calc.alisUsd, 0)}</div>
@@ -258,6 +293,12 @@ export function ContractReport({ contractId }: { contractId: string }) {
           <div className="rounded-xl bg-gray-50 p-3 print:border print:border-border">
             <div className="text-[11px] uppercase tracking-wide text-gray-500">Satış Geliri</div>
             <div className="mt-1 text-lg font-bold">{formatUsd(calc.satisUsd, 0)}</div>
+          </div>
+          <div className="rounded-xl bg-gray-50 p-3 print:border print:border-border">
+            <div className="text-[11px] uppercase tracking-wide text-gray-500">Depo Masrafı</div>
+            <div className={`mt-1 text-lg font-bold ${calc.masrafUsd > 0 ? "text-amber-700" : "text-gray-400"}`}>
+              {calc.masrafUsd > 0 ? `−${formatUsd(calc.masrafUsd, 0)}` : "—"}
+            </div>
           </div>
           <div
             className={`rounded-xl p-3 print:border print:border-border ${
@@ -350,6 +391,51 @@ export function ContractReport({ contractId }: { contractId: string }) {
             )}
           </div>
         </div>
+
+        {/* Depo / operasyon masrafları */}
+        {expenses.length > 0 && (
+          <div className="report-avoid-break mt-4 rounded-xl border border-border p-4">
+            <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
+              Depo Masrafları
+            </h2>
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border text-left text-[11px] uppercase text-gray-400">
+                  <th className="py-1.5 font-medium">Tarih</th>
+                  <th className="py-1.5 font-medium">Depo</th>
+                  <th className="py-1.5 font-medium">Tür</th>
+                  <th className="py-1.5 text-right font-medium">Tutar</th>
+                  <th className="py-1.5 text-right font-medium">USD</th>
+                </tr>
+              </thead>
+              <tbody>
+                {expenses.map((e) => {
+                  const u = toUsd(Number(e.amount) || 0, e.currency, e.usd_try, e.eur_try);
+                  const typeLabel =
+                    EXPENSE_TYPE_OPTIONS.find((o) => o.value === e.expense_type)?.label ||
+                    e.expense_type || "—";
+                  return (
+                    <tr key={e.id} className="border-b border-border/60 last:border-0">
+                      <td className="py-2 text-gray-500">{formatDate(e.expense_date)}</td>
+                      <td className="py-2">{names.warehouses[e.warehouse_id || ""] || "—"}</td>
+                      <td className="py-2">{typeLabel}</td>
+                      <td className="py-2 text-right">
+                        {formatMoney(Number(e.amount) || 0, e.currency || "USD")}
+                      </td>
+                      <td className="py-2 text-right">{u !== null ? formatUsd(u, 0) : "kur yok"}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+              <tfoot>
+                <tr className="border-t-2 border-border text-sm font-semibold">
+                  <td className="py-2" colSpan={4}>TOPLAM</td>
+                  <td className="py-2 text-right text-amber-700">−{formatUsd(calc.masrafUsd, 0)}</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        )}
 
         {/* Müşteri bazlı satış */}
         <div className="report-avoid-break mt-4 rounded-xl border border-border p-4">

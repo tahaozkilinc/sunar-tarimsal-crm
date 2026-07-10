@@ -29,7 +29,7 @@ export default async function DashboardPage() {
   const base = baseRole(role);
   const canB = v || ["admin", "purchasing"].includes(base);
   const canS = v || ["admin", "sales"].includes(base);
-  const canO = v || ["admin", "operations", "nakliyeci"].includes(base);
+  const canO = v || ["admin", "operations", "nakliyeci", "gozetim", "acente"].includes(base);
   const canF = v || ["admin", "finans"].includes(base);
   const canM = v || ["admin", "maliyet"].includes(base);
   const canCrm = v || ["admin", "purchasing", "sales"].includes(base);

@@ -15,7 +15,7 @@ export const NAV_ITEMS: NavItem[] = [
     href: "/",
     label: "Panel",
     icon: "LayoutDashboard",
-    roles: ["admin", "purchasing", "operations", "sales", "finans", "maliyet", "viewer", "nakliyeci", "gozetim"],
+    roles: ["admin", "purchasing", "operations", "sales", "finans", "maliyet", "viewer", "nakliyeci", "gozetim", "acente"],
   },
   {
     href: "/crm",
@@ -39,7 +39,7 @@ export const NAV_ITEMS: NavItem[] = [
     href: "/operations",
     label: "Operasyon",
     icon: "Truck",
-    roles: ["admin", "operations", "viewer", "nakliyeci", "gozetim"],
+    roles: ["admin", "operations", "viewer", "nakliyeci", "gozetim", "acente"],
   },
   {
     href: "/inventory",
@@ -83,6 +83,7 @@ export const ROLE_LABELS: Record<Role, string> = {
   viewer: "Görüntüleyici (Tümü)",
   nakliyeci: "Nakliyeci",
   gozetim: "Gözetim",
+  acente: "Yurtdışı Acente",
   purchasing_view: "Satın Alma (Görüntüleme)",
   operations_view: "Operasyon (Görüntüleme)",
   sales_view: "Satış (Görüntüleme)",

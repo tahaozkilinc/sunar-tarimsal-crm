@@ -103,11 +103,22 @@ export const COMPANY_TYPE_OPTIONS: SelectOption[] = [
   { value: "surveyor", label: "Gözetim Şirketi", color: "yellow" },
   { value: "port", label: "Liman", color: "gray" },
   { value: "carrier", label: "Nakliyeci", color: "red" },
+  { value: "agent", label: "Yurtdışı Acente", color: "purple" },
 ];
 
 export const LOCATION_TYPE_OPTIONS: SelectOption[] = [
   { value: "warehouse", label: "Depo", color: "blue" },
   { value: "factory", label: "Fabrika", color: "purple" },
+  { value: "foreign", label: "Yurtdışı Depo", color: "yellow" },
+];
+
+export const EXPENSE_TYPE_OPTIONS: SelectOption[] = [
+  { value: "storage", label: "Depolama", color: "blue" },
+  { value: "handling", label: "Elleçleme", color: "purple" },
+  { value: "loading", label: "Yükleme", color: "green" },
+  { value: "port", label: "Liman", color: "gray" },
+  { value: "customs", label: "Gümrük", color: "yellow" },
+  { value: "other", label: "Diğer", color: "gray" },
 ];
 
 export const CONTRACT_STATUS_OPTIONS: SelectOption[] = [
@@ -121,6 +132,7 @@ export const CONTRACT_STATUS_OPTIONS: SelectOption[] = [
 
 export const MOVEMENT_TYPE_OPTIONS: SelectOption[] = [
   { value: "inbound", label: "Giriş", color: "green" },
+  { value: "origin_in", label: "Yurtdışı Depo Girişi", color: "yellow" },
   { value: "transfer", label: "Transfer", color: "blue" },
   { value: "to_factory", label: "Fabrikaya", color: "purple" },
   { value: "adjustment", label: "Düzeltme", color: "gray" },
@@ -240,6 +252,7 @@ export const purchaseContractsResource: ResourceConfig = {
     { name: "laycan_end", label: "Laycan Bitiş", type: "date" },
     { name: "status", label: "Durum", type: "select", options: CONTRACT_STATUS_OPTIONS, required: true },
     { name: "assigned_to", label: "Operasyon Sorumlusu", type: "reference", ref: { table: "profiles", labelField: "full_name", filter: { role: ["operations"] } } },
+    { name: "agent_id", label: "Yurtdışı Acente (Yükleme Takibi)", type: "reference", ref: { table: "companies", labelField: "name", filter: { type: ["agent"] } } },
     { name: "payment_due_date", label: "Öngörülen Ödeme Tarihi", type: "date" },
     { name: "buyer", label: "Alıcı", type: "text" },
     { name: "principal_id", label: "Kimin Adına", type: "reference", ref: { table: "principals", labelField: "name" } },
@@ -392,8 +405,37 @@ export const warehousesResource: ResourceConfig = {
     { name: "name", label: "Ad", type: "text", required: true, unique: true },
     { name: "type", label: "Tür", type: "select", options: LOCATION_TYPE_OPTIONS, required: true },
     { name: "city", label: "Şehir", type: "text" },
+    { name: "country", label: "Ülke", type: "text", placeholder: "Yurtdışı depo için" },
     { name: "capacity", label: "Kapasite", type: "number", min: 0 },
     { name: "is_active", label: "Aktif", type: "boolean" },
+  ],
+};
+
+// Depo masrafları: yurtdışı/yurtiçi depoların depolama, elleçleme, yükleme vb.
+// giderleri. Bağlantıya (gemiye) bağlanırsa maliyet raporunda o geminin
+// kârından düşer. fxCapture ile günün TCMB kuru kaydedilir (USD'ye çevrim için).
+export const warehouseExpensesResource: ResourceConfig = {
+  table: "warehouse_expenses",
+  title: "Depo Masrafları",
+  singular: "Masraf",
+  writeRoles: ["admin", "operations", "maliyet"],
+  defaultValues: { currency: "USD", expense_type: "storage" },
+  orderBy: { column: "expense_date", ascending: false },
+  searchFields: ["notes"],
+  filterFields: ["warehouse_id", "expense_type", "contract_id"],
+  listFields: ["expense_date", "warehouse_id", "expense_type", "contract_id", "amount", "currency"],
+  fxCapture: true,
+  fields: [
+    { name: "expense_date", label: "Tarih", type: "date", required: true },
+    { name: "warehouse_id", label: "Depo / Fabrika", type: "reference", ref: { table: "warehouses", labelField: "name" }, required: true },
+    { name: "expense_type", label: "Masraf Türü", type: "select", options: EXPENSE_TYPE_OPTIONS, required: true },
+    { name: "contract_id", label: "Bağlantı (Gemi) — maliyete yansır", type: "reference", ref: { table: "purchase_contracts", labelField: "vessel", labelFields: ["vessel", "contract_no"] } },
+    { name: "amount", label: "Tutar", type: "money", required: true, min: 0 },
+    { name: "currency", label: "Para Birimi", type: "select", options: CURRENCY_OPTIONS },
+    { name: "usd_try", label: "USD/TRY (TCMB)", type: "number", placeholder: "Otomatik" },
+    { name: "eur_try", label: "EUR/TRY (TCMB)", type: "number", placeholder: "Otomatik" },
+    { name: "fx_date", label: "Kur Tarihi", type: "date" },
+    { name: "notes", label: "Notlar", type: "textarea" },
   ],
 };
 

@@ -36,6 +36,13 @@ type SO = {
 };
 type Prod = { id: string; name: string };
 type Company = { id: string; name: string };
+type WE = {
+  contract_id: string | null;
+  amount: number | null;
+  currency: string | null;
+  usd_try: number | null;
+  eur_try: number | null;
+};
 
 type CustomerProfit = {
   customerId: string;
@@ -58,6 +65,7 @@ type Row = {
   satisTon: number;
   satisAvgUsd: number | null;
   satisUsd: number | null;
+  masrafUsd: number; // depo masrafları (bağlantıya bağlı, USD)
   kalan: number;
   karUsd: number | null;
   fxMissing: boolean;
@@ -68,6 +76,7 @@ export function CostView({ hideTitle }: { hideTitle?: boolean } = {}) {
   const supabase = useMemo(() => createClient(), []);
   const [contracts, setContracts] = useState<PC[]>([]);
   const [sales, setSales] = useState<SO[]>([]);
+  const [expenses, setExpenses] = useState<WE[]>([]);
   const [productMap, setProductMap] = useState<Record<string, string>>({});
   const [companyMap, setCompanyMap] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
@@ -76,7 +85,7 @@ export function CostView({ hideTitle }: { hideTitle?: boolean } = {}) {
 
   useEffect(() => {
     (async () => {
-      const [pc, so, pr, co] = await Promise.all([
+      const [pc, so, pr, co, we] = await Promise.all([
         supabase
           .from("purchase_contracts")
           .select("id,contract_no,vessel,product_id,quantity,price,currency,status,usd_try,eur_try"),
@@ -85,10 +94,15 @@ export function CostView({ hideTitle }: { hideTitle?: boolean } = {}) {
           .select("contract_id,customer_id,quantity,price,currency,usd_try,eur_try"),
         supabase.from("products").select("id,name"),
         supabase.from("companies").select("id,name"),
+        supabase
+          .from("warehouse_expenses")
+          .select("contract_id,amount,currency,usd_try,eur_try")
+          .not("contract_id", "is", null),
       ]);
       if (pc.error) setError(pc.error.message);
       setContracts((pc.data as PC[]) || []);
       setSales((so.data as SO[]) || []);
+      setExpenses((we.data as WE[]) || []);
       const m: Record<string, string> = {};
       ((pr.data as Prod[]) || []).forEach((p) => (m[p.id] = p.name));
       setProductMap(m);
@@ -106,6 +120,17 @@ export function CostView({ hideTitle }: { hideTitle?: boolean } = {}) {
       const arr = salesByContract.get(s.contract_id) || [];
       arr.push(s);
       salesByContract.set(s.contract_id, arr);
+    });
+    // Depo masrafları: bağlantı bazında USD toplamı (kuru olmayan kayıt atlanır,
+    // fxMissing bayrağıyla işaretlenir).
+    const expenseByContract = new Map<string, { usd: number; fxMissing: boolean }>();
+    expenses.forEach((e) => {
+      if (!e.contract_id) return;
+      const cur = expenseByContract.get(e.contract_id) || { usd: 0, fxMissing: false };
+      const u = toUsd(Number(e.amount) || 0, e.currency, e.usd_try, e.eur_try);
+      if (u === null) cur.fxMissing = true;
+      else cur.usd += u;
+      expenseByContract.set(e.contract_id, cur);
     });
     return contracts
       .filter((c) => c.status !== "cancelled")
@@ -163,8 +188,14 @@ export function CostView({ hideTitle }: { hideTitle?: boolean } = {}) {
           return acc + cu.satisUsd;
         }, 0);
         const allocCostTotal = costPerTonUsd !== null ? satisTon * costPerTonUsd : null;
+        // Depo masrafları gemi düzeyinde bir giderdir: kârdan tam düşülür.
+        const exp = expenseByContract.get(c.id);
+        const masrafUsd = exp?.usd ?? 0;
+        if (exp?.fxMissing) fxMissing = true;
         const karUsd =
-          satisUsd !== null && allocCostTotal !== null ? satisUsd - allocCostTotal : null;
+          satisUsd !== null && allocCostTotal !== null
+            ? satisUsd - allocCostTotal - masrafUsd
+            : null;
 
         return {
           id: c.id,
@@ -179,6 +210,7 @@ export function CostView({ hideTitle }: { hideTitle?: boolean } = {}) {
           satisTon,
           satisAvgUsd: satisTon > 0 && satisUsd !== null ? satisUsd / satisTon : null,
           satisUsd,
+          masrafUsd,
           kalan: alisTon - satisTon,
           karUsd,
           fxMissing,
@@ -186,7 +218,7 @@ export function CostView({ hideTitle }: { hideTitle?: boolean } = {}) {
         };
       })
       .sort((a, b) => (b.karUsd ?? -Infinity) - (a.karUsd ?? -Infinity));
-  }, [contracts, sales, productMap, companyMap]);
+  }, [contracts, sales, expenses, productMap, companyMap]);
 
   const filtered = rows.filter((r) => {
     const q = search.trim().toLocaleLowerCase("tr");
@@ -196,9 +228,10 @@ export function CostView({ hideTitle }: { hideTitle?: boolean } = {}) {
     );
   });
 
-  const totalAlisUsd  = filtered.reduce((a, r) => a + (r.alisUsd ?? 0), 0);
-  const totalSatisUsd = filtered.reduce((a, r) => a + (r.satisUsd ?? 0), 0);
-  const totalKarUsd   = filtered.reduce((a, r) => a + (r.karUsd ?? 0), 0);
+  const totalAlisUsd   = filtered.reduce((a, r) => a + (r.alisUsd ?? 0), 0);
+  const totalSatisUsd  = filtered.reduce((a, r) => a + (r.satisUsd ?? 0), 0);
+  const totalMasrafUsd = filtered.reduce((a, r) => a + r.masrafUsd, 0);
+  const totalKarUsd    = filtered.reduce((a, r) => a + (r.karUsd ?? 0), 0);
   const anyFxMissing  = filtered.some((r) => r.fxMissing);
 
   // Per-product tonnage breakdown (replaces "Toplam Alış/Satış" single cards)
@@ -217,7 +250,7 @@ export function CostView({ hideTitle }: { hideTitle?: boolean } = {}) {
     const headers = [
       "Gemi", "Sözleşme No", "Ürün",
       "Alış Ton", "Alış Birim Fiyat", "Alış (USD)",
-      "Satış Ton", "Satış Birim (USD/ton)", "Satış (USD)", "Kalan Ton", "Kâr (USD)",
+      "Satış Ton", "Satış Birim (USD/ton)", "Satış (USD)", "Masraf (USD)", "Kalan Ton", "Kâr (USD)",
     ];
     const body: (string | number)[][] = [];
     filtered.forEach((r) => {
@@ -226,13 +259,13 @@ export function CostView({ hideTitle }: { hideTitle?: boolean } = {}) {
         r.alisTon, r.alisPrice > 0 ? `${r.alisPrice} ${r.alisCur}` : "",
         r.alisUsd ?? "",
         r.satisTon, r.satisAvgUsd !== null ? r.satisAvgUsd.toFixed(2) : "",
-        r.satisUsd ?? "", r.kalan, r.karUsd ?? "",
+        r.satisUsd ?? "", r.masrafUsd || "", r.kalan, r.karUsd ?? "",
       ]);
       r.customers.forEach((cu) => {
         body.push([
           `↳ ${cu.customerName}`, "", "",
           "", "", "",
-          cu.ton, "", cu.satisUsd ?? "", "", cu.karUsd ?? "",
+          cu.ton, "", cu.satisUsd ?? "", "", "", cu.karUsd ?? "",
         ]);
       });
     });
@@ -333,6 +366,7 @@ export function CostView({ hideTitle }: { hideTitle?: boolean } = {}) {
                 <th className="px-3 py-3 text-right font-medium">Satış Ton</th>
                 <th className="px-3 py-3 text-right font-medium">Satış USD/ton</th>
                 <th className="px-3 py-3 text-right font-medium">Satış Toplam</th>
+                <th className="px-3 py-3 text-right font-medium">Masraf</th>
                 <th className="px-3 py-3 text-right font-medium">Kalan Ton</th>
                 <th className="px-3 py-3 text-right font-medium">Kâr (USD)</th>
               </tr>
@@ -363,6 +397,9 @@ export function CostView({ hideTitle }: { hideTitle?: boolean } = {}) {
                     {r.satisAvgUsd !== null ? `${formatUsd(r.satisAvgUsd)}/ton` : "—"}
                   </td>
                   <td className="px-3 py-3 text-right">{formatUsd(r.satisUsd, 0)}</td>
+                  <td className="px-3 py-3 text-right text-gray-600">
+                    {r.masrafUsd > 0 ? formatUsd(r.masrafUsd, 0) : "—"}
+                  </td>
                   <td
                     className={`px-3 py-3 text-right font-semibold ${
                       r.kalan < 0 ? "text-amber-600" : ""
@@ -396,6 +433,7 @@ export function CostView({ hideTitle }: { hideTitle?: boolean } = {}) {
                     <td className="px-3 py-2 text-right text-gray-400">—</td>
                     <td className="px-3 py-2 text-right text-gray-600">{formatUsd(cu.satisUsd, 0)}</td>
                     <td className="px-3 py-2 text-right text-gray-400">—</td>
+                    <td className="px-3 py-2 text-right text-gray-400">—</td>
                     <td
                       className={`px-3 py-2 text-right font-medium ${
                         cu.karUsd !== null
@@ -425,6 +463,9 @@ export function CostView({ hideTitle }: { hideTitle?: boolean } = {}) {
                 <td className="px-3 py-2.5 text-right text-gray-400">—</td>
                 <td className="px-3 py-2.5 text-right">{formatUsd(totalSatisUsd, 0)}</td>
                 <td className="px-3 py-2.5 text-right">
+                  {totalMasrafUsd > 0 ? formatUsd(totalMasrafUsd, 0) : "—"}
+                </td>
+                <td className="px-3 py-2.5 text-right">
                   {formatNumber(filtered.reduce((a, r) => a + r.kalan, 0))}
                 </td>
                 <td className={`px-3 py-2.5 text-right ${totalKarUsd < 0 ? "text-red-600" : "text-emerald-700"}`}>
@@ -437,8 +478,9 @@ export function CostView({ hideTitle }: { hideTitle?: boolean } = {}) {
       )}
       <p className="text-xs text-gray-400">
         Tüm tutarlar, her kaydın oluşturulduğu günkü TCMB kuruyla USD&apos;ye çevrilir. Kâr =
-        satış geliri − (satılan ton × ton başına alış maliyeti). Satışların gemiye bağlanması için
-        satış kaydında &quot;Kaynak Bağlantı&quot; seçilmelidir.
+        satış geliri − (satılan ton × ton başına alış maliyeti) − depo masrafları. Satışların
+        gemiye bağlanması için satış kaydında &quot;Kaynak Bağlantı&quot;, masrafların yansıması için
+        Depo Masrafları sekmesinde &quot;Bağlantı&quot; seçilmelidir.
         {anyFxMissing && (
           <span className="text-amber-600">
             {" "}

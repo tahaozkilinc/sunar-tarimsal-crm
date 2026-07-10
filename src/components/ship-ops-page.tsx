@@ -23,6 +23,7 @@ type Contract = {
   surveyor_id: string | null;
   port_id: string | null;
   carrier_id: string | null;
+  agent_id: string | null;
   combined_shipment_id: string | null;
 };
 type Movement = {
@@ -110,10 +111,11 @@ export function ShipOpsPage({
   const [formErr, setFormErr] = useState<string | null>(null);
   const [flash, setFlash]   = useState<string | null>(null);
 
-  // Gemiye gözetim / liman / nakliyeci atama
+  // Gemiye gözetim / liman / nakliyeci / acente atama
   const [surveyorId, setSurveyorId] = useState("");
   const [portId,     setPortId]     = useState("");
   const [carrierId,  setCarrierId]  = useState("");
+  const [agentId,    setAgentId]    = useState("");
   const [assignSaving, setAssignSaving] = useState(false);
   const [assignErr, setAssignErr] = useState<string | null>(null);
   const [assignFlash, setAssignFlash] = useState<string | null>(null);
@@ -156,10 +158,11 @@ export function ShipOpsPage({
       const [c, w, p, co, pn, { data: au }] = await Promise.all([
         supabase
           .from("purchase_contracts")
-          .select("id,contract_no,vessel,product_id,supplier_id,quantity,unit,eta,status,surveyor_id,port_id,carrier_id,combined_shipment_id")
+          .select("id,contract_no,vessel,product_id,supplier_id,quantity,unit,eta,status,surveyor_id,port_id,carrier_id,agent_id,combined_shipment_id")
           .eq("id", contractId)
           .maybeSingle(),
-        supabase.from("warehouses").select("id,name").eq("is_active", true).order("name"),
+        // Boşaltma hedefi yurtiçi depo/fabrikadır; yurtdışı depolar bu listede yer almaz.
+        supabase.from("warehouses").select("id,name").eq("is_active", true).neq("type", "foreign").order("name"),
         supabase.from("products").select("id,name"),
         supabase.from("companies").select("id,name,type").order("name"),
         supabase.from("profile_names").select("id,full_name"),
@@ -174,6 +177,7 @@ export function ShipOpsPage({
       setSurveyorId(cd?.surveyor_id ?? "");
       setPortId(cd?.port_id ?? "");
       setCarrierId(cd?.carrier_id ?? "");
+      setAgentId(cd?.agent_id ?? "");
       const names: Record<string, string> = {};
       ((pn.data as { id: string; full_name: string | null }[] | null) || []).forEach((x) => {
         names[x.id] = x.full_name || "—";
@@ -191,7 +195,7 @@ export function ShipOpsPage({
         const [sibRes, csRes] = await Promise.all([
           supabase
             .from("purchase_contracts")
-            .select("id,contract_no,vessel,product_id,supplier_id,quantity,unit,eta,status,surveyor_id,port_id,carrier_id,combined_shipment_id")
+            .select("id,contract_no,vessel,product_id,supplier_id,quantity,unit,eta,status,surveyor_id,port_id,carrier_id,agent_id,combined_shipment_id")
             .eq("combined_shipment_id", cd.combined_shipment_id)
             .neq("id", contractId),
           supabase.from("combined_shipments").select("name").eq("id", cd.combined_shipment_id).maybeSingle(),
@@ -218,10 +222,12 @@ export function ShipOpsPage({
   const surveyors = useMemo(() => companies.filter(c => c.type === "surveyor"), [companies]);
   const ports     = useMemo(() => companies.filter(c => c.type === "port"), [companies]);
   const carriers  = useMemo(() => companies.filter(c => c.type === "carrier"), [companies]);
+  const agents    = useMemo(() => companies.filter(c => c.type === "agent"), [companies]);
   const partiesDirty =
     surveyorId !== (contract?.surveyor_id ?? "") ||
     portId     !== (contract?.port_id ?? "") ||
-    carrierId  !== (contract?.carrier_id ?? "");
+    carrierId  !== (contract?.carrier_id ?? "") ||
+    agentId    !== (contract?.agent_id ?? "");
 
   const totalDrawn = useMemo(
     () => movements.reduce((a, m) => a + (Number(m.quantity) || 0), 0),
@@ -372,18 +378,21 @@ export function ShipOpsPage({
           p_surveyor_id: surveyorId || null,
           p_port_id:     portId || null,
           p_carrier_id:  carrierId || null,
+          p_agent_id:    agentId || null,
         })
       : await supabase.rpc("assign_ship_parties", {
           p_contract_id: contract.id,
           p_surveyor_id: surveyorId || null,
           p_port_id:     portId || null,
           p_carrier_id:  carrierId || null,
+          p_agent_id:    agentId || null,
         });
     if (rpcResult.error) { setAssignSaving(false); setAssignErr(rpcResult.error.message); return; }
     const parties = {
       surveyor_id: surveyorId || null,
       port_id:     portId || null,
       carrier_id:  carrierId || null,
+      agent_id:    agentId || null,
     };
     setContract(prev => prev ? { ...prev, ...parties } : prev);
     if (isCombined) setSiblings(prev => prev.map((s) => ({ ...s, ...parties })));
@@ -515,7 +524,7 @@ export function ShipOpsPage({
           <span className="text-sm font-semibold">Operasyon Tarafları</span>
           {isCombined && <span className="text-xs text-gray-400">Kombine gemideki tüm bağlantılara uygulanır</span>}
         </div>
-        <div className="grid gap-3 sm:grid-cols-3">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <Field label="Gözetim Şirketi">
             {canWrite && contract.status !== "completed" ? (
               <Select value={surveyorId} onChange={e => setSurveyorId(e.target.value)}>
@@ -544,6 +553,16 @@ export function ShipOpsPage({
               </Select>
             ) : (
               <div className="rounded-lg border border-border bg-gray-50 px-3 py-2 text-sm">{cName(contract.carrier_id)}</div>
+            )}
+          </Field>
+          <Field label="Yurtdışı Acente">
+            {canWrite && contract.status !== "completed" ? (
+              <Select value={agentId} onChange={e => setAgentId(e.target.value)}>
+                <option value="">Seçiniz...</option>
+                {agents.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+              </Select>
+            ) : (
+              <div className="rounded-lg border border-border bg-gray-50 px-3 py-2 text-sm">{cName(contract.agent_id)}</div>
             )}
           </Field>
         </div>
