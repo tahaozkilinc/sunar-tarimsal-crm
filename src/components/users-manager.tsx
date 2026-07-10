@@ -25,16 +25,28 @@ const ROLE_OPTIONS: Role[] = [
   "maliyet",
   "viewer",
   "nakliyeci",
+  "gozetim",
+  "acente",
   "purchasing_view",
   "operations_view",
   "sales_view",
   "pending",
 ];
 
+// Dış (firma-bağlı) roller: kullanıcı profiles.company_id ile bu türdeki bir
+// firmaya bağlanır; RLS yalnızca o firmaya atanmış gemileri/bağlantıları açar.
+const EXTERNAL_ROLE_COMPANY: Partial<Record<Role, { type: string; label: string; hint: string }>> = {
+  nakliyeci: { type: "carrier",  label: "Nakliyeci Firması", hint: "Önce CRM'den Nakliyeci türünde bir firma ekleyin." },
+  gozetim:   { type: "surveyor", label: "Gözetim Firması",   hint: "Önce CRM'den Gözetim Şirketi türünde bir firma ekleyin." },
+  acente:    { type: "agent",    label: "Acente Firması",    hint: "Önce CRM'den Yurtdışı Acente türünde bir firma ekleyin." },
+};
+
+type ExtCompany = { id: string; name: string; type: string };
+
 export function UsersManager() {
   const supabase = useMemo(() => createClient(), []);
   const [users, setUsers] = useState<Profile[]>([]);
-  const [carriers, setCarriers] = useState<{ id: string; name: string }[]>([]);
+  const [extCompanies, setExtCompanies] = useState<ExtCompany[]>([]);
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -61,11 +73,16 @@ export function UsersManager() {
     load();
     supabase
       .from("companies")
-      .select("id,name")
-      .eq("type", "carrier")
+      .select("id,name,type")
+      .in("type", ["carrier", "surveyor", "agent"])
       .order("name")
-      .then(({ data }) => setCarriers((data as { id: string; name: string }[]) || []));
+      .then(({ data }) => setExtCompanies((data as ExtCompany[]) || []));
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const companiesForRole = (role: Role) => {
+    const cfg = EXTERNAL_ROLE_COMPANY[role];
+    return cfg ? extCompanies.filter((c) => c.type === cfg.type) : [];
+  };
 
   const createUser = async () => {
     setSaving(true);
@@ -151,14 +168,14 @@ export function UsersManager() {
                         </option>
                       ))}
                     </Select>
-                    {u.role === "nakliyeci" && (
+                    {EXTERNAL_ROLE_COMPANY[u.role] && (
                       <Select
                         value={u.company_id ?? ""}
                         onChange={(e) => updateUser(u.id, { company_id: e.target.value || null })}
                         className="mt-1 w-36 text-xs"
                       >
                         <option value="">Firma seç...</option>
-                        {carriers.map((c) => (
+                        {companiesForRole(u.role).map((c) => (
                           <option key={c.id} value={c.id}>
                             {c.name}
                           </option>
@@ -225,22 +242,22 @@ export function UsersManager() {
             </Select>
           </Field>
 
-          {form.role === "nakliyeci" && (
-            <Field label="Nakliyeci Firması" required>
+          {EXTERNAL_ROLE_COMPANY[form.role] && (
+            <Field label={EXTERNAL_ROLE_COMPANY[form.role]!.label} required>
               <Select
                 value={form.company_id}
                 onChange={(e) => setForm({ ...form, company_id: e.target.value })}
               >
                 <option value="">Firma seç...</option>
-                {carriers.map((c) => (
+                {companiesForRole(form.role).map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.name}
                   </option>
                 ))}
               </Select>
-              {carriers.length === 0 && (
+              {companiesForRole(form.role).length === 0 && (
                 <div className="mt-1 text-xs text-amber-600">
-                  Önce CRM → Nakliyeci sekmesinden bir nakliye firması ekleyin.
+                  {EXTERNAL_ROLE_COMPANY[form.role]!.hint}
                 </div>
               )}
             </Field>

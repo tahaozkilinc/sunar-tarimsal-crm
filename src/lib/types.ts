@@ -10,6 +10,7 @@ export type Role =
   | "viewer"
   | "nakliyeci"
   | "gozetim"
+  | "acente"
   | "purchasing_view"
   | "operations_view"
   | "sales_view"
@@ -29,7 +30,7 @@ export interface Profile {
 export interface Company {
   id: string;
   name: string;
-  type: "supplier" | "customer" | "both" | "surveyor" | "port" | "carrier";
+  type: "supplier" | "customer" | "both" | "surveyor" | "port" | "carrier" | "agent";
   city: string | null;
   country: string | null;
   phone: string | null;
@@ -62,8 +63,9 @@ export interface Product {
 export interface Warehouse {
   id: string;
   name: string;
-  type: "warehouse" | "factory";
+  type: "warehouse" | "factory" | "foreign"; // foreign = yurtdışı depo
   city: string | null;
+  country: string | null;
   capacity: number | null;
   is_active: boolean;
 }
@@ -93,6 +95,7 @@ export interface PurchaseContract {
   surveyor_id: string | null;
   port_id: string | null;
   carrier_id: string | null;
+  agent_id: string | null; // yurtdışı yükleme takip acentesi
   combined_shipment_id: string | null;
   created_at: string;
   notes: string | null;
