@@ -88,6 +88,91 @@ export const CITY_COORDS: Record<string, [number, number]> = {
   duzce: [40.84, 31.16],
 };
 
+// ---------------------------------------------------------------------------
+// Yurtdışı: tahıl ticaretinde yaygın liman/şehirler (Karadeniz ağırlıklı).
+// Anahtarlar normalize edilmiş yazımlardır; TR ve EN yazımlar birlikte tanınır.
+// ---------------------------------------------------------------------------
+export const FOREIGN_CITY_COORDS: Record<string, [number, number]> = {
+  // Rusya
+  novorossiysk: [44.72, 37.77],
+  novorosisk: [44.72, 37.77],
+  rostov: [47.24, 39.71],
+  "rostov na donu": [47.24, 39.71],
+  azov: [47.1, 39.42],
+  taganrog: [47.21, 38.93],
+  kavkaz: [45.34, 36.67],
+  tuapse: [44.1, 39.07],
+  astrahan: [46.35, 48.04],
+  astrakhan: [46.35, 48.04],
+  // Ukrayna
+  odesa: [46.48, 30.72],
+  odessa: [46.48, 30.72],
+  chornomorsk: [46.3, 30.65],
+  ilyichevsk: [46.3, 30.65],
+  mykolaiv: [46.97, 32.0],
+  nikolaev: [46.97, 32.0],
+  kherson: [46.64, 32.61],
+  izmail: [45.35, 28.84],
+  reni: [45.45, 28.28],
+  // Romanya / Bulgaristan / Moldova
+  constanta: [44.17, 28.65],
+  kostence: [44.17, 28.65],
+  varna: [43.2, 27.91],
+  burgas: [42.51, 27.46],
+  burgaz: [42.51, 27.46],
+  giurgiulesti: [45.47, 28.2],
+  // Gürcistan / Kazakistan
+  poti: [42.15, 41.67],
+  batumi: [41.65, 41.64],
+  batum: [41.65, 41.64],
+  aktau: [43.65, 51.16],
+  // Mısır
+  iskenderiye: [31.2, 29.92],
+  alexandria: [31.2, 29.92],
+  dimyat: [31.42, 31.81],
+  damietta: [31.42, 31.81],
+  "port said": [31.26, 32.3],
+};
+
+// Şehir eşleşmezse ülke merkezine (başkent) düşen yedek konumlar.
+export const COUNTRY_COORDS: Record<string, [number, number]> = {
+  rusya: [55.76, 37.62],
+  russia: [55.76, 37.62],
+  ukrayna: [50.45, 30.52],
+  ukraine: [50.45, 30.52],
+  romanya: [44.43, 26.1],
+  romania: [44.43, 26.1],
+  bulgaristan: [42.7, 23.32],
+  bulgaria: [42.7, 23.32],
+  gurcistan: [41.72, 44.79],
+  georgia: [41.72, 44.79],
+  kazakistan: [51.17, 71.43],
+  kazakhstan: [51.17, 71.43],
+  moldova: [47.01, 28.86],
+  misir: [30.04, 31.24],
+  egypt: [30.04, 31.24],
+  yunanistan: [37.98, 23.73],
+  greece: [37.98, 23.73],
+  sirbistan: [44.79, 20.45],
+  serbia: [44.79, 20.45],
+  macaristan: [47.5, 19.04],
+  hungary: [47.5, 19.04],
+  almanya: [52.52, 13.4],
+  germany: [52.52, 13.4],
+  fransa: [48.86, 2.35],
+  france: [48.86, 2.35],
+  brezilya: [-15.79, -47.88],
+  brazil: [-15.79, -47.88],
+  arjantin: [-34.6, -58.38],
+  argentina: [-34.6, -58.38],
+  abd: [39.0, -98.0],
+  usa: [39.0, -98.0],
+  hindistan: [28.61, 77.21],
+  india: [28.61, 77.21],
+  cin: [39.9, 116.4],
+  china: [39.9, 116.4],
+};
+
 // Yaygın eski/alternatif adlar -> il anahtarı.
 const ALIASES: Record<string, string> = {
   icel: "mersin",
@@ -144,6 +229,35 @@ export function geocodeCity(city: string | null | undefined): [number, number] |
   }
   for (const [alias, key] of Object.entries(ALIASES)) {
     if (n.includes(alias)) return CITY_COORDS[key] ?? null;
+  }
+  return null;
+}
+
+// Şehir + ülke ile konumlandır: önce TR illeri, sonra yurtdışı liman/şehir
+// sözlüğü (tam, kelime ve içerik eşleşmesi), en son ülke merkezi yedeği.
+export function geocodeLocation(
+  city: string | null | undefined,
+  country: string | null | undefined,
+): [number, number] | null {
+  const domestic = geocodeCity(city);
+  if (domestic) return domestic;
+
+  if (city) {
+    const n = normalize(city);
+    if (FOREIGN_CITY_COORDS[n]) return FOREIGN_CITY_COORDS[n];
+    for (const w of n.split(" ")) {
+      if (FOREIGN_CITY_COORDS[w]) return FOREIGN_CITY_COORDS[w];
+    }
+    for (const key of Object.keys(FOREIGN_CITY_COORDS)) {
+      if (n.includes(key)) return FOREIGN_CITY_COORDS[key];
+    }
+  }
+  if (country) {
+    const c = normalize(country);
+    if (COUNTRY_COORDS[c]) return COUNTRY_COORDS[c];
+    for (const key of Object.keys(COUNTRY_COORDS)) {
+      if (c.includes(key)) return COUNTRY_COORDS[key];
+    }
   }
   return null;
 }
