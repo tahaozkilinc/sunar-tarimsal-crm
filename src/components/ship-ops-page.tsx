@@ -314,7 +314,9 @@ export function ShipOpsPage({
     });
     if (err) { setSaving(false); setFormErr(err.message); return; }
     if (targetContract.status !== "arrived" && targetContract.status !== "completed") {
-      await supabase.from("purchase_contracts").update({ status: "arrived" }).eq("id", targetId);
+      // DB tarafında 0004 trigger'ı (SECURITY DEFINER) durumu 'arrived' yapar;
+      // buradan update atmak operasyon rolünde RLS'e takılıp sessizce 0 satır
+      // güncelliyordu. Yalnızca yerel görünümü tazeliyoruz.
       if (targetId === contract.id) {
         setContract(prev => prev ? { ...prev, status: "arrived" } : prev);
       } else {
@@ -334,10 +336,13 @@ export function ShipOpsPage({
 
   const deleteMov = async (id: string) => {
     if (!window.confirm("Bu çekim kaydı silinsin mi?")) return;
-    // Araca bağlı fotoğrafları depolamadan temizle (DB satırları cascade ile gider).
+    // Önce DB silinir (RLS/koruma tetikleyicisi reddedebilir); ancak başarılıysa
+    // fotoğraflar depolamadan temizlenir. Ters sıra, silinemeyen kaydın
+    // fotoğraflarını kaybettirirdi.
     const paths = (photosByMovement[id] || []).map((p) => p.path);
+    const { error: err } = await supabase.from("stock_movements").delete().eq("id", id);
+    if (err) { window.alert("Silinemedi: " + err.message); return; }
     if (paths.length) await supabase.storage.from("movement-photos").remove(paths);
-    await supabase.from("stock_movements").delete().eq("id", id);
     await loadMovements();
   };
 
@@ -356,15 +361,13 @@ export function ShipOpsPage({
     if (remaining > 0 && !window.confirm(
       `${formatNumber(remaining)} ${unit} hâlâ boşaltılmadı. Gemiyi tamamlandı olarak işaretlemek istiyor musunuz?`
     )) return;
-    if (isCombined) {
-      const allIds = [contract.id, ...siblings.map((s) => s.id)];
-      await supabase.from("purchase_contracts").update({ status: "completed" }).in("id", allIds);
-      setContract(prev => prev ? { ...prev, status: "completed" } : prev);
-      setSiblings(prev => prev.map((s) => ({ ...s, status: "completed" })));
-    } else {
-      await supabase.from("purchase_contracts").update({ status: "completed" }).eq("id", contract.id);
-      setContract(prev => prev ? { ...prev, status: "completed" } : prev);
-    }
+    // Statü geçişi DEFINER RPC ile: pc_write operasyona kapalı olduğundan
+    // doğrudan update RLS'te sessizce 0 satır güncelliyordu (görünmez hata).
+    const allIds = isCombined ? [contract.id, ...siblings.map((s) => s.id)] : [contract.id];
+    const { error: err } = await supabase.rpc("complete_ships", { p_contract_ids: allIds });
+    if (err) { window.alert("Gemi bitirilemedi: " + err.message); return; }
+    setContract(prev => prev ? { ...prev, status: "completed" } : prev);
+    if (isCombined) setSiblings(prev => prev.map((s) => ({ ...s, status: "completed" })));
   };
 
   const saveParties = async () => {

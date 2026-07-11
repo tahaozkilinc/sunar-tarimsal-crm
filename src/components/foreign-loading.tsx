@@ -177,7 +177,8 @@ export function ForeignLoading({ role }: { role: Role }) {
 
   const deleteMovement = async (id: string) => {
     if (!window.confirm("Bu hareket silinsin mi?")) return;
-    await supabase.from("stock_movements").delete().eq("id", id);
+    const { error: err } = await supabase.from("stock_movements").delete().eq("id", id);
+    if (err) { window.alert("Silinemedi: " + err.message); return; }
     await load();
   };
 
