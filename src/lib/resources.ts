@@ -118,6 +118,7 @@ export const EXPENSE_TYPE_OPTIONS: SelectOption[] = [
   { value: "loading", label: "Yükleme", color: "green" },
   { value: "port", label: "Liman", color: "gray" },
   { value: "customs", label: "Gümrük", color: "yellow" },
+  { value: "demurrage", label: "Demuraj", color: "red" },
   { value: "other", label: "Diğer", color: "gray" },
 ];
 

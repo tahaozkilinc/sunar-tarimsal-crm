@@ -159,7 +159,14 @@ export function UsersManager() {
                   <td className="px-4 py-3">
                     <Select
                       value={u.role}
-                      onChange={(e) => updateUser(u.id, { role: e.target.value as Role })}
+                      onChange={(e) => {
+                        const nr = e.target.value as Role;
+                        // Dış olmayan role geçişte eski firma bağı temizlenir.
+                        updateUser(u.id, {
+                          role: nr,
+                          ...(EXTERNAL_ROLE_COMPANY[nr] ? {} : { company_id: null }),
+                        });
+                      }}
                       className="w-36"
                     >
                       {ROLE_OPTIONS.map((r) => (

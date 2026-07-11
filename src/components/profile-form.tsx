@@ -74,19 +74,6 @@ export function ProfileForm({
     setPwMsg({ ok: true, text: "Şifreniz güncellendi." });
   };
 
-  const Msg = ({ m }: { m: { ok: boolean; text: string } | null }) =>
-    m ? (
-      <div
-        className={`rounded-lg border px-3 py-2 text-sm ${
-          m.ok
-            ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-            : "border-red-200 bg-red-50 text-red-700"
-        }`}
-      >
-        {m.text}
-      </div>
-    ) : null;
-
   return (
     <div className="mx-auto max-w-lg space-y-4">
       <h1 className="text-xl font-bold">Profilim</h1>
@@ -146,6 +133,22 @@ export function ProfileForm({
           </Button>
         </div>
       </Card>
+    </div>
+  );
+}
+
+// Form mesaj kutusu: render sırasında yeniden yaratılmasın diye modül seviyesinde.
+function Msg({ m }: { m: { ok: boolean; text: string } | null }) {
+  if (!m) return null;
+  return (
+    <div
+      className={`rounded-lg border px-3 py-2 text-sm ${
+        m.ok
+          ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+          : "border-red-200 bg-red-50 text-red-700"
+      }`}
+    >
+      {m.text}
     </div>
   );
 }

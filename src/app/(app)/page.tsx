@@ -3,8 +3,8 @@ import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { Card } from "@/components/ui";
 import { baseRole, ROLE_LABELS } from "@/lib/nav";
-import { formatNumber } from "@/lib/format";
-import { BarChart3, Calculator, ShoppingCart, TrendingUp, Truck, Users, Wallet } from "lucide-react";
+import { formatDate, formatNumber } from "@/lib/format";
+import { AlertTriangle, BarChart3, Calculator, ShoppingCart, TrendingUp, Truck, Users, Wallet } from "lucide-react";
 
 const sum = <T,>(rows: T[], pick: (r: T) => unknown) =>
   rows.reduce((a, r) => a + (Number(pick(r)) || 0), 0);
@@ -36,11 +36,13 @@ export default async function DashboardPage() {
 
   const year = new Date().getFullYear();
   const [c, s, inv, mv, crm, tuik] = await Promise.all([
-    canB
-      ? supabase.from("purchase_contracts").select("status,quantity")
+    canB || canO
+      ? supabase
+          .from("purchase_contracts")
+          .select("id,vessel,contract_no,status,quantity,eta,payment_due_date,is_paid,surveyor_id,port_id,carrier_id")
       : Promise.resolve({ data: null }),
-    canS
-      ? supabase.from("sales_orders").select("status,quantity")
+    canS || canF
+      ? supabase.from("sales_orders").select("status,quantity,is_paid,price")
       : Promise.resolve({ data: null }),
     canS ? supabase.from("inventory").select("available_qty") : Promise.resolve({ data: null }),
     canO
@@ -54,8 +56,24 @@ export default async function DashboardPage() {
       : Promise.resolve({ data: null }),
   ]);
 
-  const contracts = (c.data as { status: string | null; quantity: number | null }[] | null) || [];
-  const sales = (s.data as { status: string | null; quantity: number | null }[] | null) || [];
+  type PCRow = {
+    id: string;
+    vessel: string | null;
+    contract_no: string | null;
+    status: string | null;
+    quantity: number | null;
+    eta: string | null;
+    payment_due_date: string | null;
+    is_paid: boolean | null;
+    surveyor_id: string | null;
+    port_id: string | null;
+    carrier_id: string | null;
+  };
+  const contracts = (c.data as PCRow[] | null) || [];
+  const sales =
+    (s.data as
+      | { status: string | null; quantity: number | null; is_paid: boolean | null; price: number | null }[]
+      | null) || [];
   const inventory = (inv.data as { available_qty: number | null }[] | null) || [];
   const movements =
     (mv.data as
@@ -91,6 +109,95 @@ export default async function DashboardPage() {
   const acikAktivite = activities.filter((a) => a.status === "open");
   const todayStr = now.toISOString().slice(0, 10);
   const gecikenAktivite = acikAktivite.filter((a) => a.due_date && a.due_date < todayStr);
+
+  // ── Uyarılar: rolüne göre "bugün bakılması gerekenler" ──────────────────────
+  type Alert = { tone: "red" | "amber" | "blue"; text: string; href: string };
+  const alerts: Alert[] = [];
+  const in3 = new Date(now.getTime() + 3 * 86400000).toISOString().slice(0, 10);
+  const in7 = new Date(now.getTime() + 7 * 86400000).toISOString().slice(0, 10);
+  const shipName = (r: PCRow) => r.vessel || r.contract_no || "—";
+  const shipHref = (r: PCRow) => (canO ? `/operations/${r.id}` : "/purchasing");
+  const enRoute = contracts.filter((r) =>
+    ["draft", "active", "in_transit"].includes(r.status || ""),
+  );
+  if (canO || canB) {
+    enRoute
+      .filter((r) => r.eta && r.eta < todayStr)
+      .forEach((r) =>
+        alerts.push({
+          tone: "red",
+          text: `${shipName(r)}: ETA geçti (${formatDate(r.eta)}), gemi hâlâ gelmedi`,
+          href: shipHref(r),
+        }),
+      );
+    enRoute
+      .filter((r) => r.eta && r.eta >= todayStr && r.eta <= in3)
+      .forEach((r) => {
+        const eksik = [
+          !r.surveyor_id && "gözetim",
+          !r.port_id && "liman",
+          !r.carrier_id && "nakliyeci",
+        ]
+          .filter(Boolean)
+          .join(", ");
+        alerts.push({
+          tone: "amber",
+          text: `${shipName(r)}: ETA yaklaşıyor (${formatDate(r.eta)})${eksik ? ` — atanmamış: ${eksik}` : ""}`,
+          href: shipHref(r),
+        });
+      });
+  }
+  if (canF || canB) {
+    contracts
+      .filter((r) => r.status !== "cancelled" && !r.is_paid && r.payment_due_date && r.payment_due_date < todayStr)
+      .forEach((r) =>
+        alerts.push({
+          tone: "red",
+          text: `${shipName(r)}: ödeme vadesi geçti (${formatDate(r.payment_due_date)})`,
+          href: "/finance",
+        }),
+      );
+    contracts
+      .filter(
+        (r) =>
+          r.status !== "cancelled" &&
+          !r.is_paid &&
+          r.payment_due_date &&
+          r.payment_due_date >= todayStr &&
+          r.payment_due_date <= in7,
+      )
+      .forEach((r) =>
+        alerts.push({
+          tone: "amber",
+          text: `${shipName(r)}: ödeme vadesi yaklaşıyor (${formatDate(r.payment_due_date)})`,
+          href: "/finance",
+        }),
+      );
+  }
+  if (canCrm && gecikenAktivite.length > 0)
+    alerts.push({ tone: "amber", text: `${gecikenAktivite.length} CRM aktivitesi gecikmiş durumda`, href: "/crm" });
+  if (canF) {
+    const acikTahsilat = sales.filter(
+      (x) => x.status !== "cancelled" && !x.is_paid && (Number(x.price) || 0) > 0,
+    ).length;
+    if (acikTahsilat > 0)
+      alerts.push({ tone: "blue", text: `${acikTahsilat} satışın tahsilatı bekliyor`, href: "/finance" });
+  }
+  if (canS) {
+    const negStok = inventory.filter((r) => (Number(r.available_qty) || 0) < -0.001).length;
+    if (negStok > 0)
+      alerts.push({
+        tone: "red",
+        text: `${negStok} depo/ürün satırında negatif stok — kayıtları kontrol edin`,
+        href: "/inventory",
+      });
+  }
+  const shownAlerts = alerts.slice(0, 8);
+  const toneDot: Record<Alert["tone"], string> = {
+    red: "bg-red-500",
+    amber: "bg-amber-500",
+    blue: "bg-blue-500",
+  };
 
   const cards: FunctionCard[] = [];
   if (canCrm)
@@ -176,6 +283,33 @@ export default async function DashboardPage() {
         </h1>
         <p className="text-sm text-gray-500">{ROLE_LABELS[role]} paneli</p>
       </div>
+
+      {shownAlerts.length > 0 && (
+        <Card className="p-4">
+          <div className="mb-1 flex items-center gap-2">
+            <AlertTriangle className="h-4 w-4 text-amber-500" />
+            <h2 className="text-sm font-semibold">Dikkat Gerekenler</h2>
+            <span className="text-xs text-gray-400">({alerts.length})</span>
+          </div>
+          <div className="divide-y divide-border">
+            {shownAlerts.map((a, i) => (
+              <Link
+                key={i}
+                href={a.href}
+                className="-mx-2 flex items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-gray-50"
+              >
+                <span className={`h-2 w-2 shrink-0 rounded-full ${toneDot[a.tone]}`} />
+                <span className="min-w-0 truncate">{a.text}</span>
+              </Link>
+            ))}
+            {alerts.length > shownAlerts.length && (
+              <div className="px-2 py-1.5 text-xs text-gray-400">
+                +{alerts.length - shownAlerts.length} uyarı daha
+              </div>
+            )}
+          </div>
+        </Card>
+      )}
 
       {cards.length === 0 ? (
         <p className="text-sm text-gray-500">Görüntülenecek veri yok.</p>
