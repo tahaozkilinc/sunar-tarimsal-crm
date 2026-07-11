@@ -155,10 +155,12 @@ export function ShipOpsPage({
 
   useEffect(() => {
     (async () => {
-      const [c, w, p, co, pn, { data: au }] = await Promise.all([
+      const CONTRACT_COLS =
+        "id,contract_no,vessel,product_id,supplier_id,quantity,unit,eta,status,surveyor_id,port_id,carrier_id,agent_id,combined_shipment_id";
+      const [c0, w, p, co, pn, { data: au }] = await Promise.all([
         supabase
           .from("purchase_contracts")
-          .select("id,contract_no,vessel,product_id,supplier_id,quantity,unit,eta,status,surveyor_id,port_id,carrier_id,agent_id,combined_shipment_id")
+          .select(CONTRACT_COLS)
           .eq("id", contractId)
           .maybeSingle(),
         // Boşaltma hedefi yurtiçi depo/fabrikadır; yurtdışı depolar bu listede yer almaz.
@@ -168,6 +170,18 @@ export function ShipOpsPage({
         supabase.from("profile_names").select("id,full_name"),
         supabase.auth.getUser(),
       ]);
+      // Dış roller (nakliyeci/gozetim/acente) tabloyu okuyamaz (fiyat gizli);
+      // atandıkları gemiyi güvenli kolonlu external_contracts görünümünden alır.
+      let c = c0;
+      let contractSource = "purchase_contracts";
+      if (!c0.error && !c0.data) {
+        const ext = await supabase
+          .from("external_contracts")
+          .select(CONTRACT_COLS)
+          .eq("id", contractId)
+          .maybeSingle();
+        if (ext.data) { c = ext; contractSource = "external_contracts"; }
+      }
       if (c.error) { setError(c.error.message); setLoading(false); return; }
       const cd = c.data as Contract | null;
       setContract(cd ?? null);
@@ -190,12 +204,12 @@ export function ShipOpsPage({
         setCanManage(r === "admin" || r === "operations");
         setCanWrite(r === "admin" || r === "operations" || r === "nakliyeci" || r === "gozetim");
       }
-      // Kombine gemi: diğer sözleşmeleri yükle
+      // Kombine gemi: diğer sözleşmeleri (ana kayıtla aynı kaynaktan) yükle
       if (cd?.combined_shipment_id) {
         const [sibRes, csRes] = await Promise.all([
           supabase
-            .from("purchase_contracts")
-            .select("id,contract_no,vessel,product_id,supplier_id,quantity,unit,eta,status,surveyor_id,port_id,carrier_id,agent_id,combined_shipment_id")
+            .from(contractSource)
+            .select(CONTRACT_COLS)
             .eq("combined_shipment_id", cd.combined_shipment_id)
             .neq("id", contractId),
           supabase.from("combined_shipments").select("name").eq("id", cd.combined_shipment_id).maybeSingle(),

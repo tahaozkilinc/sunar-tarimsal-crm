@@ -62,11 +62,22 @@ export function PendingArrivals({ role }: { role: Role }) {
   const load = async (silent = false) => {
     if (!silent) setLoading(true);
     setError(null);
+    // Dış roller (nakliyeci/gozetim) fiyat içeren tabloyu okuyamaz; atandıkları
+    // gemileri güvenli kolonlu external_contracts görünümünden alırlar. Görünümde
+    // FK olmadığından kombine gemi bilgisi ayrı sorguyla eklenir.
+    const base = role.endsWith("_view") ? role.slice(0, -"_view".length) : role;
+    const isExternal = base === "nakliyeci" || base === "gozetim";
+    const contractQuery = isExternal
+      ? supabase
+          .from("external_contracts")
+          .select("id,contract_no,vessel,origin_country,product_id,quantity,unit,eta,status,assigned_to,combined_shipment_id")
+          .order("eta", { ascending: true })
+      : supabase
+          .from("purchase_contracts")
+          .select("id,contract_no,vessel,origin_country,product_id,quantity,unit,eta,status,assigned_to,combined_shipment_id,combined_shipments(id,name,vessel,eta)")
+          .order("eta", { ascending: true });
     const [c, p, m] = await Promise.all([
-      supabase
-        .from("purchase_contracts")
-        .select("id,contract_no,vessel,origin_country,product_id,quantity,unit,eta,status,assigned_to,combined_shipment_id,combined_shipments(id,name,vessel,eta)")
-        .order("eta", { ascending: true }),
+      contractQuery,
       supabase.from("products").select("id,name"),
       supabase
         .from("stock_movements")
@@ -74,7 +85,29 @@ export function PendingArrivals({ role }: { role: Role }) {
         .eq("movement_type", "inbound"),
     ]);
     if (c.error) setError(c.error.message);
-    setRows((c.data as unknown as Contract[]) || []);
+    let contractRows = ((c.data as unknown as Contract[]) || []).map((r) => ({
+      ...r,
+      combined_shipments: r.combined_shipments ?? null,
+    }));
+    if (isExternal) {
+      const csIds = [...new Set(contractRows.map((r) => r.combined_shipment_id).filter(Boolean))] as string[];
+      if (csIds.length > 0) {
+        const { data: csData } = await supabase
+          .from("combined_shipments")
+          .select("id,name,vessel,eta")
+          .in("id", csIds);
+        const csMap = new Map(
+          ((csData as { id: string; name: string; vessel: string | null; eta: string | null }[] | null) || []).map(
+            (x) => [x.id, x],
+          ),
+        );
+        contractRows = contractRows.map((r) => ({
+          ...r,
+          combined_shipments: r.combined_shipment_id ? (csMap.get(r.combined_shipment_id) ?? null) : null,
+        }));
+      }
+    }
+    setRows(contractRows);
     setProducts((p.data as Ref[]) || []);
     const sums: Record<string, number> = {};
     ((m.data as { contract_id: string | null; quantity: number | null }[] | null) || []).forEach((mv) => {

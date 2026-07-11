@@ -72,8 +72,10 @@ export function ForeignLoading({ role }: { role: Role }) {
         .eq("type", "foreign")
         .eq("is_active", true)
         .order("name"),
+      // Acente fiyat içeren tabloyu okuyamaz; atandığı bağlantıları güvenli
+      // kolonlu external_contracts görünümünden alır.
       supabase
-        .from("purchase_contracts")
+        .from(isAcente ? "external_contracts" : "purchase_contracts")
         .select("id,contract_no,vessel,product_id,quantity,unit,status,eta")
         .not("status", "in", "(cancelled,completed)")
         .order("eta", { ascending: true }),
@@ -97,7 +99,7 @@ export function ForeignLoading({ role }: { role: Role }) {
       setMovements([]);
     }
     setLoading(false);
-  }, [supabase]);
+  }, [supabase, isAcente]);
 
   useEffect(() => { load(); }, [load]);
 
