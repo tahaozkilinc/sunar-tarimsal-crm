@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { Card, EmptyState, Input, Spinner } from "./ui";
-import { formatMoney, formatNumber } from "@/lib/format";
+import { formatNumber } from "@/lib/format";
 import { formatUsd, toUsd } from "@/lib/fx";
 import { Download, FileText, Search } from "lucide-react";
 
@@ -220,13 +220,13 @@ export function CostView({ hideTitle }: { hideTitle?: boolean } = {}) {
       .sort((a, b) => (b.karUsd ?? -Infinity) - (a.karUsd ?? -Infinity));
   }, [contracts, sales, expenses, productMap, companyMap]);
 
-  const filtered = rows.filter((r) => {
+  const filtered = useMemo(() => {
     const q = search.trim().toLocaleLowerCase("tr");
-    return (
-      !q ||
-      [r.vessel, r.contractNo, r.product].some((x) => x.toLocaleLowerCase("tr").includes(q))
+    if (!q) return rows;
+    return rows.filter((r) =>
+      [r.vessel, r.contractNo, r.product].some((x) => x.toLocaleLowerCase("tr").includes(q)),
     );
-  });
+  }, [rows, search]);
 
   const totalAlisUsd   = filtered.reduce((a, r) => a + (r.alisUsd ?? 0), 0);
   const totalSatisUsd  = filtered.reduce((a, r) => a + (r.satisUsd ?? 0), 0);

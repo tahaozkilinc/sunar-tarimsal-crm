@@ -39,7 +39,7 @@ export function InventoryTabs({ role }: { role: Role }) {
       {tab === "movements" && canManage && (
         <div className="space-y-3">
           <p className="rounded-lg border border-border bg-gray-50 px-3 py-2 text-xs text-gray-500">
-            Manuel stok hareketi. <b>Giriş</b>: depoya stok ekler (+). <b>Transfer</b> /
+            Manuel stok hareketi. <b>Giriş</b>: yurtiçi depoya stok ekler (+, bağlantıyı &quot;Geldi&quot; yapar). <b>Yurtdışı Depo Girişi</b>: menşe depoya ekler (+, &quot;Geldi&quot; yapmaz). <b>Transfer</b> /
             <b> Fabrikaya</b>: mal o depodan çıkar (−). <b>Düzeltme</b>: sayım artışı (+).
             Bir malı A&apos;dan B&apos;ye taşımak için B&apos;ye &quot;Giriş&quot;, A&apos;da &quot;Transfer&quot; girin.
             Gemi boşaltma girişleri Operasyon ekranından yapılır.
