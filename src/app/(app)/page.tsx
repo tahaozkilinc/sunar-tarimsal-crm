@@ -35,7 +35,8 @@ export default async function DashboardPage() {
   const canCrm = v || ["admin", "purchasing", "sales"].includes(base);
 
   const year = new Date().getFullYear();
-  const [c, s, inv, mv, crm, tuik] = await Promise.all([
+  const canExp = canO || canM || canB;
+  const [c, s, inv, mv, crm, tuik, exp] = await Promise.all([
     canB || canO
       ? supabase
           .from("purchase_contracts")
@@ -53,6 +54,9 @@ export default async function DashboardPage() {
       : Promise.resolve({ data: null }),
     canB
       ? supabase.from("tuik_monthly_imports").select("hs_code").eq("year", year)
+      : Promise.resolve({ data: null }),
+    canExp
+      ? supabase.from("warehouse_expenses").select("contract_id").eq("is_auto", true).eq("amount", 0)
       : Promise.resolve({ data: null }),
   ]);
 
@@ -191,6 +195,17 @@ export default async function DashboardPage() {
         text: `${negStok} depo/ürün satırında negatif stok — kayıtları kontrol edin`,
         href: "/inventory",
       });
+  }
+  if (canExp) {
+    const pendingExp = (exp.data as { contract_id: string | null }[] | null) || [];
+    if (pendingExp.length > 0) {
+      const shipCount = new Set(pendingExp.map((r) => r.contract_id)).size;
+      alerts.push({
+        tone: "blue",
+        text: `${pendingExp.length} bekleyen masraf kalemi (${shipCount} gemi) — teslim şekline göre otomatik açıldı, tutar girilmesi gerekiyor`,
+        href: canM ? "/cost" : "/operations",
+      });
+    }
   }
   const shownAlerts = alerts.slice(0, 8);
   const toneDot: Record<Alert["tone"], string> = {

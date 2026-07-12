@@ -6,6 +6,7 @@ import { CostView } from "./cost-view";
 import { PositionReport } from "./position-report";
 import { YearlyReport } from "./yearly-report";
 import { ResourceManager } from "./resource-manager";
+import { PendingExpenses } from "./pending-expenses";
 import { warehouseExpensesResource } from "@/lib/resources";
 import type { Role } from "@/lib/types";
 
@@ -34,8 +35,10 @@ export function CostTabs({ role }: { role: Role }) {
             Operasyon ve depo masrafları: demuraj, navlun, sigorta, gözetim ücreti gibi <b>gemi</b>
             giderleri için Bağlantı seçin (depo boş kalabilir); depolama/elleçleme gibi <b>depo</b>
             giderleri için depo seçin. Bağlantıya bağlanan masraf o geminin maliyet raporuna yansır ve
-            kârından düşer. Tutarlar kaydın günündeki TCMB kuruyla USD&apos;ye çevrilir.
+            kârından düşer. Tutarlar kaydın günündeki TCMB kuruyla USD&apos;ye çevrilir. Teslim şekli
+            (incoterm) girilen bağlantılarda beklenen masraf kalemleri otomatik açılır — aşağıda.
           </p>
+          <PendingExpenses role={role} />
           <ResourceManager config={warehouseExpensesResource} role={role} hideTitle />
         </div>
       )}
