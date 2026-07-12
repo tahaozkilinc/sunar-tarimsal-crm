@@ -1,13 +1,39 @@
 "use client";
 
+import { useEffect, useState } from "react";
+
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
+import { createClient } from "@/lib/supabase/client";
 import { ResourceManager } from "./resource-manager";
 import { CompanyReport } from "./company-report";
 import { CompanyShipStats } from "./company-ship-stats";
 import { Badge, Card } from "./ui";
 import { COMPANY_TYPE_OPTIONS, contactsResource } from "@/lib/resources";
 import type { Company, Role } from "@/lib/types";
+
+// Firma logosu: private kovadan imzalı URL ile gösterilir; yoksa baş harf.
+function CompanyLogo({ path, name }: { path: string | null; name: string }) {
+  const [url, setUrl] = useState<string | null>(null);
+  useEffect(() => {
+    if (!path) { setUrl(null); return; }
+    let on = true;
+    createClient()
+      .storage.from("company-logos")
+      .createSignedUrl(path, 3600)
+      .then(({ data }) => { if (on) setUrl(data?.signedUrl ?? null); });
+    return () => { on = false; };
+  }, [path]);
+  if (url) {
+    // eslint-disable-next-line @next/next/no-img-element
+    return <img src={url} alt={`${name} logosu`} className="h-12 w-12 rounded-lg border border-border bg-white object-contain p-1" />;
+  }
+  return (
+    <div className="flex h-12 w-12 items-center justify-center rounded-lg border border-border bg-gray-50 text-lg font-bold text-gray-400">
+      {name.slice(0, 1).toLocaleUpperCase("tr")}
+    </div>
+  );
+}
 
 function Info({ label, value }: { label: string; value: string | null }) {
   return (
@@ -39,7 +65,8 @@ export function CompanyDetailView({ company, role }: { company: Company; role: R
         >
           <ArrowLeft className="h-4 w-4" /> CRM&apos;e dön
         </Link>
-        <div className="mt-1 flex flex-wrap items-center gap-2">
+        <div className="mt-1 flex flex-wrap items-center gap-3">
+          <CompanyLogo path={company.logo_url} name={company.name} />
           <h1 className="text-xl font-bold">{company.name}</h1>
           {typeOpt && <Badge color={typeOpt.color}>{typeOpt.label}</Badge>}
         </div>

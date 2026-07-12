@@ -119,6 +119,11 @@ export const EXPENSE_TYPE_OPTIONS: SelectOption[] = [
   { value: "port", label: "Liman", color: "gray" },
   { value: "customs", label: "Gümrük", color: "yellow" },
   { value: "demurrage", label: "Demuraj", color: "red" },
+  { value: "freight", label: "Navlun", color: "blue" },
+  { value: "insurance", label: "Sigorta", color: "purple" },
+  { value: "survey", label: "Gözetim Ücreti", color: "yellow" },
+  { value: "commission", label: "Komisyon", color: "green" },
+  { value: "finance", label: "Finansman", color: "gray" },
   { value: "other", label: "Diğer", color: "gray" },
 ];
 
@@ -182,6 +187,7 @@ export const companiesResource: ResourceConfig = {
     { name: "phone", label: "Telefon", type: "tel" },
     { name: "email", label: "E-posta", type: "email" },
     { name: "address", label: "Adres", type: "textarea" },
+    { name: "logo_url", label: "Firma Logosu (PNG/JPG)", type: "file", bucket: "company-logos" },
     { name: "notes", label: "Notlar", type: "textarea" },
   ],
 };
@@ -412,12 +418,13 @@ export const warehousesResource: ResourceConfig = {
   ],
 };
 
-// Depo masrafları: yurtdışı/yurtiçi depoların depolama, elleçleme, yükleme vb.
-// giderleri. Bağlantıya (gemiye) bağlanırsa maliyet raporunda o geminin
-// kârından düşer. fxCapture ile günün TCMB kuru kaydedilir (USD'ye çevrim için).
+// Operasyon / depo masrafları: depolama-elleçleme gibi DEPO giderleri ve
+// demuraj-navlun-sigorta-gözetim gibi GEMİ giderleri tek tabloda. Depo veya
+// bağlantıdan en az biri seçilmelidir (DB kuralı); bağlantıya bağlanan masraf
+// maliyet raporunda o geminin kârından düşer. fxCapture günün TCMB kurunu yazar.
 export const warehouseExpensesResource: ResourceConfig = {
   table: "warehouse_expenses",
-  title: "Depo Masrafları",
+  title: "Operasyon / Depo Masrafları",
   singular: "Masraf",
   writeRoles: ["admin", "operations", "maliyet"],
   defaultValues: { currency: "USD", expense_type: "storage" },
@@ -428,7 +435,7 @@ export const warehouseExpensesResource: ResourceConfig = {
   fxCapture: true,
   fields: [
     { name: "expense_date", label: "Tarih", type: "date", required: true },
-    { name: "warehouse_id", label: "Depo / Fabrika", type: "reference", ref: { table: "warehouses", labelField: "name" }, required: true },
+    { name: "warehouse_id", label: "Depo / Fabrika (depo gideri ise)", type: "reference", ref: { table: "warehouses", labelField: "name" } },
     { name: "expense_type", label: "Masraf Türü", type: "select", options: EXPENSE_TYPE_OPTIONS, required: true },
     { name: "contract_id", label: "Bağlantı (Gemi) — maliyete yansır", type: "reference", ref: { table: "purchase_contracts", labelField: "vessel", labelFields: ["vessel", "contract_no"] } },
     { name: "amount", label: "Tutar", type: "money", required: true, min: 0 },

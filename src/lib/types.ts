@@ -36,6 +36,7 @@ export interface Company {
   phone: string | null;
   email: string | null;
   address: string | null;
+  logo_url: string | null;
   notes: string | null;
   created_at: string;
 }

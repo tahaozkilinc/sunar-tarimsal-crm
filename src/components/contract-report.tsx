@@ -295,7 +295,7 @@ export function ContractReport({ contractId }: { contractId: string }) {
             <div className="mt-1 text-lg font-bold">{formatUsd(calc.satisUsd, 0)}</div>
           </div>
           <div className="rounded-xl bg-gray-50 p-3 print:border print:border-border">
-            <div className="text-[11px] uppercase tracking-wide text-gray-500">Depo Masrafı</div>
+            <div className="text-[11px] uppercase tracking-wide text-gray-500">Masraflar</div>
             <div className={`mt-1 text-lg font-bold ${calc.masrafUsd > 0 ? "text-amber-700" : "text-gray-400"}`}>
               {calc.masrafUsd > 0 ? `−${formatUsd(calc.masrafUsd, 0)}` : "—"}
             </div>
@@ -396,7 +396,7 @@ export function ContractReport({ contractId }: { contractId: string }) {
         {expenses.length > 0 && (
           <div className="report-avoid-break mt-4 rounded-xl border border-border p-4">
             <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
-              Depo Masrafları
+              Operasyon / Depo Masrafları
             </h2>
             <table className="w-full text-sm">
               <thead>
