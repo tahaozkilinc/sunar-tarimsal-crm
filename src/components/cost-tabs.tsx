@@ -21,7 +21,7 @@ export function CostTabs({ role }: { role: Role }) {
           tabs={[
             { key: "ships", label: "Gemi Bazlı" },
             { key: "position", label: "Pozisyon" },
-            { key: "expenses", label: "Depo Masrafları" },
+            { key: "expenses", label: "Masraflar" },
             { key: "yearly", label: "Yıllık Karşılaştırma" },
           ]}
         />
@@ -31,9 +31,10 @@ export function CostTabs({ role }: { role: Role }) {
       {tab === "expenses" && (
         <div className="space-y-3">
           <p className="rounded-lg border border-border bg-gray-50 px-3 py-2 text-xs text-gray-500">
-            Depo / liman / yükleme masrafları. Bir <b>Bağlantı (Gemi)</b> seçilirse masraf o geminin
-            maliyet raporuna yansır ve kârından düşer; bağlantısız masraflar yalnızca bu listede izlenir.
-            Tutarlar kaydın günündeki TCMB kuruyla USD&apos;ye çevrilir.
+            Operasyon ve depo masrafları: demuraj, navlun, sigorta, gözetim ücreti gibi <b>gemi</b>
+            giderleri için Bağlantı seçin (depo boş kalabilir); depolama/elleçleme gibi <b>depo</b>
+            giderleri için depo seçin. Bağlantıya bağlanan masraf o geminin maliyet raporuna yansır ve
+            kârından düşer. Tutarlar kaydın günündeki TCMB kuruyla USD&apos;ye çevrilir.
           </p>
           <ResourceManager config={warehouseExpensesResource} role={role} hideTitle />
         </div>
