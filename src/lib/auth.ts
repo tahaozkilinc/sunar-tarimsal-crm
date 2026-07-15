@@ -20,10 +20,17 @@ export async function getProfile(): Promise<Profile | null> {
   return (data as Profile) ?? null;
 }
 
-// Profil yoksa /login'e yönlendirir.
+// Profil yoksa /login'e yönlendirir. Pasif kullanıcı için oturumu kapatıp
+// açıklayıcı bir mesajla /login'e döner — asıl kilit RLS'te (0040: auth_role/
+// is_admin is_active=true ister), bu yalnızca kullanıcıya net bir mesaj verir.
 export async function requireProfile(): Promise<Profile> {
   const profile = await getProfile();
   if (!profile) redirect("/login");
+  if (!profile.is_active) {
+    const supabase = await createClient();
+    await supabase.auth.signOut();
+    redirect("/login?deactivated=1");
+  }
   return profile;
 }
 

@@ -1,13 +1,22 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Button, Card, Field, Input } from "@/components/ui";
 import { Leaf } from "lucide-react";
 
 export default function LoginPage() {
+  return (
+    <Suspense fallback={null}>
+      <LoginForm />
+    </Suspense>
+  );
+}
+
+function LoginForm() {
   const router = useRouter();
+  const deactivated = useSearchParams().get("deactivated") === "1";
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -47,6 +56,12 @@ export default function LoginPage() {
           <h1 className="text-lg font-bold">Sunar Tarımsal CRM</h1>
           <p className="text-sm text-gray-500">Hesabınızla giriş yapın</p>
         </div>
+
+        {deactivated && (
+          <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
+            Hesabınız pasif duruma alınmış. Erişim için yöneticinizle görüşün.
+          </div>
+        )}
 
         <form onSubmit={submit} className="space-y-4">
           <Field label="E-posta">
