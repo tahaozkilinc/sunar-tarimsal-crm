@@ -346,7 +346,8 @@ export const salesOrdersResource: ResourceConfig = {
     { name: "customer_id", label: "Müşteri", type: "reference", ref: { table: "companies", labelField: "name", filter: { type: ["customer", "both"] } }, required: true },
     { name: "contract_id", label: "Kaynak Bağlantı (Gemi)", type: "reference", ref: { table: "sellable_contracts", labelField: "vessel", labelFields: ["vessel", "contract_no"] }, autofill: { product_id: "product_id" }, required: true },
     { name: "product_id", label: "Ürün", type: "reference", ref: { table: "products", labelField: "name", filter: { is_active: ["true"] } }, formHidden: true },
-    { name: "warehouse_id", label: "Çıkış Deposu", type: "reference", ref: { table: "warehouses", labelField: "name" }, required: true },
+    // Çıkış deposu artık TEK seçim değil: kaydettikten sonra "Detay" görünümünde
+    // "Sevkiyat Depoları" bölümünden çoklu depo seçilir (sale_warehouses).
     { name: "quantity", label: "Miktar", type: "number", required: true, positive: true },
     { name: "unit", label: "Birim", type: "text" },
     { name: "price", label: "Birim Fiyat", type: "money", min: 0 },
