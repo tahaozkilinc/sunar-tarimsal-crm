@@ -6,7 +6,7 @@ import { Badge, Button, Card, EmptyState, Field, Input, Select, Spinner } from "
 import { MovementPhotos, type MovementPhoto } from "./movement-photos";
 import { formatDate, formatNumber } from "@/lib/format";
 import { baseRole } from "@/lib/nav";
-import { Trash2, ChevronDown, ChevronUp } from "lucide-react";
+import { Trash2, ChevronDown, ChevronUp, CheckCircle2 } from "lucide-react";
 import type { Role } from "@/lib/types";
 
 // Satış Operasyon: depodan veya gemiden doğrudan satılan malın FİİLİ çıkışını
@@ -15,13 +15,17 @@ import type { Role } from "@/lib/types";
 // TİCARİ kayıttır; buradaki her satır stock_movements'a 'outbound_sale' olarak
 // yazılır ve depo stoğunu (inventory) SATIŞ ANINDA değil, araç ÇIKTIĞINDA düşer.
 //
-//   Depodan        -> warehouse_id dolu, contract_id BOŞ (hangi orijinal alım
-//                      partisinden geldiği depo stoğunu etkilemez)
-//   Gemiden Direkt -> warehouse_id BOŞ, contract_id = satışın bağlı olduğu gemi
-//                      (yalnızca satışın contract_id'si varsa seçilebilir)
+//   Depodan        -> warehouse_id dolu, contract_id BOŞ. Yalnızca Satışlar
+//                      ekranında o satışa seçilen depo(lar)dan biri olabilir
+//                      (sale_warehouses beyaz listesi — DB'de sert kural).
+//   Gemiden Direkt -> warehouse_id BOŞ, contract_id = satışın bağlı gemisi.
 //
 // sales_ops rolü fiyatı hiç görmez: satışlar 'dispatch_sales' (fiyatsız)
 // görünümünden okunur; admin/sales tam 'sales_orders' tablosunu kullanır.
+//
+// Sevkiyatı Bitir: tonaj tam eşleşmese bile operasyoncu satışı kapatabilir;
+// kapatılan satışa yeni kayıt girilemez (DB kilidi) ve fark varsa hem burada
+// hem Satışlar ekranındaki panelde açıkça gösterilir.
 
 type Sale = {
   id: string;
@@ -29,10 +33,10 @@ type Sale = {
   customer_id: string | null;
   contract_id: string | null;
   product_id: string | null;
-  warehouse_id: string | null;
   quantity: number | null;
   unit: string | null;
   status: string;
+  dispatch_closed_at: string | null;
 };
 type Ref = { id: string; name: string };
 type Wh = { id: string; name: string };
@@ -51,8 +55,6 @@ type Movement = {
   created_by: string | null;
 };
 
-const OPEN_STATUSES = ["draft", "confirmed"]; // sevkiyat girilebilecek satış durumları
-
 export function SalesDispatch({ role }: { role: Role }) {
   const supabase = useMemo(() => createClient(), []);
   const base = baseRole(role);
@@ -60,6 +62,7 @@ export function SalesDispatch({ role }: { role: Role }) {
   const canWrite = ["admin", "sales", "sales_ops"].includes(base) && !role.endsWith("_view");
 
   const [sales, setSales] = useState<Sale[]>([]);
+  const [allowedByS, setAllowedByS] = useState<Record<string, string[]>>({}); // sale_id -> izinli depo id'leri
   const [warehouses, setWarehouses] = useState<Wh[]>([]);
   const [products, setProducts] = useState<Ref[]>([]);
   const [companies, setCompanies] = useState<Ref[]>([]);
@@ -69,6 +72,7 @@ export function SalesDispatch({ role }: { role: Role }) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showClosed, setShowClosed] = useState(false);
 
   // form
   const [saleId, setSaleId] = useState("");
@@ -81,6 +85,7 @@ export function SalesDispatch({ role }: { role: Role }) {
   const [saving, setSaving] = useState(false);
   const [formErr, setFormErr] = useState<string | null>(null);
   const [flash, setFlash] = useState<string | null>(null);
+  const [closingId, setClosingId] = useState<string | null>(null);
 
   const loadPhotos = useCallback(
     async (ids: string[]) => {
@@ -104,8 +109,8 @@ export function SalesDispatch({ role }: { role: Role }) {
     const [saleRes, whRes, prRes, coRes, invRes] = await Promise.all([
       supabase
         .from(isSalesOps ? "dispatch_sales" : "sales_orders")
-        .select("id,order_no,customer_id,contract_id,product_id,warehouse_id,quantity,unit,status")
-        .in("status", OPEN_STATUSES)
+        .select("id,order_no,customer_id,contract_id,product_id,quantity,unit,status,dispatch_closed_at")
+        .neq("status", "cancelled")
         .order("id"),
       // Sevkiyat yurtiçi depo/fabrikadan yapılır; yurtdışı depolar bu listede yer almaz.
       supabase.from("warehouses").select("id,name").eq("is_active", true).neq("type", "foreign").order("name"),
@@ -114,11 +119,27 @@ export function SalesDispatch({ role }: { role: Role }) {
       supabase.from("inventory").select("warehouse_id,product_id,available_qty"),
     ]);
     if (saleRes.error) { setError(saleRes.error.message); setLoading(false); return; }
-    setSales((saleRes.data as Sale[]) || []);
+    const saleRows = (saleRes.data as Sale[]) || [];
+    setSales(saleRows);
     setWarehouses((whRes.data as Wh[]) || []);
     setProducts((prRes.data as Ref[]) || []);
     setCompanies((coRes.data as Ref[]) || []);
     setInventory((invRes.data as InvRow[]) || []);
+
+    // Her satışın sevkiyata izinli depoları (beyaz liste — DB'de fn_sm_guard aynısını zorunlu kılar).
+    if (saleRows.length > 0) {
+      const { data: swData } = await supabase
+        .from("sale_warehouses")
+        .select("sale_id,warehouse_id")
+        .in("sale_id", saleRows.map((s) => s.id));
+      const am: Record<string, string[]> = {};
+      ((swData as { sale_id: string; warehouse_id: string }[] | null) || []).forEach((r) => {
+        (am[r.sale_id] ||= []).push(r.warehouse_id);
+      });
+      setAllowedByS(am);
+    } else {
+      setAllowedByS({});
+    }
 
     const { data: mv, error: mvErr } = await supabase
       .from("stock_movements")
@@ -153,6 +174,7 @@ export function SalesDispatch({ role }: { role: Role }) {
     Number(inventory.find((r) => r.warehouse_id === whId && r.product_id === productId)?.available_qty) || 0;
 
   const selectedSale = saleOf(saleId);
+  const selectedAllowed = saleId ? allowedByS[saleId] || [] : [];
   const dispatched = saleId ? dispatchedBySale.get(saleId) || 0 : 0;
   const remaining = selectedSale ? (Number(selectedSale.quantity) || 0) - dispatched : 0;
 
@@ -200,6 +222,24 @@ export function SalesDispatch({ role }: { role: Role }) {
     await load();
   };
 
+  const closeDispatch = async (s: Sale) => {
+    const disp = dispatchedBySale.get(s.id) || 0;
+    const diff = Math.round(((Number(s.quantity) || 0) - disp) * 1000) / 1000;
+    const msg =
+      diff === 0
+        ? `${formatNumber(disp)} ton tam sevk edildi. Sevkiyatı kapatmak istiyor musunuz? Kapatıldıktan sonra yeni kayıt eklenemez.`
+        : diff > 0
+          ? `${formatNumber(disp)} / ${formatNumber(s.quantity)} ton sevk edildi — ${formatNumber(diff)} ton EKSİK kalacak. Yine de sevkiyatı kapatmak istiyor musunuz?`
+          : `${formatNumber(disp)} / ${formatNumber(s.quantity)} ton sevk edildi — ${formatNumber(-diff)} ton FAZLA. Yine de sevkiyatı kapatmak istiyor musunuz?`;
+    if (!window.confirm(msg)) return;
+    setClosingId(s.id);
+    const { error: err } = await supabase.rpc("close_sale_dispatch", { p_sale_id: s.id });
+    setClosingId(null);
+    if (err) { window.alert("Kapatılamadı: " + err.message); return; }
+    if (saleId === s.id) setSaleId("");
+    await load();
+  };
+
   const toggle = (id: string) =>
     setExpanded((prev) => {
       const next = new Set(prev);
@@ -214,8 +254,10 @@ export function SalesDispatch({ role }: { role: Role }) {
     </div>
   );
 
-  // Sevkiyata açık satışlar (henüz teslim/iptal olmamış)
-  const openSales = sales.filter((s) => (Number(s.quantity) || 0) - (dispatchedBySale.get(s.id) || 0) > 0.001);
+  const openSales = sales.filter((s) => !s.dispatch_closed_at);
+  const closedSales = sales.filter((s) => s.dispatch_closed_at);
+  // Forma yalnızca AÇIK satışlar + sevk edilecek bir şeyi kalan satışlar girilebilir.
+  const dispatchableSales = openSales;
 
   return (
     <div className="space-y-4">
@@ -230,6 +272,7 @@ export function SalesDispatch({ role }: { role: Role }) {
               const rem = (Number(s.quantity) || 0) - disp;
               const rows = movements.filter((m) => m.sale_id === s.id);
               const isOpen = expanded.has(s.id);
+              const allowedCount = (allowedByS[s.id] || []).length;
               return (
                 <Card key={s.id} className="p-4">
                   <button
@@ -241,8 +284,8 @@ export function SalesDispatch({ role }: { role: Role }) {
                       <span className="ml-2 text-xs text-gray-500">
                         {s.order_no || "—"} · {pName(s.product_id)}
                       </span>
-                      {!isSalesOps && !s.warehouse_id && !s.contract_id && (
-                        <Badge color="yellow">Depo/gemi atanmamış</Badge>
+                      {!isSalesOps && allowedCount === 0 && (
+                        <Badge color="yellow">Depo atanmamış</Badge>
                       )}
                     </div>
                     <div className="flex items-center gap-3 text-sm">
@@ -303,11 +346,61 @@ export function SalesDispatch({ role }: { role: Role }) {
                           </div>
                         ))
                       )}
+                      {canWrite && (
+                        <button
+                          type="button"
+                          onClick={() => closeDispatch(s)}
+                          disabled={closingId === s.id}
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 disabled:opacity-50"
+                        >
+                          <CheckCircle2 className="h-3.5 w-3.5" />
+                          {closingId === s.id ? "Kapatılıyor..." : "Sevkiyatı Bitir"}
+                        </button>
+                      )}
                     </div>
                   )}
                 </Card>
               );
             })
+          )}
+
+          {/* Kapatılan sevkiyatlar: salt-okunur, fark varsa belirgin uyarı */}
+          {closedSales.length > 0 && (
+            <Card className="p-4">
+              <button
+                onClick={() => setShowClosed((o) => !o)}
+                className="flex w-full items-center justify-between text-left"
+              >
+                <span className="text-sm font-semibold">Kapatılan Sevkiyatlar ({closedSales.length})</span>
+                <span className="text-xs text-brand">{showClosed ? "Gizle" : "Göster"}</span>
+              </button>
+              {showClosed && (
+                <div className="mt-3 space-y-2">
+                  {closedSales.map((s) => {
+                    const disp = dispatchedBySale.get(s.id) || 0;
+                    const diff = Math.round(((Number(s.quantity) || 0) - disp) * 1000) / 1000;
+                    const mismatch = Math.abs(diff) > 0.001;
+                    return (
+                      <div key={s.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border p-2.5 text-sm">
+                        <div className="min-w-0">
+                          <span className="font-medium">{cName(s.customer_id)}</span>
+                          <span className="ml-2 text-xs text-gray-500">
+                            {pName(s.product_id)} · {formatNumber(disp)} / {formatNumber(s.quantity)} ton
+                          </span>
+                        </div>
+                        {mismatch ? (
+                          <Badge color="red">
+                            ⚠ {diff > 0 ? `${formatNumber(diff)} ton eksik` : `${formatNumber(-diff)} ton fazla`}
+                          </Badge>
+                        ) : (
+                          <Badge color="green">✓ Tam sevk edildi</Badge>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </Card>
           )}
         </div>
 
@@ -319,13 +412,13 @@ export function SalesDispatch({ role }: { role: Role }) {
               <Field label="Satış" required>
                 <Select value={saleId} onChange={(e) => { setSaleId(e.target.value); setWarehouseId(""); }}>
                   <option value="">Seçiniz...</option>
-                  {openSales.map((s) => (
+                  {dispatchableSales.map((s) => (
                     <option key={s.id} value={s.id}>
                       {cName(s.customer_id)} · {pName(s.product_id)} ({s.order_no || "no"})
                     </option>
                   ))}
                 </Select>
-                {openSales.length === 0 && (
+                {dispatchableSales.length === 0 && (
                   <div className="mt-1 text-xs text-amber-600">Sevkiyata açık satış yok.</div>
                 )}
               </Field>
@@ -343,8 +436,9 @@ export function SalesDispatch({ role }: { role: Role }) {
                 <div className="inline-flex w-full overflow-hidden rounded-lg border border-border text-sm">
                   <button
                     type="button"
+                    disabled={!!selectedSale && selectedAllowed.length === 0}
                     onClick={() => setMode("warehouse")}
-                    className={`flex-1 px-3 py-2 font-medium ${mode === "warehouse" ? "bg-brand text-white" : "bg-white text-gray-600"}`}
+                    className={`flex-1 px-3 py-2 font-medium disabled:cursor-not-allowed disabled:opacity-40 ${mode === "warehouse" ? "bg-brand text-white" : "bg-white text-gray-600"}`}
                   >
                     Depodan
                   </button>
@@ -357,18 +451,26 @@ export function SalesDispatch({ role }: { role: Role }) {
                     Gemiden Direkt
                   </button>
                 </div>
+                {selectedSale && selectedAllowed.length === 0 && mode === "warehouse" && (
+                  <div className="mt-1 text-xs text-amber-600">
+                    Bu satış için henüz depo seçilmemiş (Satışlar ekranından eklenir) — şimdilik yalnızca
+                    &quot;Gemiden Direkt&quot; kullanılabilir.
+                  </div>
+                )}
               </Field>
 
               {mode === "warehouse" && (
-                <Field label="Depo" required>
+                <Field label="Depo (yalnızca bu satış için seçilenler)" required>
                   <Select value={warehouseId} onChange={(e) => setWarehouseId(e.target.value)}>
                     <option value="">Seçiniz...</option>
-                    {warehouses.map((w) => (
-                      <option key={w.id} value={w.id}>
-                        {w.name}
-                        {selectedSale ? ` — mevcut ${formatNumber(availableAt(w.id, selectedSale.product_id))} t` : ""}
-                      </option>
-                    ))}
+                    {warehouses
+                      .filter((w) => selectedAllowed.includes(w.id))
+                      .map((w) => (
+                        <option key={w.id} value={w.id}>
+                          {w.name}
+                          {selectedSale ? ` — mevcut ${formatNumber(availableAt(w.id, selectedSale.product_id))} t` : ""}
+                        </option>
+                      ))}
                   </Select>
                 </Field>
               )}
@@ -417,9 +519,10 @@ export function SalesDispatch({ role }: { role: Role }) {
 
       <p className="text-xs text-gray-400">
         Depo stoğu, satış kaydı oluşturulduğu an değil araç fiilen çıktığında düşer. &quot;Depodan&quot;
-        seçiminde mevcut depo stoğu aşılamaz; &quot;Gemiden Direkt&quot; yalnızca satışın bağlı olduğu gemi
-        varsa ve o gemi iptal/tamamlanmış değilse kullanılabilir. Bir satış tam sevk edilince durumu
-        otomatik &quot;Teslim Edildi&quot; olur.
+        yalnızca Satışlar ekranında o satış için seçilen depo(lar)da çalışır ve mevcut stok aşılamaz;
+        &quot;Gemiden Direkt&quot; satışın bağlı gemisi iptal/tamamlanmış değilse kullanılabilir.
+        &quot;Sevkiyatı Bitir&quot; dediğinizde tonaj tam eşleşmese bile satış kapanır; fark varsa hem burada
+        hem Satışlar ekranındaki sevkiyat panelinde işaretlenir.
       </p>
     </div>
   );

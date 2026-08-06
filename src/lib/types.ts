@@ -124,17 +124,26 @@ export interface StockMovement {
 export interface SalesOrder {
   id: string;
   order_no: string | null;
-  customer_id: string | null;
-  contract_id: string | null;
+  customer_id: string; // zorunlu: stok bir müşteriye gider
+  contract_id: string; // zorunlu: bağlantısız satış olmaz
   product_id: string | null;
-  warehouse_id: string | null;
+  // warehouse_id KALDIRILDI: bir satış artık TEK depoya değil, sale_warehouses
+  // junction tablosundaki İZİNLİ depo kümesine bağlı (çoklu depo).
   quantity: number;
   unit: string;
   price: number | null;
   currency: string;
   delivery_date: string | null;
   status: string;
+  dispatch_closed_at: string | null; // operasyoncu "Sevkiyatı Bitir" dediyse dolu
+  dispatch_closed_by: string | null;
   notes: string | null;
+}
+
+// sale_warehouses: bir satışın sevk edilebileceği izinli depolar (çoklu).
+export interface SaleWarehouse {
+  sale_id: string;
+  warehouse_id: string;
 }
 
 export interface CrmActivity {
