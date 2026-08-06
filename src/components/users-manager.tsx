@@ -27,6 +27,7 @@ const ROLE_OPTIONS: Role[] = [
   "nakliyeci",
   "gozetim",
   "acente",
+  "sales_ops",
   "purchasing_view",
   "operations_view",
   "sales_view",

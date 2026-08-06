@@ -11,6 +11,7 @@ export type Role =
   | "nakliyeci"
   | "gozetim"
   | "acente"
+  | "sales_ops"
   | "purchasing_view"
   | "operations_view"
   | "sales_view"
@@ -113,6 +114,7 @@ export interface StockMovement {
   movement_date: string;
   vehicle_plate: string | null;
   driver_name: string | null;
+  sale_id: string | null; // outbound_sale: hangi satışa ait sevkiyat
   notes: string | null;
   created_by: string | null;
 }

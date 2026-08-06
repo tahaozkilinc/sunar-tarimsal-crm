@@ -4,7 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { Card } from "@/components/ui";
 import { baseRole, ROLE_LABELS } from "@/lib/nav";
 import { formatDate, formatNumber } from "@/lib/format";
-import { AlertTriangle, BarChart3, Calculator, ShoppingCart, TrendingUp, Truck, Users, Wallet } from "lucide-react";
+import { AlertTriangle, BarChart3, Calculator, Send, ShoppingCart, TrendingUp, Truck, Users, Wallet } from "lucide-react";
 
 const sum = <T,>(rows: T[], pick: (r: T) => unknown) =>
   rows.reduce((a, r) => a + (Number(pick(r)) || 0), 0);
@@ -33,6 +33,7 @@ export default async function DashboardPage() {
   const canF = v || ["admin", "finans"].includes(base);
   const canM = v || ["admin", "maliyet"].includes(base);
   const canCrm = v || ["admin", "purchasing", "sales"].includes(base);
+  const canSalesOps = v || base === "sales_ops";
 
   const year = new Date().getFullYear();
   const canExp = canO || canM || canB;
@@ -261,6 +262,15 @@ export default async function DashboardPage() {
       tone: "bg-green-50 text-green-700",
       main: `${formatNumber(satilabilir)} ton`,
       sub: `satılabilir stok · bekleyen ${formatNumber(bekleyen)} ton`,
+    });
+  if (canSalesOps)
+    cards.push({
+      title: "Satış Operasyon",
+      href: "/sales",
+      icon: Send,
+      tone: "bg-teal-50 text-teal-700",
+      main: "Sevkiyat",
+      sub: "depodan / gemiden araç çıkışı gir",
     });
   if (canO)
     cards.push({

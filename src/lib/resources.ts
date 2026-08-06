@@ -141,6 +141,7 @@ export const MOVEMENT_TYPE_OPTIONS: SelectOption[] = [
   { value: "origin_in", label: "Yurtdışı Depo Girişi", color: "yellow" },
   { value: "transfer", label: "Transfer", color: "blue" },
   { value: "to_factory", label: "Fabrikaya", color: "purple" },
+  { value: "outbound_sale", label: "Satış Çıkışı", color: "red" },
   { value: "adjustment", label: "Düzeltme", color: "gray" },
 ];
 
