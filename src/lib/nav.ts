@@ -45,7 +45,7 @@ export const NAV_ITEMS: NavItem[] = [
     href: "/inventory",
     label: "Stok",
     icon: "Boxes",
-    roles: ["admin", "operations", "sales", "viewer"],
+    roles: ["admin", "operations", "sales", "viewer", "sales_ops"],
   },
   {
     href: "/sales",
