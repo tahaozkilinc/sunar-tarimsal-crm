@@ -8,9 +8,10 @@ import { formatNumber } from "@/lib/format";
 import { TURKEY_CENTER, geocodeLocation } from "@/lib/turkey-cities";
 
 // Stok haritası: her depo/fabrika konumunda toplam tonaj + ürün kırılımı.
-// Konum, deponun city+country alanından türetilir (geocodeLocation): TR illeri,
-// yurtdışı liman/şehirler, olmazsa ülke merkezi. Eşleşmeyenler listede kalır.
-// Kapsam filtresi: Tümü / Yurtiçi / Yurtdışı.
+// Konum önceliği: 1) depoya Stok → Depolar'dan haritadan seçilmiş TAM
+// koordinat (lat/lng) varsa birebir onu kullanır; 2) yoksa city+country'den
+// TAHMİNİ türetir (geocodeLocation: TR illeri, yurtdışı liman/şehirler, olmazsa
+// ülke merkezi). Eşleşmeyenler listede kalır. Kapsam filtresi: Tümü/Yurtiçi/Yurtdışı.
 
 type InvRow = {
   warehouse_id: string;
@@ -28,6 +29,7 @@ type WhAgg = {
   city: string | null;
   country: string | null;
   coords: [number, number] | null;
+  exact: boolean; // true = haritadan seçilmiş tam koordinat, false = city/country tahmini
   total: number;
   products: ProductQty[];
 };
@@ -39,7 +41,9 @@ const FOREIGN = "#ca8a04"; // yurtdışı depo (sarı)
 export function StockMap() {
   const supabase = useMemo(() => createClient(), []);
   const [rows, setRows] = useState<InvRow[]>([]);
-  const [locByWh, setLocByWh] = useState<Record<string, { city: string | null; country: string | null }>>({});
+  const [locByWh, setLocByWh] = useState<
+    Record<string, { city: string | null; country: string | null; lat: number | null; lng: number | null }>
+  >({});
   const [scope, setScope] = useState<"all" | "domestic" | "foreign">("all");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -55,13 +59,16 @@ export function StockMap() {
         supabase
           .from("inventory")
           .select("warehouse_id,warehouse_name,location_type,product_name,available_qty"),
-        supabase.from("warehouses").select("id,city,country"),
+        supabase.from("warehouses").select("id,city,country,lat,lng"),
       ]);
       if (inv.error) { setError(inv.error.message); setLoading(false); return; }
       setRows((inv.data as InvRow[]) || []);
-      const cmap: Record<string, { city: string | null; country: string | null }> = {};
-      ((wh.data as { id: string; city: string | null; country: string | null }[] | null) || []).forEach((w) => {
-        cmap[w.id] = { city: w.city, country: w.country };
+      const cmap: Record<string, { city: string | null; country: string | null; lat: number | null; lng: number | null }> = {};
+      (
+        (wh.data as { id: string; city: string | null; country: string | null; lat: number | null; lng: number | null }[] | null) ||
+        []
+      ).forEach((w) => {
+        cmap[w.id] = { city: w.city, country: w.country, lat: w.lat, lng: w.lng };
       });
       setLocByWh(cmap);
       setLoading(false);
@@ -76,14 +83,17 @@ export function StockMap() {
       if (av <= 0) continue;
       let e = map.get(r.warehouse_id);
       if (!e) {
-        const loc = locByWh[r.warehouse_id] ?? { city: null, country: null };
+        const loc = locByWh[r.warehouse_id] ?? { city: null, country: null, lat: null, lng: null };
+        const exactCoords: [number, number] | null =
+          loc.lat !== null && loc.lng !== null ? [loc.lat, loc.lng] : null;
         e = {
           id: r.warehouse_id,
           name: r.warehouse_name,
           type: r.location_type,
           city: loc.city,
           country: loc.country,
-          coords: geocodeLocation(loc.city, loc.country),
+          coords: exactCoords ?? geocodeLocation(loc.city, loc.country),
+          exact: exactCoords !== null,
           total: 0,
           products: [],
         };
@@ -148,6 +158,7 @@ export function StockMap() {
              <div style="font-weight:700;margin-bottom:2px">${escapeHtml(w.name)}</div>
              <div style="font-size:11px;color:#6b7280;margin-bottom:6px">
                ${w.type === "factory" ? "Fabrika" : w.type === "foreign" ? "Yurtdışı Depo" : "Depo"}${[w.city, w.country].filter(Boolean).length ? " · " + escapeHtml([w.city, w.country].filter(Boolean).join(", ")) : ""}
+               ${w.exact ? '<br/><span style="color:#15803d;font-weight:600">✓ Tam konum</span>' : '<br/><span style="color:#b45309">≈ Tahmini konum (şehirden)</span>'}
              </div>
              ${list}
              <div style="border-top:1px solid #e5e7eb;margin-top:6px;padding-top:4px;display:flex;justify-content:space-between">
@@ -247,6 +258,9 @@ export function StockMap() {
                   </Badge>
                   {(w.city || w.country) && (
                     <span className="text-xs text-gray-500">{[w.city, w.country].filter(Boolean).join(", ")}</span>
+                  )}
+                  {w.coords && (
+                    <Badge color={w.exact ? "green" : "yellow"}>{w.exact ? "Tam konum" : "Tahmini"}</Badge>
                   )}
                   {!w.coords && <span className="text-xs text-amber-600">(harita dışı — şehir/ülke eşleşmedi)</span>}
                 </div>

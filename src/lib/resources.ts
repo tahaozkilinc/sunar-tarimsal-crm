@@ -35,12 +35,16 @@ export interface FieldDef {
     | "email"
     | "tel"
     | "url"
-    | "file";
+    | "file"
+    | "map";
   required?: boolean;
   unique?: boolean;
   positive?: boolean; // sayı > 0 olmalı
   min?: number; // sayı için alt sınır (dahil)
   bucket?: string; // "file" tipi için Supabase Storage kovası
+  // "map" tipi için: bu alan enlem (lat) kolonuna bağlanır, pairField boylam
+  // (lng) kolonunun adıdır — tek widget iki kolonu birlikte okur/yazar.
+  pairField?: string;
   options?: SelectOption[];
   // labelField: tek etiket kolonu. labelFields: sırayla denenen yedek kolonlar
   // (ilk boş olmayan kullanılır; ör. gemi adı yoksa sözleşme no).
@@ -408,12 +412,15 @@ export const warehousesResource: ResourceConfig = {
   writeRoles: ["admin", "operations"],
   orderBy: { column: "name", ascending: true },
   searchFields: ["name", "city"],
-  listFields: ["name", "type", "city", "capacity", "is_active"],
+  listFields: ["name", "type", "city", "lat", "capacity", "is_active"],
   fields: [
     { name: "name", label: "Ad", type: "text", required: true, unique: true },
     { name: "type", label: "Tür", type: "select", options: LOCATION_TYPE_OPTIONS, required: true },
     { name: "city", label: "Şehir", type: "text" },
     { name: "country", label: "Ülke", type: "text", placeholder: "Yurtdışı depo için" },
+    // Tek widget: haritaya tıkla ya da "Konumumu Kullan" ile tam enlem/boylam
+    // gir. Doluysa Harita sekmesi city/country tahmini yerine bunu kullanır.
+    { name: "lat", label: "Tam Konum (Haritadan Seç)", type: "map", pairField: "lng" },
     { name: "capacity", label: "Kapasite", type: "number", min: 0 },
     { name: "is_active", label: "Aktif", type: "boolean" },
   ],

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import "leaflet/dist/leaflet.css";
 import { createClient } from "@/lib/supabase/client";
 import {
   Badge,
@@ -18,7 +19,7 @@ import {
 import { formatDate, formatNumber } from "@/lib/format";
 import type { FieldDef, ResourceConfig } from "@/lib/resources";
 import type { Role } from "@/lib/types";
-import { Eye, Paperclip, Pencil, Plus, Search, Trash2 } from "lucide-react";
+import { Eye, MapPin, Paperclip, Pencil, Plus, Search, Trash2 } from "lucide-react";
 
 type Row = Record<string, unknown>;
 
@@ -181,6 +182,177 @@ function FileInput({
       />
       {uploading && <div className="text-xs text-gray-500">Yükleniyor...</div>}
       {err && <div className="text-xs text-red-600">{err}</div>}
+    </div>
+  );
+}
+
+// Haritadan tıklayarak TAM konum (enlem/boylam) seçme widget'ı. Telefon
+// kullanan sahadaki kişi "Konumumu Kullan" ile GPS'ten tam noktayı alabilir;
+// masa başından çalışan kişi haritaya tıklayabilir ya da koordinatı elle
+// (ör. Google Haritalar'dan kopyalanmış) girebilir. Üçü de aynı iki alanı
+// (lat/lng) doldurur — hangisi kullanılırsa kullanılsın sonuç aynı hassasiyette.
+function MapPointInput({
+  lat,
+  lng,
+  onChangeLat,
+  onChangeLng,
+  disabled,
+}: {
+  lat: unknown;
+  lng: unknown;
+  onChangeLat: (v: number | null) => void;
+  onChangeLng: (v: number | null) => void;
+  disabled?: boolean;
+}) {
+  const mapDivRef = useRef<HTMLDivElement | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const mapRef = useRef<any>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const markerRef = useRef<any>(null);
+  const [locating, setLocating] = useState(false);
+  const [locErr, setLocErr] = useState<string | null>(null);
+
+  const latNum = lat === "" || lat === null || lat === undefined ? null : Number(lat);
+  const lngNum = lng === "" || lng === null || lng === undefined ? null : Number(lng);
+
+  const place = useCallback((la: number, ln: number) => {
+    onChangeLat(Math.round(la * 1e6) / 1e6);
+    onChangeLng(Math.round(ln * 1e6) / 1e6);
+  }, [onChangeLat, onChangeLng]);
+
+  // Harita: bir kez kurulur; tıklama her zaman güncel place()'i çağırır (ref).
+  const placeRef = useRef(place);
+  useEffect(() => {
+    placeRef.current = place;
+  }, [place]);
+
+  useEffect(() => {
+    if (!mapDivRef.current || mapRef.current) return;
+    let cancelled = false;
+    (async () => {
+      const L = (await import("leaflet")).default;
+      if (cancelled || !mapDivRef.current) return;
+      const start: [number, number] =
+        latNum !== null && lngNum !== null ? [latNum, lngNum] : [39.0, 35.2];
+      const map = L.map(mapDivRef.current, { scrollWheelZoom: false }).setView(start, latNum !== null ? 11 : 6);
+      mapRef.current = map;
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        attribution: "© OpenStreetMap",
+        maxZoom: 18,
+      }).addTo(map);
+      if (latNum !== null && lngNum !== null) {
+        markerRef.current = L.marker([latNum, lngNum]).addTo(map);
+      }
+      map.on("click", (e: { latlng: { lat: number; lng: number } }) => {
+        if (disabled) return;
+        placeRef.current(e.latlng.lat, e.latlng.lng);
+      });
+      setTimeout(() => map.invalidateSize(), 150);
+    })();
+    return () => {
+      cancelled = true;
+      if (mapRef.current) { mapRef.current.remove(); mapRef.current = null; }
+    };
+    // Harita yalnızca bir kez kurulur (yeniden kurulumu tıklama sırasında
+    // titremeyi önler); işaretçi güncellemesi ayrı efektte.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // lat/lng değişince (tıklama, GPS veya elle giriş) işaretçiyi taşı/oluştur.
+  useEffect(() => {
+    (async () => {
+      if (!mapRef.current) return;
+      const L = (await import("leaflet")).default;
+      if (latNum === null || lngNum === null) {
+        if (markerRef.current) { markerRef.current.remove(); markerRef.current = null; }
+        return;
+      }
+      if (markerRef.current) markerRef.current.setLatLng([latNum, lngNum]);
+      else markerRef.current = L.marker([latNum, lngNum]).addTo(mapRef.current);
+      mapRef.current.setView([latNum, lngNum], Math.max(mapRef.current.getZoom(), 11));
+    })();
+  }, [latNum, lngNum]);
+
+  const useMyLocation = () => {
+    if (!navigator.geolocation) { setLocErr("Bu cihazda konum desteklenmiyor."); return; }
+    setLocating(true);
+    setLocErr(null);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        place(pos.coords.latitude, pos.coords.longitude);
+        setLocating(false);
+      },
+      (err) => {
+        setLocErr(
+          err.code === err.PERMISSION_DENIED
+            ? "Konum izni verilmedi. Tarayıcı ayarlarından izin verin ya da haritaya tıklayın."
+            : "Konum alınamadı. Haritaya tıklayarak da işaretleyebilirsiniz.",
+        );
+        setLocating(false);
+      },
+      { enableHighAccuracy: true, timeout: 10000 },
+    );
+  };
+
+  return (
+    <div className="space-y-2">
+      <div className="overflow-hidden rounded-lg border border-border" style={{ height: 220 }}>
+        <div ref={mapDivRef} className="h-full w-full" />
+      </div>
+      {!disabled && (
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={useMyLocation}
+            disabled={locating}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-white px-3 py-1.5 text-xs font-medium hover:bg-gray-50 disabled:opacity-50"
+          >
+            <MapPin className="h-3.5 w-3.5" />
+            {locating ? "Konum alınıyor..." : "Konumumu Kullan"}
+          </button>
+          {latNum !== null && (
+            <button
+              type="button"
+              onClick={() => { onChangeLat(null); onChangeLng(null); }}
+              className="text-xs text-gray-400 hover:text-red-600"
+            >
+              Temizle
+            </button>
+          )}
+          <span className="text-xs text-gray-400">veya haritaya tıklayın</span>
+        </div>
+      )}
+      {locErr && <div className="text-xs text-amber-600">{locErr}</div>}
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <label className="mb-0.5 block text-[11px] text-gray-500">Enlem</label>
+          <Input
+            type="text"
+            inputMode="decimal"
+            value={latNum ?? ""}
+            onChange={(e) => {
+              const n = e.target.value.trim();
+              onChangeLat(n === "" ? null : Number(n.replace(",", ".")));
+            }}
+            placeholder="40.9876"
+            disabled={disabled}
+          />
+        </div>
+        <div>
+          <label className="mb-0.5 block text-[11px] text-gray-500">Boylam</label>
+          <Input
+            type="text"
+            inputMode="decimal"
+            value={lngNum ?? ""}
+            onChange={(e) => {
+              const n = e.target.value.trim();
+              onChangeLng(n === "" ? null : Number(n.replace(",", ".")));
+            }}
+            placeholder="29.1234"
+            disabled={disabled}
+          />
+        </div>
+      </div>
     </div>
   );
 }
@@ -400,6 +572,22 @@ export function ResourceManager({
         return formatNumber(value as number);
       case "file":
         return <StorageFileLink bucket={field.bucket || "contracts"} path={value as string} />;
+      case "map": {
+        const lng = row[field.pairField!];
+        if (lng === null || lng === undefined || lng === "") return <span className="text-gray-400">-</span>;
+        return (
+          <a
+            href={`https://www.google.com/maps?q=${value},${lng}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 text-sm text-brand hover:underline"
+            title="Google Haritalar'da aç"
+          >
+            <MapPin className="h-3.5 w-3.5 shrink-0" />
+            {Number(value).toFixed(4)}, {Number(lng).toFixed(4)}
+          </a>
+        );
+      }
       default:
         return String(value);
     }
@@ -474,6 +662,11 @@ export function ResourceManager({
       let v = form[field.name];
       if (field.type === "number" || field.type === "money") {
         v = v === "" || v === undefined || v === null ? null : Number(v);
+      } else if (field.type === "map") {
+        // "map" tek widget ama iki kolon yazar: kendi adı (lat) + pairField (lng).
+        v = v === "" || v === undefined ? null : Number(v);
+        const pv = form[field.pairField!];
+        payload[field.pairField!] = pv === "" || pv === undefined || pv === null ? null : Number(pv);
       } else if (field.type === "boolean") {
         v = !!v;
       } else {
@@ -1056,6 +1249,16 @@ export function ResourceManager({
           value={form[f.name]}
           onChange={(v) => setField(f.name, v)}
           bucket={f.bucket || "contracts"}
+          disabled={!canWrite}
+        />
+      );
+    if (f.type === "map")
+      return (
+        <MapPointInput
+          lat={form[f.name]}
+          lng={form[f.pairField!]}
+          onChangeLat={(v) => setField(f.name, v)}
+          onChangeLng={(v) => setField(f.pairField!, v)}
           disabled={!canWrite}
         />
       );
