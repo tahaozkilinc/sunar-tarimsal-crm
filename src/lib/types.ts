@@ -68,6 +68,8 @@ export interface Warehouse {
   type: "warehouse" | "factory" | "foreign"; // foreign = yurtdışı depo
   city: string | null;
   country: string | null;
+  lat: number | null; // haritadan seçilen tam konum (doluysa city/country tahmininin önüne geçer)
+  lng: number | null;
   capacity: number | null;
   is_active: boolean;
 }
