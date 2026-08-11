@@ -7,7 +7,7 @@ import { Badge, Button, Card, EmptyState, Field, Input, Select, Spinner } from "
 import { MovementPhotos, type MovementPhoto } from "./movement-photos";
 import { PhotoGallery } from "./photo-gallery";
 import { formatDate, formatNumber } from "@/lib/format";
-import { CONTRACT_STATUS_OPTIONS } from "@/lib/resources";
+import { CONTRACT_STATUS_OPTIONS, SALES_STATUS_OPTIONS } from "@/lib/resources";
 import { ArrowLeft, Camera, CheckCircle, Download, Leaf, Printer, Trash2 } from "lucide-react";
 
 type Contract = {
@@ -40,6 +40,18 @@ type Movement = {
 };
 type Ref = { id: string; name: string };
 type CompanyRef = { id: string; name: string; type: string };
+// Fiyat İÇERMEZ: bu bağlantıdan otomatik karşılanan satışlar (bkz.
+// fn_sales_order_autofill_contract, 0048) — yalnızca admin/operasyona,
+// nakliyeci/gözetim/acente gibi dış rollere gösterilmez.
+type SaleRow = {
+  id: string;
+  order_no: string | null;
+  customer_id: string | null;
+  quantity: number | null;
+  unit: string | null;
+  status: string;
+  delivery_date: string | null;
+};
 
 // Bir araç en fazla 40 ton (40.000 kg) yük taşıyabilir.
 const MAX_TON = 40;
@@ -86,6 +98,7 @@ export function ShipOpsPage({
   const [creatorNames, setCreatorNames] = useState<Record<string, string>>({});
   const [canWrite, setCanWrite]   = useState(false); // araç tonajı + irsaliye (admin/operations/nakliyeci/gozetim)
   const [canManage, setCanManage] = useState(false); // taraf atama, gemiyi bitir, numune galerisi (admin/operations)
+  const [contractSales, setContractSales] = useState<SaleRow[]>([]); // bu bağlantıdan karşılanan satışlar (yalnız canManage)
   // Kombine gemi desteği
   const siblingIdsRef = useRef<string[]>([]);
   const [siblings, setSiblings]   = useState<Contract[]>([]);
@@ -205,11 +218,13 @@ export function ShipOpsPage({
         names[x.id] = x.full_name || "—";
       });
       setCreatorNames(names);
+      let isManager = false;
       if (au.user) {
         const { data: prof } = await supabase
           .from("profiles").select("role").eq("id", au.user.id).maybeSingle();
         const r = (prof as { role?: string } | null)?.role || "";
-        setCanManage(r === "admin" || r === "operations");
+        isManager = r === "admin" || r === "operations";
+        setCanManage(isManager);
         setCanWrite(r === "admin" || r === "operations" || r === "nakliyeci" || r === "gozetim");
       }
       // Kombine gemi: diğer sözleşmeleri (ana kayıtla aynı kaynaktan) yükle
@@ -230,6 +245,18 @@ export function ShipOpsPage({
         siblingIdsRef.current = [];
         setSiblings([]);
         setCombinedName(null);
+      }
+      // Bu bağlantı(lar)dan otomatik karşılanan satışlar — "gemi bazlı rapor".
+      // Fiyat içermez; yalnız admin/operasyona (dış rollere gösterilmez).
+      if (isManager) {
+        const { data: salesData } = await supabase
+          .from("sales_orders")
+          .select("id,order_no,customer_id,quantity,unit,status,delivery_date")
+          .in("contract_id", [contractId, ...siblingIdsRef.current])
+          .neq("status", "cancelled");
+        setContractSales((salesData as SaleRow[]) || []);
+      } else {
+        setContractSales([]);
       }
       await loadMovements();
       setLoading(false);
@@ -610,6 +637,43 @@ export function ShipOpsPage({
           </div>
         )}
       </Card>
+      )}
+
+      {/* ── Bu bağlantıdan karşılanan satışlar (gemi bazlı rapor, fiyatsız) ── */}
+      {canManage && contractSales.length > 0 && (
+        <Card className="p-4 print:hidden">
+          <div className="mb-3 flex items-center justify-between">
+            <span className="text-sm font-semibold">Bu Bağlantıdan Yapılan Satışlar</span>
+            <span className="text-xs text-gray-400">{contractSales.length} satış</span>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border text-left text-xs uppercase text-gray-500">
+                  <th className="py-2 pr-3 font-medium">Satış No</th>
+                  <th className="py-2 pr-3 font-medium">Müşteri</th>
+                  <th className="py-2 pr-3 text-right font-medium">Miktar</th>
+                  <th className="py-2 pr-3 font-medium">Teslim Tarihi</th>
+                  <th className="py-2 font-medium">Durum</th>
+                </tr>
+              </thead>
+              <tbody>
+                {contractSales.map((s) => {
+                  const st = SALES_STATUS_OPTIONS.find((o) => o.value === s.status);
+                  return (
+                    <tr key={s.id} className="border-b border-border last:border-0">
+                      <td className="py-2 pr-3">{s.order_no || "—"}</td>
+                      <td className="py-2 pr-3">{cName(s.customer_id)}</td>
+                      <td className="py-2 pr-3 text-right">{formatNumber(s.quantity)} {s.unit}</td>
+                      <td className="py-2 pr-3 text-xs text-gray-500">{formatDate(s.delivery_date)}</td>
+                      <td className="py-2">{st && <Badge color={st.color}>{st.label}</Badge>}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </Card>
       )}
 
       {/* ── Numune / Ürün görselleri & dosyalar (gemi bazlı) ── */}

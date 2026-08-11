@@ -126,15 +126,20 @@ export interface SalesOrder {
   id: string;
   order_no: string | null;
   customer_id: string; // zorunlu: stok bir müşteriye gider
-  contract_id: string; // zorunlu: bağlantısız satış olmaz
-  product_id: string | null;
+  // contract_id artık ELLE seçilmiyor: fn_sales_order_autofill_contract()
+  // trigger'ı (0048), product_id + quantity'ye göre uygun (kalan tonajı yeten,
+  // ETA'sı en yakın) bağlantıyı otomatik atar. "Bağlantısız satış olmaz"
+  // kuralı DB'de aynen geçerli — yalnızca kim seçtiği değişti.
+  contract_id: string;
+  product_id: string; // zorunlu: artık kullanıcı doğrudan ürünü seçiyor (gemi değil)
   // warehouse_id KALDIRILDI: bir satış artık TEK depoya değil, sale_warehouses
   // junction tablosundaki İZİNLİ depo kümesine bağlı (çoklu depo).
   quantity: number;
   unit: string;
   price: number | null;
   currency: string;
-  delivery_date: string | null;
+  delivery_date: string | null; // teslim penceresi başlangıcı
+  delivery_date_to: string | null; // teslim penceresi bitişi (opsiyonel)
   status: string;
   dispatch_closed_at: string | null; // operasyoncu "Sevkiyatı Bitir" dediyse dolu
   dispatch_closed_by: string | null;
