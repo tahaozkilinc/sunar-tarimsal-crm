@@ -20,7 +20,7 @@ import { formatDate, formatNumber } from "@/lib/format";
 import { exportToExcel } from "@/lib/export";
 import type { FieldDef, ResourceConfig, SelectOption } from "@/lib/resources";
 import type { Role } from "@/lib/types";
-import { Download, Eye, MapPin, Paperclip, Pencil, Plus, Search, Trash2 } from "lucide-react";
+import { Download, Eye, MapPin, Paperclip, Pencil, Plus, Trash2 } from "lucide-react";
 
 type Row = Record<string, unknown>;
 
@@ -456,7 +456,6 @@ export function ResourceManager({
   const [refData, setRefData] = useState<Record<string, Row[]>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [search, setSearch] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Row | null>(null);
   const [form, setForm] = useState<Row>({});
@@ -465,7 +464,13 @@ export function ResourceManager({
   const [detail, setDetail] = useState<Row | null>(null);
   const [noteText, setNoteText] = useState("");
   const [savingNote, setSavingNote] = useState(false);
+  // Filtre kenar çubuğu: alan tipine göre otomatik 3 grup.
+  // filters: reference/select/boolean (kesin eşleşme). textFilters: geri kalan
+  // metin benzeri alanlar (alt dize arama). rangeFilters: date/number/money
+  // (min–maks / başlangıç–bitiş).
   const [filters, setFilters] = useState<Record<string, string>>({});
+  const [textFilters, setTextFilters] = useState<Record<string, string>>({});
+  const [rangeFilters, setRangeFilters] = useState<Record<string, { from: string; to: string }>>({});
   // Kota bilgisi (ör. satışta seçili geminin toplam / satılan / kalan tonajı)
   const [quotaInfo, setQuotaInfo] = useState<{
     capacity: number;
@@ -698,39 +703,53 @@ export function ResourceManager({
     }
   };
 
-  // --- arama + filtre (istemci tarafı, anlık) ---
+  // --- filtre (istemci tarafı, anlık) ---
   const filtered = useMemo(() => {
-    const q = search.trim().toLocaleLowerCase("tr");
-    const activeFilters = Object.entries(filters).filter(([, v]) => v !== "");
-    const searchNames = Array.from(
-      new Set([...(config.searchFields || []), ...config.listFields]),
-    );
-    // Aranabilir metin: referans (tedarikçi/ürün) ve seçim alanları etikete çevrilir.
-    const textOf = (r: Row) =>
-      searchNames
-        .map((name) => {
-          const f = fieldByName[name];
-          const v = r[name];
-          if (v === null || v === undefined || v === "") return "";
-          if (f?.type === "reference" && f.ref) {
-            const rr = (refData[f.ref.table] || []).find((x) => x.id === v);
-            const cands = f.ref.labelFields?.length ? f.ref.labelFields : [f.ref.labelField];
-            return cands.map((c) => String(rr?.[c] ?? "")).join(" ");
-          }
-          if (f?.type === "select")
-            return f.options?.find((o) => o.value === v)?.label || String(v);
-          return String(v);
-        })
-        .join(" ")
-        .toLocaleLowerCase("tr");
+    const activeExact = Object.entries(filters).filter(([, v]) => v !== "");
+    const activeText = Object.entries(textFilters).filter(([, v]) => v.trim() !== "");
+    const activeRange = Object.entries(rangeFilters).filter(([, r]) => r.from !== "" || r.to !== "");
+    if (activeExact.length === 0 && activeText.length === 0 && activeRange.length === 0) return rows;
+    // Alanın metinsel karşılığı (referans/seçim etikete çevrilir) — yalnızca alt dize filtresinde kullanılır.
+    const textOf = (f: FieldDef, r: Row): string => {
+      const v = r[f.name];
+      if (v === null || v === undefined || v === "") return "";
+      if (f.type === "reference" && f.ref) {
+        const rr = (refData[f.ref.table] || []).find((x) => x.id === v);
+        const cands = f.ref.labelFields?.length ? f.ref.labelFields : [f.ref.labelField];
+        return cands.map((c) => String(rr?.[c] ?? "")).join(" ");
+      }
+      if (f.type === "select" || f.type === "select_other")
+        return f.options?.find((o) => o.value === v)?.label || String(v);
+      return String(v);
+    };
     return rows.filter((r) => {
-      for (const [k, v] of activeFilters) {
+      for (const [k, v] of activeExact) {
         if (String(r[k] ?? "") !== v) return false;
       }
-      if (q && !textOf(r).includes(q)) return false;
+      for (const [k, v] of activeText) {
+        const f = fieldByName[k];
+        if (!f) continue;
+        const hay = textOf(f, r).toLocaleLowerCase("tr");
+        if (!hay.includes(v.trim().toLocaleLowerCase("tr"))) return false;
+      }
+      for (const [k, range] of activeRange) {
+        const f = fieldByName[k];
+        const raw = r[k];
+        if (f?.type === "date") {
+          const val = raw ? String(raw).slice(0, 10) : "";
+          if (!val) return false;
+          if (range.from && val < range.from) return false;
+          if (range.to && val > range.to) return false;
+        } else {
+          const n = raw === null || raw === undefined || raw === "" ? null : Number(raw);
+          if (n === null) return false;
+          if (range.from !== "" && n < Number(range.from)) return false;
+          if (range.to !== "" && n > Number(range.to)) return false;
+        }
+      }
       return true;
     });
-  }, [rows, search, filters, config.searchFields, config.listFields, fieldByName, refData]);
+  }, [rows, filters, textFilters, rangeFilters, fieldByName, refData]);
 
   const exportRows = () => {
     const headers = config.fields.map((f) => f.label);
@@ -950,9 +969,35 @@ export function ResourceManager({
   );
 
   const listFieldDefs = config.listFields.map((n) => fieldByName[n]).filter(Boolean);
-  const filterFieldDefs = (config.filterFields || [])
-    .map((n) => fieldByName[n])
-    .filter(Boolean);
+
+  // Filtre kenar çubuğu: her alan tipine göre otomatik gruplanır (bkz. resources.ts).
+  const dropdownFilterFields = config.fields.filter(
+    (f) => f.type === "reference" || f.type === "select" || f.type === "boolean",
+  );
+  const rangeFilterFields = config.fields.filter(
+    (f) => f.type === "date" || f.type === "number" || f.type === "money",
+  );
+  const textFilterFields = config.fields.filter(
+    (f) =>
+      f.type === "text" ||
+      f.type === "textarea" ||
+      f.type === "select_other" ||
+      f.type === "email" ||
+      f.type === "tel" ||
+      f.type === "url",
+  );
+  const hasFilterUI =
+    !hideFilters &&
+    dropdownFilterFields.length + rangeFilterFields.length + textFilterFields.length > 0;
+  const hasActiveFilters =
+    Object.values(filters).some((v) => v) ||
+    Object.values(textFilters).some((v) => v.trim() !== "") ||
+    Object.values(rangeFilters).some((r) => r.from !== "" || r.to !== "");
+  const clearAllFilters = () => {
+    setFilters({});
+    setTextFilters({});
+    setRangeFilters({});
+  };
 
   const filterOptions = (field: FieldDef): { value: string; label: string }[] => {
     if (field.type === "select")
@@ -976,170 +1021,215 @@ export function ResourceManager({
   };
 
   return (
-    <div className="space-y-4">
-      {/* Üst bar */}
-      <div
-        className={`flex flex-col gap-3 sm:flex-row sm:items-center ${
-          hideTitle ? "sm:justify-end" : "sm:justify-between"
-        }`}
-      >
-        {!hideTitle && (
-          <h1 className="text-lg font-semibold">{title || config.title}</h1>
-        )}
-        <div className="flex items-center gap-2">
-          {config.searchFields && (
-            <div className="relative flex-1 sm:flex-none">
-              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-              <Input
-                placeholder="Ara..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="w-full pl-8 sm:w-56"
-              />
+    <div className={hasFilterUI ? "grid gap-4 lg:grid-cols-[240px_1fr] lg:items-start" : "space-y-4"}>
+      {hasFilterUI && (
+        <aside className="lg:order-1">
+          <div className="space-y-3 rounded-xl border border-border bg-card p-4">
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-semibold">Filtreler</span>
+              {hasActiveFilters && (
+                <button
+                  type="button"
+                  onClick={clearAllFilters}
+                  className="text-xs font-medium text-brand hover:underline"
+                >
+                  Temizle
+                </button>
+              )}
             </div>
-          )}
-          {rows.length > 0 && (
-            <button
-              type="button"
-              onClick={exportRows}
-              className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-border bg-white px-3 py-2 text-sm font-medium hover:bg-gray-50"
-              title="Görünen (filtrelenmiş) kayıtları Excel'e aktar"
-            >
-              <Download className="h-4 w-4" /> Excel&apos;e Aktar
-            </button>
-          )}
-          {canWrite && (
-            <Button onClick={openNew} className="shrink-0">
-              <Plus className="h-4 w-4" /> Yeni
-            </Button>
-          )}
-        </div>
-      </div>
-
-      {!hideFilters && filterFieldDefs.length > 0 && (
-        <div className="flex flex-wrap items-center gap-2">
-          {filterFieldDefs.map((f) => (
-            <SearchableSelect
-              key={f.name}
-              value={filters[f.name] ?? ""}
-              onChange={(v) => setFilters((prev) => ({ ...prev, [f.name]: v }))}
-              options={filterOptions(f)}
-              placeholder={`${f.label}: Tümü`}
-              className="w-44"
-            />
-          ))}
-          {Object.values(filters).some((v) => v) && (
-            <Button variant="ghost" size="sm" onClick={() => setFilters({})}>
-              Temizle
-            </Button>
-          )}
-        </div>
-      )}
-
-      {error && (
-        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          Veri yüklenemedi: {error}
-          <div className="mt-1 text-xs text-red-500">
-            Tablolar henüz oluşturulmadıysa Supabase SQL Editor&apos;de migration
-            dosyalarını çalıştırın.
-          </div>
-        </div>
-      )}
-
-      {loading ? (
-        <div className="flex justify-center py-12">
-          <Spinner />
-        </div>
-      ) : filtered.length === 0 ? (
-        <EmptyState message="Kayıt bulunamadı." />
-      ) : (
-        <>
-          {/* Masaüstü tablo */}
-          <div className="hidden overflow-x-auto rounded-xl border border-border bg-card md:block">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border bg-gray-50 text-left text-xs uppercase text-gray-500">
-                  {listFieldDefs.map((f) => (
-                    <th key={f.name} className="px-4 py-3 font-medium">
-                      {f.label}
-                    </th>
-                  ))}
-                  <th className="px-4 py-3" />
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((row) => (
-                  <tr
-                    key={String(row.id)}
-                    onClick={() => onRowOpen(row)}
-                    className="cursor-pointer border-b border-border last:border-0 hover:bg-gray-50"
-                  >
-                    {listFieldDefs.map((f) => (
-                      <td key={f.name} className="px-4 py-3">
-                        {renderCell(f, row)}
-                      </td>
-                    ))}
-                    <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
-                      <div className="flex justify-end gap-1">
-                        <button
-                          onClick={() => onRowOpen(row)}
-                          className="rounded-lg p-1.5 text-gray-500 hover:bg-gray-100"
-                          title="Detay"
-                        >
-                          <Eye className="h-4 w-4" />
-                        </button>
-                        {canWrite && (
-                          <button
-                            onClick={() => openEdit(row)}
-                            className="rounded-lg p-1.5 text-gray-500 hover:bg-gray-100"
-                            title="Düzenle"
-                          >
-                            <Pencil className="h-4 w-4" />
-                          </button>
-                        )}
-                        {canWrite && (
-                          <button
-                            onClick={() => remove(row)}
-                            className="rounded-lg p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-600"
-                            title="Sil"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Mobil kartlar */}
-          <div className="space-y-3 md:hidden">
-            {filtered.map((row) => (
-              <div
-                key={String(row.id)}
-                className="cursor-pointer rounded-xl border border-border bg-card p-4"
-                onClick={() => onRowOpen(row)}
-              >
-                {listFieldDefs.map((f, i) => (
-                  <div
-                    key={f.name}
-                    className={`flex justify-between gap-3 py-1 ${i === 0 ? "mb-1 border-b border-border pb-2" : ""}`}
-                  >
-                    <span className="text-xs text-gray-500">{f.label}</span>
-                    <span
-                      className={`text-right text-sm ${i === 0 ? "font-semibold" : ""}`}
-                    >
-                      {renderCell(f, row)}
-                    </span>
+            <div className="max-h-[70vh] space-y-3 overflow-y-auto pr-1">
+              {dropdownFilterFields.map((f) => (
+                <div key={f.name}>
+                  <label className="mb-1 block text-xs font-medium text-gray-600">{f.label}</label>
+                  <SearchableSelect
+                    value={filters[f.name] ?? ""}
+                    onChange={(v) => setFilters((prev) => ({ ...prev, [f.name]: v }))}
+                    options={filterOptions(f)}
+                    placeholder="Tümü"
+                    className="w-full"
+                  />
+                </div>
+              ))}
+              {rangeFilterFields.map((f) => {
+                const r = rangeFilters[f.name] ?? { from: "", to: "" };
+                const isDate = f.type === "date";
+                return (
+                  <div key={f.name}>
+                    <label className="mb-1 block text-xs font-medium text-gray-600">{f.label}</label>
+                    <div className="flex items-center gap-1.5">
+                      <Input
+                        type={isDate ? "date" : "number"}
+                        value={r.from}
+                        onChange={(e) =>
+                          setRangeFilters((prev) => ({ ...prev, [f.name]: { from: e.target.value, to: prev[f.name]?.to ?? "" } }))
+                        }
+                        placeholder={isDate ? undefined : "min"}
+                        className="min-w-0 flex-1"
+                      />
+                      <span className="shrink-0 text-xs text-gray-400">–</span>
+                      <Input
+                        type={isDate ? "date" : "number"}
+                        value={r.to}
+                        onChange={(e) =>
+                          setRangeFilters((prev) => ({ ...prev, [f.name]: { from: prev[f.name]?.from ?? "", to: e.target.value } }))
+                        }
+                        placeholder={isDate ? undefined : "maks"}
+                        className="min-w-0 flex-1"
+                      />
+                    </div>
                   </div>
-                ))}
-              </div>
-            ))}
+                );
+              })}
+              {textFilterFields.map((f) => (
+                <div key={f.name}>
+                  <label className="mb-1 block text-xs font-medium text-gray-600">{f.label}</label>
+                  <Input
+                    value={textFilters[f.name] ?? ""}
+                    onChange={(e) => setTextFilters((prev) => ({ ...prev, [f.name]: e.target.value }))}
+                    placeholder="Ara..."
+                    className="w-full"
+                  />
+                </div>
+              ))}
+            </div>
           </div>
-        </>
+        </aside>
       )}
+
+      <div className={hasFilterUI ? "min-w-0 space-y-4 lg:order-2" : "space-y-4"}>
+        {/* Üst bar */}
+        <div
+          className={`flex flex-col gap-3 sm:flex-row sm:items-center ${
+            hideTitle ? "sm:justify-end" : "sm:justify-between"
+          }`}
+        >
+          {!hideTitle && (
+            <h1 className="text-lg font-semibold">{title || config.title}</h1>
+          )}
+          <div className="flex items-center gap-2">
+            {rows.length > 0 && (
+              <button
+                type="button"
+                onClick={exportRows}
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-border bg-white px-3 py-2 text-sm font-medium hover:bg-gray-50"
+                title="Görünen (filtrelenmiş) kayıtları Excel'e aktar"
+              >
+                <Download className="h-4 w-4" /> Excel&apos;e Aktar
+              </button>
+            )}
+            {canWrite && (
+              <Button onClick={openNew} className="shrink-0">
+                <Plus className="h-4 w-4" /> Yeni
+              </Button>
+            )}
+          </div>
+        </div>
+
+        {error && (
+          <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            Veri yüklenemedi: {error}
+            <div className="mt-1 text-xs text-red-500">
+              Tablolar henüz oluşturulmadıysa Supabase SQL Editor&apos;de migration
+              dosyalarını çalıştırın.
+            </div>
+          </div>
+        )}
+
+        {loading ? (
+          <div className="flex justify-center py-12">
+            <Spinner />
+          </div>
+        ) : filtered.length === 0 ? (
+          <EmptyState message={rows.length === 0 ? "Kayıt bulunamadı." : "Filtreyle eşleşen kayıt yok."} />
+        ) : (
+          <>
+            {/* Masaüstü tablo */}
+            <div className="hidden overflow-x-auto rounded-xl border border-border bg-card md:block">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border bg-gray-50 text-left text-xs uppercase text-gray-500">
+                    {listFieldDefs.map((f) => (
+                      <th key={f.name} className="px-4 py-3 font-medium">
+                        {f.label}
+                      </th>
+                    ))}
+                    <th className="px-4 py-3" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.map((row) => (
+                    <tr
+                      key={String(row.id)}
+                      onClick={() => onRowOpen(row)}
+                      className="cursor-pointer border-b border-border last:border-0 hover:bg-gray-50"
+                    >
+                      {listFieldDefs.map((f) => (
+                        <td key={f.name} className="px-4 py-3">
+                          {renderCell(f, row)}
+                        </td>
+                      ))}
+                      <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex justify-end gap-1">
+                          <button
+                            onClick={() => onRowOpen(row)}
+                            className="rounded-lg p-1.5 text-gray-500 hover:bg-gray-100"
+                            title="Detay"
+                          >
+                            <Eye className="h-4 w-4" />
+                          </button>
+                          {canWrite && (
+                            <button
+                              onClick={() => openEdit(row)}
+                              className="rounded-lg p-1.5 text-gray-500 hover:bg-gray-100"
+                              title="Düzenle"
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </button>
+                          )}
+                          {canWrite && (
+                            <button
+                              onClick={() => remove(row)}
+                              className="rounded-lg p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-600"
+                              title="Sil"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Mobil kartlar */}
+            <div className="space-y-3 md:hidden">
+              {filtered.map((row) => (
+                <div
+                  key={String(row.id)}
+                  className="cursor-pointer rounded-xl border border-border bg-card p-4"
+                  onClick={() => onRowOpen(row)}
+                >
+                  {listFieldDefs.map((f, i) => (
+                    <div
+                      key={f.name}
+                      className={`flex justify-between gap-3 py-1 ${i === 0 ? "mb-1 border-b border-border pb-2" : ""}`}
+                    >
+                      <span className="text-xs text-gray-500">{f.label}</span>
+                      <span
+                        className={`text-right text-sm ${i === 0 ? "font-semibold" : ""}`}
+                      >
+                        {renderCell(f, row)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
 
       {/* Form modalı */}
       <Modal
