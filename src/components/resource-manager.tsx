@@ -17,11 +17,82 @@ import {
   Textarea,
 } from "./ui";
 import { formatDate, formatNumber } from "@/lib/format";
-import type { FieldDef, ResourceConfig } from "@/lib/resources";
+import type { FieldDef, ResourceConfig, SelectOption } from "@/lib/resources";
 import type { Role } from "@/lib/types";
 import { Eye, MapPin, Paperclip, Pencil, Plus, Search, Trash2 } from "lucide-react";
 
 type Row = Record<string, unknown>;
+
+// Formda ardışık alanları satırlara gruplar: inlineAfter=true olan bir alan,
+// kendinden önceki alanla AYNI satırda (dar sütun) gösterilir — ör. "Miktar"
+// yanında "Birim". Sırası config.fields dizisindeki sırayla birebir aynıdır.
+function groupFieldRows(fields: FieldDef[]): FieldDef[][] {
+  const rows: FieldDef[][] = [];
+  fields.forEach((f) => {
+    if (f.inlineAfter && rows.length > 0) rows[rows.length - 1].push(f);
+    else rows.push([f]);
+  });
+  return rows;
+}
+
+// Sabit seçeneklerle bir "select"; listede olmayan bir değer (ya da kullanıcı
+// "Diğer"i seçtiğinde) serbest metin kutusu açılır. Kayıt DB'de düz metin
+// olarak tutulur — mevcut/eski veriler otomatik "Diğer" moduna düşer, veri
+// kaybı olmaz. Bileşen kaydı değiştiğinde (Field key'i ile) yeniden kurulur;
+// bu yüzden iç "otherMode" durumu yalnızca ilk değere göre kurulur.
+function SelectOtherInput({
+  value,
+  options,
+  onChange,
+  disabled,
+  uppercase,
+}: {
+  value: unknown;
+  options: SelectOption[];
+  onChange: (v: string) => void;
+  disabled?: boolean;
+  uppercase?: boolean;
+}) {
+  const strVal = (value as string) || "";
+  const isKnown = options.some((o) => o.value === strVal);
+  const [otherMode, setOtherMode] = useState(() => strVal !== "" && !isKnown);
+
+  return (
+    <div className="space-y-1.5">
+      <Select
+        value={otherMode ? "__other__" : strVal}
+        onChange={(e) => {
+          const v = e.target.value;
+          if (v === "__other__") {
+            setOtherMode(true);
+            onChange("");
+          } else {
+            setOtherMode(false);
+            onChange(v);
+          }
+        }}
+        disabled={disabled}
+      >
+        <option value="">Seçiniz...</option>
+        {options.map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.label}
+          </option>
+        ))}
+        <option value="__other__">Diğer</option>
+      </Select>
+      {otherMode && (
+        <Input
+          type="text"
+          value={strVal}
+          onChange={(e) => onChange(uppercase ? e.target.value.toLocaleUpperCase("tr") : e.target.value)}
+          placeholder="Yazın..."
+          disabled={disabled}
+        />
+      )}
+    </div>
+  );
+}
 
 // Ham sayıyı Türkçe binlik ayraçlı görünüme çevirir (12340 -> "12.340").
 function numberToInput(value: unknown): string {
@@ -1055,13 +1126,36 @@ export function ResourceManager({
               )}
             </div>
           )}
-          {config.fields
-            .filter((f) => !f.formHidden && !f.readOnly)
-            .map((f) => (
-              <Field key={f.name} label={f.label} required={f.required}>
-                {renderInput(f)}
-              </Field>
-            ))}
+          {groupFieldRows(config.fields.filter((f) => !f.formHidden && !f.readOnly)).map((group) => {
+            // select_other kendi iç durumunu yalnızca ilk değerden kurar; farklı
+            // bir kayıt açıldığında yeniden kurulması için anahtara kayıt id'si eklenir.
+            const keyOf = (f: FieldDef) => (f.type === "select_other" ? `${f.name}:${editing?.id ?? "new"}` : f.name);
+            if (group.length === 1) {
+              const f = group[0];
+              return (
+                <Field key={keyOf(f)} label={f.label} required={f.required}>
+                  {renderInput(f)}
+                </Field>
+              );
+            }
+            const [head, ...rest] = group;
+            return (
+              <div key={keyOf(head)} className="flex items-start gap-2">
+                <div className="min-w-0 flex-1">
+                  <Field label={head.label} required={head.required}>
+                    {renderInput(head)}
+                  </Field>
+                </div>
+                {rest.map((f) => (
+                  <div key={keyOf(f)} className="w-28 shrink-0">
+                    <Field label={f.label} required={f.required}>
+                      {renderInput(f)}
+                    </Field>
+                  </div>
+                ))}
+              </div>
+            );
+          })}
 
           {formError && (
             <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
@@ -1194,6 +1288,16 @@ export function ResourceManager({
           ))}
         </Select>
       );
+    if (f.type === "select_other")
+      return (
+        <SelectOtherInput
+          value={form[f.name]}
+          options={f.options || []}
+          onChange={(v) => setField(f.name, v)}
+          disabled={!canWrite}
+          uppercase={config.uppercaseText}
+        />
+      );
     if (f.type === "reference")
       return (
         <Select
@@ -1272,11 +1376,15 @@ export function ResourceManager({
             : f.type === "url"
               ? "url"
               : "text";
+    const forceUpper = config.uppercaseText && f.type === "text";
     return (
       <Input
         type={inputType}
         value={value as string}
-        onChange={(e) => setField(f.name, e.target.value)}
+        onChange={(e) => {
+          const raw = e.target.value;
+          setField(f.name, forceUpper ? raw.toLocaleUpperCase("tr") : raw);
+        }}
         placeholder={f.placeholder}
         disabled={!canWrite}
       />
