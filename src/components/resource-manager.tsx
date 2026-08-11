@@ -454,6 +454,8 @@ export function ResourceManager({
   const router = useRouter();
   const [rows, setRows] = useState<Row[]>([]);
   const [refData, setRefData] = useState<Record<string, Row[]>>({});
+  // optionsSource'lu alanlar için: field adı -> başka bir tablodan türetilmiş seçenekler.
+  const [dynamicOptions, setDynamicOptions] = useState<Record<string, SelectOption[]>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
@@ -518,6 +520,30 @@ export function ResourceManager({
     setRefData(result);
   }, [config.fields, supabase]);
 
+  // optionsSource'lu alanlar (ör. Şehir <- warehouses.city): DISTINCT, boş
+  // olmayan değerler tek seferde çekilir, büyük harfe çevrilip listelenir.
+  const loadDynamicOptions = useCallback(async () => {
+    const fields = config.fields.filter((f) => f.optionsSource);
+    if (fields.length === 0) { setDynamicOptions({}); return; }
+    const result: Record<string, SelectOption[]> = {};
+    await Promise.all(
+      fields.map(async (f) => {
+        const { table, column } = f.optionsSource!;
+        const { data } = await supabase.from(table).select(column).not(column, "is", null).limit(2000);
+        const values = Array.from(
+          new Set(
+            ((data as Row[] | null) || [])
+              .map((r) => String(r[column] ?? "").trim())
+              .filter(Boolean)
+              .map((v) => v.toLocaleUpperCase("tr")),
+          ),
+        ).sort((a, b) => a.localeCompare(b, "tr"));
+        result[f.name] = values.map((v) => ({ value: v, label: v }));
+      }),
+    );
+    setDynamicOptions(result);
+  }, [config.fields, supabase]);
+
   const loadRows = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -541,6 +567,9 @@ export function ResourceManager({
   useEffect(() => {
     loadRefs();
   }, [loadRefs]);
+  useEffect(() => {
+    loadDynamicOptions();
+  }, [loadDynamicOptions]);
   useEffect(() => {
     loadRows();
   }, [loadRows]);
@@ -1488,7 +1517,7 @@ export function ResourceManager({
       return (
         <SelectOtherInput
           value={form[f.name]}
-          options={f.options || []}
+          options={f.options || dynamicOptions[f.name] || []}
           onChange={(v) => setField(f.name, v)}
           disabled={!canWrite}
           uppercase={config.uppercaseText}

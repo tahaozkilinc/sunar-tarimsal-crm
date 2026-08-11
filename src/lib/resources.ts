@@ -51,6 +51,12 @@ export interface FieldDef {
   // sütunda gösterilir (ör. "Miktar" yanında "Birim") — alt satıra düşmez.
   inlineAfter?: boolean;
   options?: SelectOption[];
+  // select_other için: sabit "options" yerine (ya da yanında) başka bir
+  // tablonun kolonundaki DISTINCT, boş olmayan değerlerden seçenek türetir
+  // (ör. Şehir: warehouses.city — depoların olduğu şehirler otomatik listelenir).
+  // Değerler Türkçe büyük harfe çevrilip listelenir; "Diğer" ile serbest yazım
+  // hâlâ mümkündür.
+  optionsSource?: { table: string; column: string };
   // labelField: tek etiket kolonu. labelFields: sırayla denenen yedek kolonlar
   // (ilk boş olmayan kullanılır; ör. gemi adı yoksa sözleşme no).
   ref?: { table: string; labelField: string; labelFields?: string[]; filter?: Record<string, string[]> };
@@ -180,6 +186,11 @@ export const SALES_STATUS_OPTIONS: SelectOption[] = [
   { value: "delivered", label: "Teslim Edildi", color: "purple" },
   { value: "invoiced", label: "Faturalandı", color: "green" },
   { value: "cancelled", label: "İptal", color: "red" },
+];
+
+export const SALE_TYPE_OPTIONS: SelectOption[] = [
+  { value: "TRANSİT", label: "Transit", color: "yellow" },
+  { value: "MİLLİ", label: "Milli", color: "blue" },
 ];
 
 export const ACTIVITY_TYPE_OPTIONS: SelectOption[] = [
@@ -350,8 +361,9 @@ export const salesOrdersResource: ResourceConfig = {
   writeRoles: ["admin", "sales"],
   defaultValues: { unit: "ton", currency: "TRY" },
   orderBy: { column: "created_at", ascending: false },
-  listFields: ["order_no", "customer_id", "product_id", "quantity", "delivery_date", "status"],
+  listFields: ["order_no", "customer_id", "sale_type", "product_id", "quantity", "delivery_date", "status"],
   fxCapture: true,
+  uppercaseText: true,
   // Kaynak bağlantı (gemi) artık elle seçilmiyor: fn_sales_order_autofill_contract
   // trigger'ı (0048) product_id + quantity'ye göre uygun bağlantıyı otomatik
   // atıyor ve DB'de aynı "fazla satış" kontrolünü zaten yapıyor — bu yüzden
@@ -359,6 +371,11 @@ export const salesOrdersResource: ResourceConfig = {
   fields: [
     { name: "order_no", label: "Satış No", type: "text", unique: true },
     { name: "customer_id", label: "Müşteri", type: "reference", ref: { table: "companies", labelField: "name", filter: { type: ["customer", "both"] } }, required: true },
+    { name: "sale_type", label: "Satış Tipi", type: "select", options: SALE_TYPE_OPTIONS, required: true },
+    // Şehir: depoların bulunduğu şehirler otomatik listelenir (optionsSource);
+    // listede yoksa "Diğer" ile serbest yazılabilir (büyük harfe çevrilir). "Diğer"
+    // metin kutusu için yeterli genişlik kalsın diye ayrı satırda (inlineAfter yok).
+    { name: "city", label: "Şehir", type: "select_other", optionsSource: { table: "warehouses", column: "city" }, required: true },
     { name: "product_id", label: "Ürün", type: "reference", ref: { table: "products", labelField: "name", filter: { is_active: ["true"] } }, required: true },
     // Kaynak bağlantı (gemi) artık burada seçilmiyor — trigger otomatik atar
     // (bkz. üstteki not). Detay görünümünde hangi bağlantıya düştüğü görünür.
