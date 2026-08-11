@@ -20,7 +20,7 @@ import { formatDate, formatNumber } from "@/lib/format";
 import { exportToExcel } from "@/lib/export";
 import type { FieldDef, ResourceConfig, SelectOption } from "@/lib/resources";
 import type { Role } from "@/lib/types";
-import { Download, Eye, MapPin, Paperclip, Pencil, Plus, Trash2 } from "lucide-react";
+import { Download, Eye, Filter, MapPin, Paperclip, Pencil, Plus, Trash2, X } from "lucide-react";
 
 type Row = Record<string, unknown>;
 
@@ -464,13 +464,14 @@ export function ResourceManager({
   const [detail, setDetail] = useState<Row | null>(null);
   const [noteText, setNoteText] = useState("");
   const [savingNote, setSavingNote] = useState(false);
-  // Filtre kenar çubuğu: alan tipine göre otomatik 3 grup.
-  // filters: reference/select/boolean (kesin eşleşme). textFilters: geri kalan
-  // metin benzeri alanlar (alt dize arama). rangeFilters: date/number/money
-  // (min–maks / başlangıç–bitiş).
+  // Filtre paneli: alan tipine göre otomatik 3 grup. filters: reference/
+  // select/boolean (kesin eşleşme). textFilters: geri kalan metin benzeri
+  // alanlar (alt dize arama). rangeFilters: date/number/money (min–maks /
+  // başlangıç–bitiş). Panel varsayılan KAPALI — istenince "Filtrele" ile açılır.
   const [filters, setFilters] = useState<Record<string, string>>({});
   const [textFilters, setTextFilters] = useState<Record<string, string>>({});
   const [rangeFilters, setRangeFilters] = useState<Record<string, { from: string; to: string }>>({});
+  const [filtersOpen, setFiltersOpen] = useState(false);
   // Kota bilgisi (ör. satışta seçili geminin toplam / satılan / kalan tonajı)
   const [quotaInfo, setQuotaInfo] = useState<{
     capacity: number;
@@ -970,7 +971,7 @@ export function ResourceManager({
 
   const listFieldDefs = config.listFields.map((n) => fieldByName[n]).filter(Boolean);
 
-  // Filtre kenar çubuğu: her alan tipine göre otomatik gruplanır (bkz. resources.ts).
+  // Filtre paneli: her alan tipine göre otomatik gruplanır (bkz. resources.ts).
   const dropdownFilterFields = config.fields.filter(
     (f) => f.type === "reference" || f.type === "select" || f.type === "boolean",
   );
@@ -989,10 +990,11 @@ export function ResourceManager({
   const hasFilterUI =
     !hideFilters &&
     dropdownFilterFields.length + rangeFilterFields.length + textFilterFields.length > 0;
-  const hasActiveFilters =
-    Object.values(filters).some((v) => v) ||
-    Object.values(textFilters).some((v) => v.trim() !== "") ||
-    Object.values(rangeFilters).some((r) => r.from !== "" || r.to !== "");
+  const activeFilterCount =
+    Object.values(filters).filter((v) => v).length +
+    Object.values(textFilters).filter((v) => v.trim() !== "").length +
+    Object.values(rangeFilters).filter((r) => r.from !== "" || r.to !== "").length;
+  const hasActiveFilters = activeFilterCount > 0;
   const clearAllFilters = () => {
     setFilters({});
     setTextFilters({});
@@ -1021,12 +1023,59 @@ export function ResourceManager({
   };
 
   return (
-    <div className={hasFilterUI ? "grid gap-4 lg:grid-cols-[240px_1fr] lg:items-start" : "space-y-4"}>
-      {hasFilterUI && (
-        <aside className="lg:order-1">
-          <div className="space-y-3 rounded-xl border border-border bg-card p-4">
-            <div className="flex items-center justify-between">
-              <span className="text-sm font-semibold">Filtreler</span>
+    <div className="space-y-4">
+      {/* Üst bar */}
+      <div
+        className={`flex flex-col gap-3 sm:flex-row sm:items-center ${
+          hideTitle ? "sm:justify-end" : "sm:justify-between"
+        }`}
+      >
+        {!hideTitle && (
+          <h1 className="text-lg font-semibold">{title || config.title}</h1>
+        )}
+        <div className="flex items-center gap-2">
+          {hasFilterUI && (
+            <button
+              type="button"
+              onClick={() => setFiltersOpen((o) => !o)}
+              className={`inline-flex shrink-0 items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-medium ${
+                filtersOpen || hasActiveFilters
+                  ? "border-brand bg-brand/5 text-brand"
+                  : "border-border bg-white text-gray-700 hover:bg-gray-50"
+              }`}
+            >
+              <Filter className="h-4 w-4" /> Filtrele
+              {hasActiveFilters && (
+                <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-brand px-1 text-[10px] font-bold text-white">
+                  {activeFilterCount}
+                </span>
+              )}
+            </button>
+          )}
+          {rows.length > 0 && (
+            <button
+              type="button"
+              onClick={exportRows}
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-border bg-white px-3 py-2 text-sm font-medium hover:bg-gray-50"
+              title="Görünen (filtrelenmiş) kayıtları Excel'e aktar"
+            >
+              <Download className="h-4 w-4" /> Excel&apos;e Aktar
+            </button>
+          )}
+          {canWrite && (
+            <Button onClick={openNew} className="shrink-0">
+              <Plus className="h-4 w-4" /> Yeni
+            </Button>
+          )}
+        </div>
+      </div>
+
+      {/* Filtre paneli: istenince açılır, tablonun ÜSTÜNDE — sürekli yer kaplamaz */}
+      {hasFilterUI && filtersOpen && (
+        <div className="rounded-xl border border-border bg-card p-4">
+          <div className="mb-3 flex items-center justify-between">
+            <span className="text-sm font-semibold">Filtreler</span>
+            <div className="flex items-center gap-3">
               {hasActiveFilters && (
                 <button
                   type="button"
@@ -1036,200 +1085,178 @@ export function ResourceManager({
                   Temizle
                 </button>
               )}
-            </div>
-            <div className="max-h-[70vh] space-y-3 overflow-y-auto pr-1">
-              {dropdownFilterFields.map((f) => (
-                <div key={f.name}>
-                  <label className="mb-1 block text-xs font-medium text-gray-600">{f.label}</label>
-                  <SearchableSelect
-                    value={filters[f.name] ?? ""}
-                    onChange={(v) => setFilters((prev) => ({ ...prev, [f.name]: v }))}
-                    options={filterOptions(f)}
-                    placeholder="Tümü"
-                    className="w-full"
-                  />
-                </div>
-              ))}
-              {rangeFilterFields.map((f) => {
-                const r = rangeFilters[f.name] ?? { from: "", to: "" };
-                const isDate = f.type === "date";
-                return (
-                  <div key={f.name}>
-                    <label className="mb-1 block text-xs font-medium text-gray-600">{f.label}</label>
-                    <div className="flex items-center gap-1.5">
-                      <Input
-                        type={isDate ? "date" : "number"}
-                        value={r.from}
-                        onChange={(e) =>
-                          setRangeFilters((prev) => ({ ...prev, [f.name]: { from: e.target.value, to: prev[f.name]?.to ?? "" } }))
-                        }
-                        placeholder={isDate ? undefined : "min"}
-                        className="min-w-0 flex-1"
-                      />
-                      <span className="shrink-0 text-xs text-gray-400">–</span>
-                      <Input
-                        type={isDate ? "date" : "number"}
-                        value={r.to}
-                        onChange={(e) =>
-                          setRangeFilters((prev) => ({ ...prev, [f.name]: { from: prev[f.name]?.from ?? "", to: e.target.value } }))
-                        }
-                        placeholder={isDate ? undefined : "maks"}
-                        className="min-w-0 flex-1"
-                      />
-                    </div>
-                  </div>
-                );
-              })}
-              {textFilterFields.map((f) => (
-                <div key={f.name}>
-                  <label className="mb-1 block text-xs font-medium text-gray-600">{f.label}</label>
-                  <Input
-                    value={textFilters[f.name] ?? ""}
-                    onChange={(e) => setTextFilters((prev) => ({ ...prev, [f.name]: e.target.value }))}
-                    placeholder="Ara..."
-                    className="w-full"
-                  />
-                </div>
-              ))}
-            </div>
-          </div>
-        </aside>
-      )}
-
-      <div className={hasFilterUI ? "min-w-0 space-y-4 lg:order-2" : "space-y-4"}>
-        {/* Üst bar */}
-        <div
-          className={`flex flex-col gap-3 sm:flex-row sm:items-center ${
-            hideTitle ? "sm:justify-end" : "sm:justify-between"
-          }`}
-        >
-          {!hideTitle && (
-            <h1 className="text-lg font-semibold">{title || config.title}</h1>
-          )}
-          <div className="flex items-center gap-2">
-            {rows.length > 0 && (
               <button
                 type="button"
-                onClick={exportRows}
-                className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-border bg-white px-3 py-2 text-sm font-medium hover:bg-gray-50"
-                title="Görünen (filtrelenmiş) kayıtları Excel'e aktar"
+                onClick={() => setFiltersOpen(false)}
+                className="text-gray-400 hover:text-gray-600"
+                title="Kapat"
               >
-                <Download className="h-4 w-4" /> Excel&apos;e Aktar
+                <X className="h-4 w-4" />
               </button>
-            )}
-            {canWrite && (
-              <Button onClick={openNew} className="shrink-0">
-                <Plus className="h-4 w-4" /> Yeni
-              </Button>
-            )}
+            </div>
+          </div>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {dropdownFilterFields.map((f) => (
+              <div key={f.name}>
+                <label className="mb-1 block text-xs font-medium text-gray-600">{f.label}</label>
+                <SearchableSelect
+                  value={filters[f.name] ?? ""}
+                  onChange={(v) => setFilters((prev) => ({ ...prev, [f.name]: v }))}
+                  options={filterOptions(f)}
+                  placeholder="Tümü"
+                  className="w-full"
+                />
+              </div>
+            ))}
+            {rangeFilterFields.map((f) => {
+              const r = rangeFilters[f.name] ?? { from: "", to: "" };
+              const isDate = f.type === "date";
+              return (
+                <div key={f.name}>
+                  <label className="mb-1 block text-xs font-medium text-gray-600">{f.label}</label>
+                  <div className="flex items-center gap-1.5">
+                    <Input
+                      type={isDate ? "date" : "number"}
+                      value={r.from}
+                      onChange={(e) =>
+                        setRangeFilters((prev) => ({ ...prev, [f.name]: { from: e.target.value, to: prev[f.name]?.to ?? "" } }))
+                      }
+                      placeholder={isDate ? undefined : "min"}
+                      className="min-w-0 flex-1"
+                    />
+                    <span className="shrink-0 text-xs text-gray-400">–</span>
+                    <Input
+                      type={isDate ? "date" : "number"}
+                      value={r.to}
+                      onChange={(e) =>
+                        setRangeFilters((prev) => ({ ...prev, [f.name]: { from: prev[f.name]?.from ?? "", to: e.target.value } }))
+                      }
+                      placeholder={isDate ? undefined : "maks"}
+                      className="min-w-0 flex-1"
+                    />
+                  </div>
+                </div>
+              );
+            })}
+            {textFilterFields.map((f) => (
+              <div key={f.name}>
+                <label className="mb-1 block text-xs font-medium text-gray-600">{f.label}</label>
+                <Input
+                  value={textFilters[f.name] ?? ""}
+                  onChange={(e) => setTextFilters((prev) => ({ ...prev, [f.name]: e.target.value }))}
+                  placeholder="Ara..."
+                  className="w-full"
+                />
+              </div>
+            ))}
           </div>
         </div>
+      )}
 
-        {error && (
-          <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-            Veri yüklenemedi: {error}
-            <div className="mt-1 text-xs text-red-500">
-              Tablolar henüz oluşturulmadıysa Supabase SQL Editor&apos;de migration
-              dosyalarını çalıştırın.
-            </div>
+      {error && (
+        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          Veri yüklenemedi: {error}
+          <div className="mt-1 text-xs text-red-500">
+            Tablolar henüz oluşturulmadıysa Supabase SQL Editor&apos;de migration
+            dosyalarını çalıştırın.
           </div>
-        )}
+        </div>
+      )}
 
-        {loading ? (
-          <div className="flex justify-center py-12">
-            <Spinner />
-          </div>
-        ) : filtered.length === 0 ? (
-          <EmptyState message={rows.length === 0 ? "Kayıt bulunamadı." : "Filtreyle eşleşen kayıt yok."} />
-        ) : (
-          <>
-            {/* Masaüstü tablo */}
-            <div className="hidden overflow-x-auto rounded-xl border border-border bg-card md:block">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-border bg-gray-50 text-left text-xs uppercase text-gray-500">
+      {loading ? (
+        <div className="flex justify-center py-12">
+          <Spinner />
+        </div>
+      ) : filtered.length === 0 ? (
+        <EmptyState message={rows.length === 0 ? "Kayıt bulunamadı." : "Filtreyle eşleşen kayıt yok."} />
+      ) : (
+        <>
+          {/* Masaüstü tablo */}
+          <div className="hidden overflow-x-auto rounded-xl border border-border bg-card md:block">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border bg-gray-50 text-left text-xs uppercase text-gray-500">
+                  {listFieldDefs.map((f) => (
+                    <th key={f.name} className="px-4 py-3 font-medium">
+                      {f.label}
+                    </th>
+                  ))}
+                  <th className="px-4 py-3" />
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((row) => (
+                  <tr
+                    key={String(row.id)}
+                    onClick={() => onRowOpen(row)}
+                    className="cursor-pointer border-b border-border last:border-0 hover:bg-gray-50"
+                  >
                     {listFieldDefs.map((f) => (
-                      <th key={f.name} className="px-4 py-3 font-medium">
-                        {f.label}
-                      </th>
-                    ))}
-                    <th className="px-4 py-3" />
-                  </tr>
-                </thead>
-                <tbody>
-                  {filtered.map((row) => (
-                    <tr
-                      key={String(row.id)}
-                      onClick={() => onRowOpen(row)}
-                      className="cursor-pointer border-b border-border last:border-0 hover:bg-gray-50"
-                    >
-                      {listFieldDefs.map((f) => (
-                        <td key={f.name} className="px-4 py-3">
-                          {renderCell(f, row)}
-                        </td>
-                      ))}
-                      <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
-                        <div className="flex justify-end gap-1">
-                          <button
-                            onClick={() => onRowOpen(row)}
-                            className="rounded-lg p-1.5 text-gray-500 hover:bg-gray-100"
-                            title="Detay"
-                          >
-                            <Eye className="h-4 w-4" />
-                          </button>
-                          {canWrite && (
-                            <button
-                              onClick={() => openEdit(row)}
-                              className="rounded-lg p-1.5 text-gray-500 hover:bg-gray-100"
-                              title="Düzenle"
-                            >
-                              <Pencil className="h-4 w-4" />
-                            </button>
-                          )}
-                          {canWrite && (
-                            <button
-                              onClick={() => remove(row)}
-                              className="rounded-lg p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-600"
-                              title="Sil"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            {/* Mobil kartlar */}
-            <div className="space-y-3 md:hidden">
-              {filtered.map((row) => (
-                <div
-                  key={String(row.id)}
-                  className="cursor-pointer rounded-xl border border-border bg-card p-4"
-                  onClick={() => onRowOpen(row)}
-                >
-                  {listFieldDefs.map((f, i) => (
-                    <div
-                      key={f.name}
-                      className={`flex justify-between gap-3 py-1 ${i === 0 ? "mb-1 border-b border-border pb-2" : ""}`}
-                    >
-                      <span className="text-xs text-gray-500">{f.label}</span>
-                      <span
-                        className={`text-right text-sm ${i === 0 ? "font-semibold" : ""}`}
-                      >
+                      <td key={f.name} className="px-4 py-3">
                         {renderCell(f, row)}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              ))}
-            </div>
-          </>
-        )}
-      </div>
+                      </td>
+                    ))}
+                    <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                      <div className="flex justify-end gap-1">
+                        <button
+                          onClick={() => onRowOpen(row)}
+                          className="rounded-lg p-1.5 text-gray-500 hover:bg-gray-100"
+                          title="Detay"
+                        >
+                          <Eye className="h-4 w-4" />
+                        </button>
+                        {canWrite && (
+                          <button
+                            onClick={() => openEdit(row)}
+                            className="rounded-lg p-1.5 text-gray-500 hover:bg-gray-100"
+                            title="Düzenle"
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </button>
+                        )}
+                        {canWrite && (
+                          <button
+                            onClick={() => remove(row)}
+                            className="rounded-lg p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-600"
+                            title="Sil"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Mobil kartlar */}
+          <div className="space-y-3 md:hidden">
+            {filtered.map((row) => (
+              <div
+                key={String(row.id)}
+                className="cursor-pointer rounded-xl border border-border bg-card p-4"
+                onClick={() => onRowOpen(row)}
+              >
+                {listFieldDefs.map((f, i) => (
+                  <div
+                    key={f.name}
+                    className={`flex justify-between gap-3 py-1 ${i === 0 ? "mb-1 border-b border-border pb-2" : ""}`}
+                  >
+                    <span className="text-xs text-gray-500">{f.label}</span>
+                    <span
+                      className={`text-right text-sm ${i === 0 ? "font-semibold" : ""}`}
+                    >
+                      {renderCell(f, row)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+        </>
+      )}
 
       {/* Form modalı */}
       <Modal

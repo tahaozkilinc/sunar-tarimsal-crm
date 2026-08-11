@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Badge, Button, Card, EmptyState, Field, Input, Select, Spinner } from "./ui";
 import { MovementPhotos, type MovementPhoto } from "./movement-photos";
@@ -83,7 +83,16 @@ export function SalesDispatch({ role }: { role: Role }) {
   const [plate, setPlate] = useState("");
   const [driver, setDriver] = useState("");
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
-  const [time, setTime] = useState(new Date().toTimeString().slice(0, 5));
+  const [time, setTime] = useState(() => new Date().toTimeString().slice(0, 5));
+  // Saat alanı, kullanıcı elle değiştirmediği sürece "şimdi"yi izlemeye devam
+  // eder — form açık kalsa da sabit kalmaz (bkz. ship-ops-page.tsx aynı desen).
+  const timeTouchedRef = useRef(false);
+  useEffect(() => {
+    const id = setInterval(() => {
+      if (!timeTouchedRef.current) setTime(new Date().toTimeString().slice(0, 5));
+    }, 15000);
+    return () => clearInterval(id);
+  }, []);
   const [saving, setSaving] = useState(false);
   const [formErr, setFormErr] = useState<string | null>(null);
   const [flash, setFlash] = useState<string | null>(null);
@@ -214,6 +223,8 @@ export function SalesDispatch({ role }: { role: Role }) {
     if (err) { setFormErr(err.message); return; }
     setFlash(`${formatNumber(q)} ton çıkış kaydedildi`);
     setQty(""); setPlate(""); setDriver("");
+    timeTouchedRef.current = false;
+    setTime(new Date().toTimeString().slice(0, 5));
     await load();
     setTimeout(() => setFlash(null), 2000);
   };
@@ -503,7 +514,11 @@ export function SalesDispatch({ role }: { role: Role }) {
                 </div>
                 <div className="w-28 shrink-0">
                   <Field label="Saat">
-                    <Input type="time" value={time} onChange={(e) => setTime(e.target.value)} />
+                    <Input
+                      type="time"
+                      value={time}
+                      onChange={(e) => { timeTouchedRef.current = true; setTime(e.target.value); }}
+                    />
                   </Field>
                 </div>
               </div>
