@@ -352,27 +352,25 @@ export const salesOrdersResource: ResourceConfig = {
   orderBy: { column: "created_at", ascending: false },
   listFields: ["order_no", "customer_id", "product_id", "quantity", "delivery_date", "status"],
   fxCapture: true,
-  // Bir satış, kaynak bağlantının (gemi) toplam tonajını aşamaz (fazla satış engeli).
-  quota: {
-    field: "contract_id",
-    amountField: "quantity",
-    capacityTable: "sellable_contracts",
-    capacityField: "quantity",
-    statusField: "status",
-    excludeStatus: ["cancelled"],
-  },
+  // Kaynak bağlantı (gemi) artık elle seçilmiyor: fn_sales_order_autofill_contract
+  // trigger'ı (0048) product_id + quantity'ye göre uygun bağlantıyı otomatik
+  // atıyor ve DB'de aynı "fazla satış" kontrolünü zaten yapıyor — bu yüzden
+  // burada ayrıca istemci tarafı kota kontrolüne gerek kalmadı.
   fields: [
     { name: "order_no", label: "Satış No", type: "text", unique: true },
     { name: "customer_id", label: "Müşteri", type: "reference", ref: { table: "companies", labelField: "name", filter: { type: ["customer", "both"] } }, required: true },
-    { name: "contract_id", label: "Kaynak Bağlantı (Gemi)", type: "reference", ref: { table: "sellable_contracts", labelField: "vessel", labelFields: ["vessel", "contract_no"] }, autofill: { product_id: "product_id" }, required: true },
-    { name: "product_id", label: "Ürün", type: "reference", ref: { table: "products", labelField: "name", filter: { is_active: ["true"] } }, formHidden: true },
+    { name: "product_id", label: "Ürün", type: "reference", ref: { table: "products", labelField: "name", filter: { is_active: ["true"] } }, required: true },
+    // Kaynak bağlantı (gemi) artık burada seçilmiyor — trigger otomatik atar
+    // (bkz. üstteki not). Detay görünümünde hangi bağlantıya düştüğü görünür.
+    { name: "contract_id", label: "Kaynak Bağlantı (Gemi)", type: "reference", ref: { table: "sellable_contracts", labelField: "vessel", labelFields: ["vessel", "contract_no"] }, formHidden: true },
     // Çıkış deposu artık TEK seçim değil: kaydettikten sonra "Detay" görünümünde
     // "Sevkiyat Depoları" bölümünden çoklu depo seçilir (sale_warehouses).
     { name: "quantity", label: "Miktar", type: "number", required: true, positive: true },
-    { name: "unit", label: "Birim", type: "text" },
+    { name: "unit", label: "Birim", type: "select", options: UNIT_OPTIONS, required: true, inlineAfter: true },
     { name: "price", label: "Birim Fiyat", type: "money", min: 0 },
     { name: "currency", label: "Para Birimi", type: "select", options: CURRENCY_OPTIONS },
-    { name: "delivery_date", label: "Teslim Tarihi", type: "date" },
+    { name: "delivery_date", label: "Teslim Tarihi (Başlangıç)", type: "date" },
+    { name: "delivery_date_to", label: "Teslim Tarihi (Bitiş)", type: "date", inlineAfter: true },
     { name: "status", label: "Durum", type: "select", options: SALES_STATUS_OPTIONS, required: true },
     { name: "usd_try", label: "USD/TRY (TCMB)", type: "number", placeholder: "Otomatik" },
     { name: "eur_try", label: "EUR/TRY (TCMB)", type: "number", placeholder: "Otomatik" },
