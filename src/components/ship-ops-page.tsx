@@ -108,7 +108,13 @@ export function ShipOpsPage({
   const [qty,    setQty]    = useState("");
   const [qtyUnit, setQtyUnit] = useState<"ton" | "kg">("ton");
   const [date,   setDate]   = useState(new Date().toISOString().slice(0, 10));
-  const [time,   setTime]   = useState(new Date().toTimeString().slice(0, 5));
+  const [time,   setTime]   = useState(() => new Date().toTimeString().slice(0, 5));
+  // Saat alanı, kullanıcı elle değiştirmediği sürece canlı saati (now) izler —
+  // form açık kalsa bile "şimdi" göstermeye devam eder, elle girilen değeri ezmez.
+  const timeTouchedRef = useRef(false);
+  useEffect(() => {
+    if (!timeTouchedRef.current) setTime(now.toTimeString().slice(0, 5));
+  }, [now]);
   const [saving, setSaving] = useState(false);
   const [formErr, setFormErr] = useState<string | null>(null);
   const [flash, setFlash]   = useState<string | null>(null);
@@ -343,6 +349,8 @@ export function ShipOpsPage({
     const msg = `${formatNumber(q)} ${unit} eklendi`;
     setFlash(msg);
     setPlate(""); setDriver(""); setQty("");
+    timeTouchedRef.current = false;
+    setTime(new Date().toTimeString().slice(0, 5));
     setSaving(false);
     await loadMovements();
     setTimeout(() => {
@@ -1010,7 +1018,7 @@ export function ShipOpsPage({
                           <Input
                             type="time"
                             value={time}
-                            onChange={e => setTime(e.target.value)}
+                            onChange={e => { timeTouchedRef.current = true; setTime(e.target.value); }}
                           />
                         </Field>
                       </div>

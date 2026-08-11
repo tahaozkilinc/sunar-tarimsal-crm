@@ -5,11 +5,15 @@ import { createClient } from "@/lib/supabase/client";
 import { Card, Spinner } from "./ui";
 import { formatNumber } from "@/lib/format";
 
-// "Bekleyen Gelişler" sekmesinin yanındaki küçük panel: her geminin ne kadarı
-// FİİLEN boşaltıldığını % olarak gösterir — Satışlar sekmesindeki sevkiyat
-// panelinin (sales-fulfillment-panel.tsx) alım tarafındaki simetriği. Sözleşme
-// tonajı ile fiilen çekilen (stock_movements 'inbound') FARKLI şeydir; bu panel
-// o farkı satış paneliyle aynı görsel dilde (yüzde + çubuk) gösterir.
+// "Bekleyen Gelişler" sekmesinin üstünde, operasyonun tam üzerinde görünen
+// panel: her geminin ne kadarı FİİLEN boşaltıldığını % olarak gösterir —
+// Satışlar sekmesindeki sevkiyat panelinin (sales-fulfillment-panel.tsx) alım
+// tarafındaki simetriği. Sözleşme tonajı ile fiilen çekilen (stock_movements
+// 'inbound') FARKLI şeydir; bu panel o farkı aynı görsel dilde (yüzde + çubuk)
+// gösterir. İlk araç girilmeden bir gemi burada GÖZÜKMEZ (drawn=0 hariç
+// tutulur) — "boşaltma durumu" henüz başlamamış bir gemi için anlamsız.
+// Aracı ShipOpsPage'den başka bir kullanıcı da eklemiş olabileceğinden
+// periyodik olarak (20sn) sessizce yeniden çekilir; % kendiliğinden artar.
 
 type Contract = {
   id: string;
@@ -22,6 +26,7 @@ type Contract = {
 type Ref = { id: string; name: string };
 
 const EXCLUDED_STATUS = new Set(["cancelled", "completed"]);
+const POLL_MS = 20000;
 
 export function OperationsFulfillmentPanel() {
   const supabase = useMemo(() => createClient(), []);
@@ -31,7 +36,9 @@ export function OperationsFulfillmentPanel() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    (async () => {
+    let on = true;
+    const load = async (silent = false) => {
+      if (!silent) setLoading(true);
       const [cRes, mRes, pRes] = await Promise.all([
         supabase
           .from("purchase_contracts")
@@ -43,6 +50,7 @@ export function OperationsFulfillmentPanel() {
           .not("contract_id", "is", null),
         supabase.from("products").select("id,name"),
       ]);
+      if (!on) return;
       setRows(((cRes.data as Contract[]) || []).filter((c) => !EXCLUDED_STATUS.has(c.status)));
       const d: Record<string, number> = {};
       ((mRes.data as { contract_id: string; quantity: number | null }[] | null) || []).forEach((m) => {
@@ -51,12 +59,19 @@ export function OperationsFulfillmentPanel() {
       setDrawn(d);
       setProducts((pRes.data as Ref[]) || []);
       setLoading(false);
-    })();
+    };
+    load();
+    const id = setInterval(() => load(true), POLL_MS);
+    return () => {
+      on = false;
+      clearInterval(id);
+    };
   }, [supabase]);
 
   const pName = (id: string | null) => (id && products.find((p) => p.id === id)?.name) || "—";
 
   // En az tamamlanan (en çok dikkat gereken) önce; %100 olanlar en altta.
+  // Henüz hiç araç girilmemiş (drawn=0) gemiler listeye hiç girmez.
   const list = useMemo(() => {
     return rows
       .map((c) => {
@@ -65,7 +80,7 @@ export function OperationsFulfillmentPanel() {
         const pct = qty > 0 ? Math.min(100, (d / qty) * 100) : 0;
         return { ...c, qty, drawn: d, pct };
       })
-      .filter((r) => r.qty > 0)
+      .filter((r) => r.qty > 0 && r.drawn > 0)
       .sort((a, b) => a.pct - b.pct);
   }, [rows, drawn]);
 
@@ -73,11 +88,11 @@ export function OperationsFulfillmentPanel() {
   if (list.length === 0) return null;
 
   return (
-    <Card className="max-h-[70vh] overflow-y-auto p-3">
-      <div className="mb-2 px-1 text-xs font-semibold uppercase text-gray-500">
+    <Card className="p-4">
+      <div className="mb-3 text-xs font-semibold uppercase text-gray-500">
         Gemi Boşaltma Durumu ({list.length})
       </div>
-      <div className="space-y-2">
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
         {list.map((r) => {
           const color = r.pct >= 100 ? "bg-emerald-500" : r.pct > 0 ? "bg-amber-500" : "bg-gray-300";
           const pctColor = r.pct >= 100 ? "text-emerald-700" : r.pct > 0 ? "text-amber-700" : "text-gray-500";

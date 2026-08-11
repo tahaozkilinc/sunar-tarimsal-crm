@@ -51,9 +51,9 @@ export function OperationsTabs({ role }: { role: Role }) {
         ]}
       />
       {tab === "arrivals" && (
-        <div className="grid gap-4 lg:grid-cols-[1fr_300px]">
-          <PendingArrivals role={role} />
+        <div className="space-y-4">
           <OperationsFulfillmentPanel />
+          <PendingArrivals role={role} />
         </div>
       )}
       {tab === "foreign" && <ForeignLoading role={role} />}
