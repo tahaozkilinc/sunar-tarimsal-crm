@@ -17,9 +17,10 @@ import {
   Textarea,
 } from "./ui";
 import { formatDate, formatNumber } from "@/lib/format";
+import { exportToExcel } from "@/lib/export";
 import type { FieldDef, ResourceConfig, SelectOption } from "@/lib/resources";
 import type { Role } from "@/lib/types";
-import { Eye, MapPin, Paperclip, Pencil, Plus, Search, Trash2 } from "lucide-react";
+import { Download, Eye, MapPin, Paperclip, Pencil, Plus, Search, Trash2 } from "lucide-react";
 
 type Row = Record<string, unknown>;
 
@@ -305,7 +306,7 @@ function MapPointInput({
       if (cancelled || !mapDivRef.current) return;
       const start: [number, number] =
         latNum !== null && lngNum !== null ? [latNum, lngNum] : [39.0, 35.2];
-      const map = L.map(mapDivRef.current, { scrollWheelZoom: false }).setView(start, latNum !== null ? 11 : 6);
+      const map = L.map(mapDivRef.current, { scrollWheelZoom: true }).setView(start, latNum !== null ? 11 : 6);
       mapRef.current = map;
       L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
         attribution: "© OpenStreetMap",
@@ -638,6 +639,8 @@ export function ResourceManager({
         return value ? <Badge color="green">Evet</Badge> : <Badge color="gray">Hayır</Badge>;
       case "date":
         return formatDate(value as string);
+      case "time":
+        return String(value).slice(0, 5);
       case "number":
       case "money":
         return formatNumber(value as number);
@@ -658,6 +661,37 @@ export function ResourceManager({
             {Number(value).toFixed(4)}, {Number(lng).toFixed(4)}
           </a>
         );
+      }
+      default:
+        return String(value);
+    }
+  };
+
+  // renderCell'in düz-metin karşılığı: Excel dışa aktarımı için (JSX/Badge
+  // değil, ham hücre metni). Aynı alan tipi kurallarını izler.
+  const cellText = (field: FieldDef, row: Row): string | number => {
+    const value = row[field.name];
+    if (value === null || value === undefined || value === "") return "";
+    switch (field.type) {
+      case "reference":
+        return refLabel(field, value);
+      case "select":
+      case "select_other":
+        return field.options?.find((o) => o.value === value)?.label || String(value);
+      case "boolean":
+        return value ? "Evet" : "Hayır";
+      case "date":
+        return formatDate(value as string);
+      case "time":
+        return String(value).slice(0, 5);
+      case "number":
+      case "money":
+        return Number(value);
+      case "file":
+        return String(value).split("/").pop() || "";
+      case "map": {
+        const lng = row[field.pairField!];
+        return lng !== null && lng !== undefined && lng !== "" ? `${value}, ${lng}` : String(value);
       }
       default:
         return String(value);
@@ -698,6 +732,12 @@ export function ResourceManager({
     });
   }, [rows, search, filters, config.searchFields, config.listFields, fieldByName, refData]);
 
+  const exportRows = () => {
+    const headers = config.fields.map((f) => f.label);
+    const body = filtered.map((row) => config.fields.map((f) => cellText(f, row)));
+    exportToExcel(config.title, headers, body);
+  };
+
   // --- form ---
   const openNew = () => {
     const initial: Row = { ...defaults };
@@ -707,6 +747,7 @@ export function ResourceManager({
       else if (f.type === "boolean") initial[f.name] = true;
       else if (f.name === "movement_date" || (f.type === "date" && f.required))
         initial[f.name] = new Date().toISOString().slice(0, 10);
+      else if (f.type === "time") initial[f.name] = new Date().toTimeString().slice(0, 5);
     });
     setEditing(null);
     setForm(initial);
@@ -956,6 +997,16 @@ export function ResourceManager({
                 className="w-full pl-8 sm:w-56"
               />
             </div>
+          )}
+          {rows.length > 0 && (
+            <button
+              type="button"
+              onClick={exportRows}
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-border bg-white px-3 py-2 text-sm font-medium hover:bg-gray-50"
+              title="Görünen (filtrelenmiş) kayıtları Excel'e aktar"
+            >
+              <Download className="h-4 w-4" /> Excel&apos;e Aktar
+            </button>
           )}
           {canWrite && (
             <Button onClick={openNew} className="shrink-0">
@@ -1369,13 +1420,15 @@ export function ResourceManager({
     const inputType =
       f.type === "date"
         ? "date"
-        : f.type === "email"
-          ? "email"
-          : f.type === "tel"
-            ? "tel"
-            : f.type === "url"
-              ? "url"
-              : "text";
+        : f.type === "time"
+          ? "time"
+          : f.type === "email"
+            ? "email"
+            : f.type === "tel"
+              ? "tel"
+              : f.type === "url"
+                ? "url"
+                : "text";
     const forceUpper = config.uppercaseText && f.type === "text";
     return (
       <Input

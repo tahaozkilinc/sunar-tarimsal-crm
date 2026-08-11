@@ -2,8 +2,11 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { Card, EmptyState, Spinner } from "./ui";
+import { Badge, Card, EmptyState, Input, Spinner } from "./ui";
 import { formatDate, formatNumber } from "@/lib/format";
+import { exportToExcel } from "@/lib/export";
+import { CONTRACT_STATUS_OPTIONS } from "@/lib/resources";
+import { Download } from "lucide-react";
 
 // Her fonksiyonun (Bağlantı / Satış / Operasyon) kendi "Özet" sekmesi.
 // Veriyi istemci tarafında çeker; RLS gereği rol neyi görebiliyorsa onu gösterir.
@@ -450,13 +453,28 @@ type Movement = {
   contract_id: string | null;
   product_id: string | null;
 };
+type ShipContract = {
+  id: string;
+  contract_no: string | null;
+  vessel: string | null;
+  loading_port: string | null;
+  product_id: string | null;
+  quantity: number | null;
+  status: string;
+  eta: string | null;
+};
 
 export function OperasyonSummary() {
   const supabase = useMemo(() => createClient(), []);
   const productMap = useProductMap(supabase);
   const [rows, setRows] = useState<Movement[]>([]);
-  const [vesselMap, setVesselMap] = useState<Record<string, string>>({});
+  const [contracts, setContracts] = useState<ShipContract[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Gemi/bağlantı tablosu filtreleri (serbest metin — "gemi adı", "liman", "ürün")
+  const [fVessel, setFVessel] = useState("");
+  const [fPort, setFPort] = useState("");
+  const [fProduct, setFProduct] = useState("");
 
   useEffect(() => {
     let on = true;
@@ -465,15 +483,13 @@ export function OperasyonSummary() {
         supabase
           .from("stock_movements")
           .select("id,movement_type,quantity,movement_date,contract_id,product_id"),
-        supabase.from("purchase_contracts").select("id,vessel"),
+        supabase
+          .from("purchase_contracts")
+          .select("id,contract_no,vessel,loading_port,product_id,quantity,status,eta"),
       ]);
       if (!on) return;
       setRows((m.data as Movement[] | null) || []);
-      const vm: Record<string, string> = {};
-      ((c.data as { id: string; vessel: string | null }[] | null) || []).forEach((x) => {
-        if (x.vessel) vm[x.id] = x.vessel;
-      });
-      setVesselMap(vm);
+      setContracts((c.data as ShipContract[] | null) || []);
       setLoading(false);
     })();
     return () => {
@@ -482,6 +498,61 @@ export function OperasyonSummary() {
   }, [supabase]);
 
   const pn = (id: string | null) => (id && productMap[id]) || "Ürünsüz";
+
+  const vesselMap = useMemo(() => {
+    const vm: Record<string, string> = {};
+    contracts.forEach((c) => {
+      if (c.vessel) vm[c.id] = c.vessel;
+    });
+    return vm;
+  }, [contracts]);
+
+  // Sözleşme başına fiilen çekilen (inbound) toplam.
+  const drawnByContract = useMemo(() => {
+    const d: Record<string, number> = {};
+    rows.forEach((m) => {
+      if (m.movement_type !== "inbound" || !m.contract_id) return;
+      d[m.contract_id] = (d[m.contract_id] || 0) + (Number(m.quantity) || 0);
+    });
+    return d;
+  }, [rows]);
+
+  // Gemi/bağlantı tablosu: gemi adı / liman / ürün serbest metin filtresi.
+  const shipRows = useMemo(() => {
+    const norm = (s: string) => s.trim().toLocaleLowerCase("tr");
+    const fv = norm(fVessel);
+    const fp = norm(fPort);
+    const fpr = norm(fProduct);
+    return contracts
+      .map((c) => ({
+        ...c,
+        drawn: drawnByContract[c.id] || 0,
+        productName: (c.product_id && productMap[c.product_id]) || "Ürünsüz",
+      }))
+      .filter((c) => {
+        if (fv && !norm(c.vessel || c.contract_no || "").includes(fv)) return false;
+        if (fp && !norm(c.loading_port || "").includes(fp)) return false;
+        if (fpr && !norm(c.productName).includes(fpr)) return false;
+        return true;
+      })
+      .sort((a, b) => (b.eta || "").localeCompare(a.eta || ""));
+  }, [contracts, drawnByContract, productMap, fVessel, fPort, fProduct]);
+
+  const exportShips = () => {
+    const headers = ["Gemi", "Sözleşme No", "Liman", "Ürün", "Miktar (ton)", "Çekilen (ton)", "Durum", "ETA"];
+    const body = shipRows.map((c) => [
+      c.vessel || "",
+      c.contract_no || "",
+      c.loading_port || "",
+      c.productName,
+      Number(c.quantity) || 0,
+      c.drawn,
+      CONTRACT_STATUS_OPTIONS.find((o) => o.value === c.status)?.label || c.status,
+      formatDate(c.eta),
+    ]);
+    exportToExcel("Operasyon - Gemiler", headers, body);
+  };
+
   if (loading) return <Loading />;
 
   const inbound = rows.filter((m) => m.movement_type === "inbound");
@@ -522,7 +593,66 @@ export function OperasyonSummary() {
           </div>
         ))}
       </ListCard>
-      {rows.length === 0 && <EmptyState message="Henüz operasyon hareketi yok." />}
+
+      {/* Gemi / bağlantı tablosu: filtrele (gemi adı / liman / ürün) + Excel'e aktar */}
+      <Card className="p-4">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <div className="text-sm font-medium">Gemiler / Bağlantılar ({shipRows.length})</div>
+          {shipRows.length > 0 && (
+            <button
+              type="button"
+              onClick={exportShips}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-white px-3 py-1.5 text-xs font-medium hover:bg-gray-50"
+            >
+              <Download className="h-3.5 w-3.5" /> Excel&apos;e Aktar
+            </button>
+          )}
+        </div>
+        <div className="mb-3 grid gap-2 sm:grid-cols-3">
+          <Input placeholder="Gemi adı..." value={fVessel} onChange={(e) => setFVessel(e.target.value)} />
+          <Input placeholder="Liman..." value={fPort} onChange={(e) => setFPort(e.target.value)} />
+          <Input placeholder="Ürün..." value={fProduct} onChange={(e) => setFProduct(e.target.value)} />
+        </div>
+        {contracts.length === 0 ? (
+          <div className="py-2 text-sm text-gray-500">Henüz bağlantı yok.</div>
+        ) : shipRows.length === 0 ? (
+          <div className="py-2 text-sm text-gray-500">Filtreyle eşleşen kayıt yok.</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border text-left text-xs uppercase text-gray-500">
+                  <th className="py-2 pr-3 font-medium">Gemi</th>
+                  <th className="py-2 pr-3 font-medium">Liman</th>
+                  <th className="py-2 pr-3 font-medium">Ürün</th>
+                  <th className="py-2 pr-3 text-right font-medium">Miktar</th>
+                  <th className="py-2 pr-3 text-right font-medium">Çekilen</th>
+                  <th className="py-2 pr-3 font-medium">Durum</th>
+                  <th className="py-2 text-right font-medium">ETA</th>
+                </tr>
+              </thead>
+              <tbody>
+                {shipRows.map((c) => {
+                  const st = CONTRACT_STATUS_OPTIONS.find((o) => o.value === c.status);
+                  return (
+                    <tr key={c.id} className="border-b border-border last:border-0">
+                      <td className="py-2 pr-3 font-medium">{c.vessel || c.contract_no || "—"}</td>
+                      <td className="py-2 pr-3 text-gray-600">{c.loading_port || "—"}</td>
+                      <td className="py-2 pr-3 text-gray-600">{c.productName}</td>
+                      <td className="py-2 pr-3 text-right">{formatNumber(c.quantity)}</td>
+                      <td className="py-2 pr-3 text-right text-brand">{formatNumber(c.drawn)}</td>
+                      <td className="py-2 pr-3">{st && <Badge color={st.color}>{st.label}</Badge>}</td>
+                      <td className="py-2 text-right text-gray-500">{formatDate(c.eta)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+
+      {rows.length === 0 && contracts.length === 0 && <EmptyState message="Henüz operasyon hareketi yok." />}
     </div>
   );
 }

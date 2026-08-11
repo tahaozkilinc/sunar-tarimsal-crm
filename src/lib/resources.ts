@@ -29,6 +29,7 @@ export interface FieldDef {
     | "money"
     | "textarea"
     | "date"
+    | "time"
     | "select"
     | "select_other" // sabit seçenekler + "Diğer" seçilirse serbest metin kutusu açılır
     | "reference"
@@ -332,10 +333,12 @@ export const stockMovementsResource: ResourceConfig = {
   writeRoles: ["admin", "operations"],
   defaultValues: { unit: "ton" },
   orderBy: { column: "movement_date", ascending: false },
-  searchFields: ["vehicle_plate"],
+  searchFields: ["vehicle_plate", "driver_name"],
+  filterFields: ["warehouse_id", "movement_type", "product_id"],
   listFields: ["movement_date", "contract_id", "product_id", "warehouse_id", "movement_type", "quantity"],
   fields: [
     { name: "movement_date", label: "Tarih", type: "date", required: true },
+    { name: "movement_time", label: "Saat", type: "time", inlineAfter: true },
     { name: "contract_id", label: "Kaynak Sözleşme (Gemi)", type: "reference", ref: { table: "purchase_contracts", labelField: "vessel", labelFields: ["vessel", "contract_no"] }, autofill: { product_id: "product_id", unit: "unit" } },
     { name: "product_id", label: "Ürün", type: "reference", ref: { table: "products", labelField: "name", filter: { is_active: ["true"] } } },
     { name: "warehouse_id", label: "Depo / Fabrika", type: "reference", ref: { table: "warehouses", labelField: "name" }, required: true },

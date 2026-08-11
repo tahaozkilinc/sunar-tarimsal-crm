@@ -126,7 +126,7 @@ export function StockMap() {
     (async () => {
       const L = (await import("leaflet")).default;
       if (cancelled || !mapDivRef.current) return;
-      map = L.map(mapDivRef.current, { scrollWheelZoom: false }).setView(TURKEY_CENTER, 6);
+      map = L.map(mapDivRef.current, { scrollWheelZoom: true }).setView(TURKEY_CENTER, 6);
       mapRef.current = map;
 
       const tiles = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {

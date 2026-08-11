@@ -5,6 +5,7 @@ import { Tabs } from "./ui";
 import { ResourceManager } from "./resource-manager";
 import { OperasyonSummary } from "./function-summary";
 import { PendingArrivals } from "./pending-arrivals";
+import { OperationsFulfillmentPanel } from "./operations-fulfillment-panel";
 import { ForeignLoading } from "./foreign-loading";
 import { PendingExpenses } from "./pending-expenses";
 import { warehouseExpensesResource, stockMovementsResource } from "@/lib/resources";
@@ -49,7 +50,12 @@ export function OperationsTabs({ role }: { role: Role }) {
           { key: "expenses", label: "Masraf Gir" },
         ]}
       />
-      {tab === "arrivals" && <PendingArrivals role={role} />}
+      {tab === "arrivals" && (
+        <div className="grid gap-4 lg:grid-cols-[1fr_300px]">
+          <PendingArrivals role={role} />
+          <OperationsFulfillmentPanel />
+        </div>
+      )}
       {tab === "foreign" && <ForeignLoading role={role} />}
       {tab === "ozet" && <OperasyonSummary />}
       {tab === "movements" && (

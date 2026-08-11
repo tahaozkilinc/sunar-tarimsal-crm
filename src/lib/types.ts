@@ -114,6 +114,7 @@ export interface StockMovement {
   quantity: number;
   unit: string;
   movement_date: string;
+  movement_time: string | null; // opsiyonel: aracın fiilen hareket ettiği saat
   vehicle_plate: string | null;
   driver_name: string | null;
   sale_id: string | null; // outbound_sale: hangi satışa ait sevkiyat
