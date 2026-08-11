@@ -1030,28 +1030,31 @@ export function ResourceManager({
           hideTitle ? "sm:justify-end" : "sm:justify-between"
         }`}
       >
-        {!hideTitle && (
-          <h1 className="text-lg font-semibold">{title || config.title}</h1>
-        )}
         <div className="flex items-center gap-2">
+          {!hideTitle && (
+            <h1 className="text-lg font-semibold">{title || config.title}</h1>
+          )}
           {hasFilterUI && (
             <button
               type="button"
               onClick={() => setFiltersOpen((o) => !o)}
-              className={`inline-flex shrink-0 items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-medium ${
+              className={`relative inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border ${
                 filtersOpen || hasActiveFilters
                   ? "border-brand bg-brand/5 text-brand"
-                  : "border-border bg-white text-gray-700 hover:bg-gray-50"
+                  : "border-border bg-white text-gray-500 hover:bg-gray-50"
               }`}
+              title="Filtrele"
             >
-              <Filter className="h-4 w-4" /> Filtrele
+              <Filter className="h-4 w-4" />
               {hasActiveFilters && (
-                <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-brand px-1 text-[10px] font-bold text-white">
+                <span className="absolute -right-1.5 -top-1.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-brand px-1 text-[10px] font-bold text-white">
                   {activeFilterCount}
                 </span>
               )}
             </button>
           )}
+        </div>
+        <div className="flex items-center gap-2">
           {rows.length > 0 && (
             <button
               type="button"
