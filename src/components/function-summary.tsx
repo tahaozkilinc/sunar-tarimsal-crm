@@ -308,6 +308,16 @@ type Sellable = {
   status: string;
   principal_id: string | null;
 };
+// "Fire" hesaplaması: operasyoncu tonaj tam tutmadan "Sevkiyatı Bitir" dediği
+// (kapanmış) satışlarda satılan - sevk edilen FARKI (yalnız EKSİK yönü —
+// fazla sevkiyat fire değildir). Bir satış birden çok depodan sevk
+// edilebildiği için fire, o satışın depo bazındaki sevkiyat payına ORANTILI
+// dağıtılır (bkz. fireByWarehouse). Gemiden direkt / hiç sevkiyatsız kapanan
+// satışların fire'ı "Gemiden Direkt / Atanamayan" kovasına düşer.
+type ClosedSale = { id: string; quantity: number | null };
+type OutMovement = { sale_id: string | null; warehouse_id: string | null; quantity: number | null };
+type WhRef = { id: string; name: string };
+const DIRECT_KEY = "_direct_";
 
 export function SatisSummary() {
   const supabase = useMemo(() => createClient(), []);
@@ -316,18 +326,32 @@ export function SatisSummary() {
   const [inv, setInv] = useState<InvRow[]>([]);
   const [sellable, setSellable] = useState<Sellable[]>([]);
   const [principals, setPrincipals] = useState<Record<string, string>>({});
+  const [closedSales, setClosedSales] = useState<ClosedSale[]>([]);
+  const [outMovements, setOutMovements] = useState<OutMovement[]>([]);
+  const [warehouses, setWarehouses] = useState<WhRef[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let on = true;
     (async () => {
-      const [s, i, sc, pr] = await Promise.all([
+      const [s, i, sc, pr, cs, om, wh] = await Promise.all([
         supabase.from("sales_orders").select("id,status,quantity,order_no,product_id"),
         supabase.from("inventory").select("warehouse_name,product_name,available_qty"),
         supabase
           .from("sellable_contracts")
           .select("id,contract_no,vessel,product_id,quantity,eta,status,principal_id"),
         supabase.from("principals").select("id,name"),
+        supabase
+          .from("sales_orders")
+          .select("id,quantity")
+          .not("dispatch_closed_at", "is", null)
+          .neq("status", "cancelled"),
+        supabase
+          .from("stock_movements")
+          .select("sale_id,warehouse_id,quantity")
+          .eq("movement_type", "outbound_sale")
+          .not("sale_id", "is", null),
+        supabase.from("warehouses").select("id,name"),
       ]);
       if (!on) return;
       setRows((s.data as Sale[] | null) || []);
@@ -336,6 +360,9 @@ export function SatisSummary() {
       const pm: Record<string, string> = {};
       ((pr.data as { id: string; name: string }[] | null) || []).forEach((p) => (pm[p.id] = p.name));
       setPrincipals(pm);
+      setClosedSales((cs.data as ClosedSale[] | null) || []);
+      setOutMovements((om.data as OutMovement[] | null) || []);
+      setWarehouses((wh.data as WhRef[] | null) || []);
       setLoading(false);
     })();
     return () => {
@@ -369,13 +396,57 @@ export function SatisSummary() {
     (a.eta || "9999").localeCompare(b.eta || "9999"),
   );
 
+  // Depo bazlı fire: kapanmış her satışın EKSİK kalan kısmı, o satışın hangi
+  // depo(lar)dan ne kadar sevk edildiğine ORANTILI dağıtılır (bkz. tip tanımı).
+  const fireByWarehouse = (() => {
+    const dispatchedBySale = new Map<string, number>();
+    const byWhForSale = new Map<string, Map<string, number>>();
+    outMovements.forEach((m) => {
+      if (!m.sale_id) return;
+      const q = Number(m.quantity) || 0;
+      dispatchedBySale.set(m.sale_id, (dispatchedBySale.get(m.sale_id) || 0) + q);
+      const key = m.warehouse_id || DIRECT_KEY;
+      const inner = byWhForSale.get(m.sale_id) || new Map<string, number>();
+      inner.set(key, (inner.get(key) || 0) + q);
+      byWhForSale.set(m.sale_id, inner);
+    });
+
+    const fire = new Map<string, number>();
+    closedSales.forEach((s) => {
+      const qty = Number(s.quantity) || 0;
+      const disp = dispatchedBySale.get(s.id) || 0;
+      const shortfall = qty - disp;
+      if (shortfall <= 0.01) return; // fazla sevkiyat ya da tam eşleşme -> fire yok
+      const inner = byWhForSale.get(s.id);
+      if (!inner || disp <= 0) {
+        fire.set(DIRECT_KEY, (fire.get(DIRECT_KEY) || 0) + shortfall);
+        return;
+      }
+      inner.forEach((whQty, whKey) => {
+        fire.set(whKey, (fire.get(whKey) || 0) + shortfall * (whQty / disp));
+      });
+    });
+
+    return Array.from(fire.entries())
+      .map(([key, ton]) => ({
+        key,
+        name: key === DIRECT_KEY ? "Gemiden Direkt / Atanamayan" : warehouses.find((w) => w.id === key)?.name || "—",
+        ton,
+      }))
+      .filter((r) => r.ton > 0.01)
+      .sort((a, b) => b.ton - a.ton);
+  })();
+  const totalFire = sumBy(fireByWarehouse, (r) => r.ton);
+  const maxFire = Math.max(1, ...fireByWarehouse.map((r) => r.ton));
+
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
         <Stat label="Depodaki Satılabilir" value={formatNumber(available)} unit="ton" />
         <Stat label="Bekleyen Satış" value={formatNumber(bekleyenTon)} unit="ton" />
         <Stat label="Teslim Edilen" value={formatNumber(teslim)} unit="ton" />
         <Stat label="Satış" value={String(rows.length)} unit="adet" />
+        <Stat label="Toplam Fire (Kapanan Satışlar)" value={formatNumber(totalFire)} unit="ton" />
       </div>
 
       <Card className="p-4">
@@ -394,6 +465,34 @@ export function SatisSummary() {
                   />
                 </div>
                 <div className="w-24 shrink-0 text-right text-sm font-semibold">
+                  {formatNumber(w.ton)} ton
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </Card>
+
+      <Card className="p-4">
+        <div className="mb-1 text-sm font-medium">Depo Bazında Fire</div>
+        <p className="mb-2 text-xs text-gray-400">
+          Operasyoncunun tonaj tam eşleşmeden &quot;Sevkiyatı Bitir&quot; dediği (kapanmış) satışlardaki
+          EKSİK kısım — bir satış birden çok depodan sevk edilmişse, fire de aynı oranda paylaştırılır.
+        </p>
+        {fireByWarehouse.length === 0 ? (
+          <div className="py-2 text-sm text-gray-500">Henüz fire yok.</div>
+        ) : (
+          <div className="space-y-2">
+            {fireByWarehouse.map((w) => (
+              <div key={w.key} className="flex items-center gap-3">
+                <div className="w-36 shrink-0 truncate text-sm">{w.name}</div>
+                <div className="h-4 flex-1 overflow-hidden rounded bg-gray-100">
+                  <div
+                    className="h-full rounded bg-red-500"
+                    style={{ width: `${(w.ton / maxFire) * 100}%` }}
+                  />
+                </div>
+                <div className="w-24 shrink-0 text-right text-sm font-semibold text-red-600">
                   {formatNumber(w.ton)} ton
                 </div>
               </div>
