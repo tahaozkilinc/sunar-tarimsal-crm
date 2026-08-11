@@ -4,8 +4,15 @@ import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Badge, Card } from "./ui";
 import { PhotoGallery } from "./photo-gallery";
-import { formatNumber } from "@/lib/format";
-import { attributeByWarehouse, UNASSIGNED_KEY, type AttributionMovement } from "@/lib/stock-attribution";
+import { formatDate, formatNumber } from "@/lib/format";
+import {
+  attributeByWarehouse,
+  buildLedger,
+  UNASSIGNED_KEY,
+  type AttributionMovement,
+  type LedgerMovement,
+} from "@/lib/stock-attribution";
+import { MOVEMENT_TYPE_OPTIONS } from "@/lib/resources";
 import { baseRole } from "@/lib/nav";
 import type { Role } from "@/lib/types";
 
@@ -16,9 +23,16 @@ import type { Role } from "@/lib/types";
 //      çıkış hareketleri belirli bir gemiye ait değildir, giren payına
 //      ORANTILI düşülür — kesin değil, tahminidir).
 //   3) "Milli / Yerli" kırılımı — AYNI teknik, stock_status'e göre.
+//   4) Giriş / Çıkış Geçmişi — HER hareketi kendi tarihiyle, ürün bazında
+//      koşan bakiyeyle listeler (buildLedger; tahmini değil, gerçek veri).
+//      Bu bilgi operasyondan (gemi boşaltma / sevkiyat) OTOMATİK gelir —
+//      elle ayrıca bir şey girilmez.
 
-type Movement = AttributionMovement & { contract_id: string | null; stock_status: string | null };
+type Movement = AttributionMovement &
+  LedgerMovement & { contract_id: string | null; stock_status: string | null; sale_id: string | null };
 type ContractRef = { id: string; vessel: string | null; contract_no: string | null };
+type ProductRef = { id: string; name: string };
+type SaleRef = { id: string; order_no: string | null };
 
 export function WarehouseDetailExtra({ warehouseId, role }: { warehouseId: string; role: Role }) {
   const supabase = useMemo(() => createClient(), []);
@@ -26,28 +40,38 @@ export function WarehouseDetailExtra({ warehouseId, role }: { warehouseId: strin
 
   const [movements, setMovements] = useState<Movement[]>([]);
   const [contracts, setContracts] = useState<ContractRef[]>([]);
+  const [products, setProducts] = useState<ProductRef[]>([]);
+  const [sales, setSales] = useState<SaleRef[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let on = true;
     (async () => {
-      const { data } = await supabase
-        .from("stock_movements")
-        .select("warehouse_id,movement_type,quantity,contract_id,stock_status")
-        .eq("warehouse_id", warehouseId);
+      const [{ data }, { data: pData }] = await Promise.all([
+        supabase
+          .from("stock_movements")
+          .select("id,warehouse_id,product_id,movement_type,quantity,contract_id,stock_status,movement_date,movement_time,created_at,sale_id")
+          .eq("warehouse_id", warehouseId),
+        supabase.from("products").select("id,name"),
+      ]);
       if (!on) return;
       const rows = (data as Movement[] | null) || [];
       setMovements(rows);
+      setProducts((pData as ProductRef[] | null) || []);
+
       const contractIds = Array.from(new Set(rows.map((r) => r.contract_id).filter(Boolean))) as string[];
-      if (contractIds.length > 0) {
-        const { data: cData } = await supabase
-          .from("purchase_contracts")
-          .select("id,vessel,contract_no")
-          .in("id", contractIds);
-        if (on) setContracts((cData as ContractRef[] | null) || []);
-      } else {
-        setContracts([]);
-      }
+      const saleIds = Array.from(new Set(rows.map((r) => r.sale_id).filter(Boolean))) as string[];
+      const [cRes, sRes] = await Promise.all([
+        contractIds.length > 0
+          ? supabase.from("purchase_contracts").select("id,vessel,contract_no").in("id", contractIds)
+          : Promise.resolve({ data: [] as ContractRef[] }),
+        saleIds.length > 0
+          ? supabase.from("sales_orders").select("id,order_no").in("id", saleIds)
+          : Promise.resolve({ data: [] as SaleRef[] }),
+      ]);
+      if (!on) return;
+      setContracts((cRes.data as ContractRef[] | null) || []);
+      setSales((sRes.data as SaleRef[] | null) || []);
       setLoading(false);
     })();
     return () => {
@@ -57,6 +81,9 @@ export function WarehouseDetailExtra({ warehouseId, role }: { warehouseId: strin
 
   const contractLabel = (id: string) =>
     contracts.find((c) => c.id === id)?.vessel || contracts.find((c) => c.id === id)?.contract_no || "—";
+  const productName = (id: string | null) => (id && products.find((p) => p.id === id)?.name) || "—";
+  const saleLabel = (id: string | null) => (id && sales.find((s) => s.id === id)?.order_no) || null;
+  const movementLabel = (t: string) => MOVEMENT_TYPE_OPTIONS.find((o) => o.value === t)?.label || t;
 
   const byShip = useMemo(() => {
     const map = attributeByWarehouse(movements, (r) => r.contract_id).get(warehouseId) || new Map();
@@ -78,6 +105,10 @@ export function WarehouseDetailExtra({ warehouseId, role }: { warehouseId: strin
   }, [movements, warehouseId]);
 
   const totalStatus = byStatus.reduce((a, r) => a + r.ton, 0);
+
+  // Yeniden eskiye (en son hareket üstte) — koşan bakiye eski->yeni
+  // hesaplanıp sonra ters çevrilir, sayılar yine doğru kalır.
+  const ledger = useMemo(() => [...buildLedger(movements)].reverse(), [movements]);
 
   return (
     <div className="space-y-4">
@@ -141,6 +172,67 @@ export function WarehouseDetailExtra({ warehouseId, role }: { warehouseId: strin
               ))}
             </div>
           </Card>
+        )}
+      </div>
+
+      <div>
+        <div className="mb-1 text-sm font-medium">Giriş / Çıkış Geçmişi</div>
+        <p className="mb-2 text-xs text-gray-400">
+          Operasyon ve sevkiyat kayıtlarından otomatik — her giriş hangi gemiden geldiğini, her çıkış
+          nereye gittiğini gösterir. Kalan, o hareketten SONRAKİ ürün bakiyesidir.
+        </p>
+        {loading ? (
+          <div className="text-xs text-gray-400">Yükleniyor...</div>
+        ) : ledger.length === 0 ? (
+          <div className="text-xs text-gray-400">Bu depoda kayıtlı hareket yok.</div>
+        ) : (
+          <div className="overflow-x-auto rounded-lg border border-border">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border bg-gray-50 text-left text-xs uppercase text-gray-500">
+                  <th className="px-3 py-2 font-medium">Tarih</th>
+                  <th className="px-3 py-2 font-medium">Yön</th>
+                  <th className="px-3 py-2 font-medium">Ürün</th>
+                  <th className="px-3 py-2 font-medium">Kaynak / Hedef</th>
+                  <th className="px-3 py-2 text-right font-medium">Miktar</th>
+                  <th className="px-3 py-2 text-right font-medium">Kalan</th>
+                </tr>
+              </thead>
+              <tbody>
+                {ledger.map((r) => {
+                  const saleNo = r.movement_type === "outbound_sale" ? saleLabel(r.sale_id) : null;
+                  const source =
+                    r.direction === "in"
+                      ? (r.contract_id && contractLabel(r.contract_id)) || "—"
+                      : r.movement_type === "outbound_sale"
+                        ? saleNo
+                          ? `Satış: ${saleNo}`
+                          : "Satış"
+                        : movementLabel(r.movement_type);
+                  return (
+                    <tr key={r.id} className="border-b border-border last:border-0">
+                      <td className="px-3 py-2 text-xs text-gray-500">
+                        {formatDate(r.movement_date)}
+                        {r.movement_time ? ` ${r.movement_time}` : ""}
+                      </td>
+                      <td className="px-3 py-2">
+                        <Badge color={r.direction === "in" ? "green" : "red"}>
+                          {r.direction === "in" ? "Giriş" : "Çıkış"}
+                        </Badge>
+                      </td>
+                      <td className="px-3 py-2">{productName(r.product_id)}</td>
+                      <td className="px-3 py-2 truncate">{source}</td>
+                      <td className={`px-3 py-2 text-right font-medium ${r.direction === "in" ? "text-emerald-700" : "text-red-600"}`}>
+                        {r.direction === "in" ? "+" : ""}
+                        {formatNumber(r.signedQuantity)}
+                      </td>
+                      <td className="px-3 py-2 text-right font-semibold">{formatNumber(r.runningBalance)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
     </div>
