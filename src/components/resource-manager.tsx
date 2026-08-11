@@ -1096,24 +1096,40 @@ export function ResourceManager({
             </div>
           </div>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {dropdownFilterFields.map((f) => (
-              <div key={f.name}>
-                <label className="mb-1 block text-xs font-medium text-gray-600">{f.label}</label>
-                <SearchableSelect
-                  value={filters[f.name] ?? ""}
-                  onChange={(v) => setFilters((prev) => ({ ...prev, [f.name]: v }))}
-                  options={filterOptions(f)}
-                  placeholder="Tümü"
-                  className="w-full"
-                />
-              </div>
-            ))}
+            {dropdownFilterFields.map((f) => {
+              const active = !!filters[f.name];
+              return (
+                <div
+                  key={f.name}
+                  className={`rounded-lg border p-2 ${active ? "border-brand bg-brand/5" : "border-transparent"}`}
+                >
+                  <label className={`mb-1 flex items-center gap-1 text-xs font-medium ${active ? "text-brand" : "text-gray-600"}`}>
+                    {active && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-brand" />}
+                    {f.label}
+                  </label>
+                  <SearchableSelect
+                    value={filters[f.name] ?? ""}
+                    onChange={(v) => setFilters((prev) => ({ ...prev, [f.name]: v }))}
+                    options={filterOptions(f)}
+                    placeholder="Tümü"
+                    className="w-full"
+                  />
+                </div>
+              );
+            })}
             {rangeFilterFields.map((f) => {
               const r = rangeFilters[f.name] ?? { from: "", to: "" };
               const isDate = f.type === "date";
+              const active = !!(r.from || r.to);
               return (
-                <div key={f.name}>
-                  <label className="mb-1 block text-xs font-medium text-gray-600">{f.label}</label>
+                <div
+                  key={f.name}
+                  className={`rounded-lg border p-2 ${active ? "border-brand bg-brand/5" : "border-transparent"}`}
+                >
+                  <label className={`mb-1 flex items-center gap-1 text-xs font-medium ${active ? "text-brand" : "text-gray-600"}`}>
+                    {active && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-brand" />}
+                    {f.label}
+                  </label>
                   <div className="flex items-center gap-1.5">
                     <Input
                       type={isDate ? "date" : "number"}
@@ -1138,17 +1154,26 @@ export function ResourceManager({
                 </div>
               );
             })}
-            {textFilterFields.map((f) => (
-              <div key={f.name}>
-                <label className="mb-1 block text-xs font-medium text-gray-600">{f.label}</label>
-                <Input
-                  value={textFilters[f.name] ?? ""}
-                  onChange={(e) => setTextFilters((prev) => ({ ...prev, [f.name]: e.target.value }))}
-                  placeholder="Ara..."
-                  className="w-full"
-                />
-              </div>
-            ))}
+            {textFilterFields.map((f) => {
+              const active = !!textFilters[f.name]?.trim();
+              return (
+                <div
+                  key={f.name}
+                  className={`rounded-lg border p-2 ${active ? "border-brand bg-brand/5" : "border-transparent"}`}
+                >
+                  <label className={`mb-1 flex items-center gap-1 text-xs font-medium ${active ? "text-brand" : "text-gray-600"}`}>
+                    {active && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-brand" />}
+                    {f.label}
+                  </label>
+                  <Input
+                    value={textFilters[f.name] ?? ""}
+                    onChange={(e) => setTextFilters((prev) => ({ ...prev, [f.name]: e.target.value }))}
+                    placeholder="Ara..."
+                    className="w-full"
+                  />
+                </div>
+              );
+            })}
           </div>
         </div>
       )}
