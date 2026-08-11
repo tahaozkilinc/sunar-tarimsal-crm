@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { Badge, Card, Spinner } from "./ui";
+import { Badge, Card, DeadlineBadge, Spinner } from "./ui";
 import { formatNumber } from "@/lib/format";
 import { AlertTriangle } from "lucide-react";
 
@@ -25,6 +25,7 @@ type Sale = {
   quantity: number | null;
   status: string;
   dispatch_closed_at: string | null;
+  final_sale_date: string | null;
 };
 type Ref = { id: string; name: string };
 
@@ -41,7 +42,7 @@ export function SalesFulfillmentPanel() {
       const [soRes, smRes, coRes, prRes] = await Promise.all([
         supabase
           .from("sales_orders")
-          .select("id,order_no,customer_id,product_id,quantity,status,dispatch_closed_at")
+          .select("id,order_no,customer_id,product_id,quantity,status,dispatch_closed_at,final_sale_date")
           .not("status", "in", "(cancelled)"),
         supabase
           .from("stock_movements")
@@ -117,6 +118,11 @@ export function SalesFulfillmentPanel() {
                   <div className="truncate text-xs text-gray-500">
                     {pName(r.product_id)}{r.order_no ? ` · ${r.order_no}` : ""}
                   </div>
+                  {!r.closed && (
+                    <div className="mt-1">
+                      <DeadlineBadge date={r.final_sale_date} />
+                    </div>
+                  )}
                 </div>
                 {r.mismatch ? (
                   <Badge color="red">

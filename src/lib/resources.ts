@@ -388,6 +388,9 @@ export const salesOrdersResource: ResourceConfig = {
     { name: "currency", label: "Para Birimi", type: "select", options: CURRENCY_OPTIONS },
     { name: "delivery_date", label: "Teslim Tarihi (Başlangıç)", type: "date" },
     { name: "delivery_date_to", label: "Teslim Tarihi (Bitiş)", type: "date", inlineAfter: true },
+    // Sevkiyatın bitirilmesi beklenen son gün — yaklaştıkça/geçtikçe Satışlar
+    // panelinde ve Satış Operasyon ekranında uyarı rozeti gösterilir.
+    { name: "final_sale_date", label: "Son Satış Tarihi", type: "date", required: true },
     { name: "status", label: "Durum", type: "select", options: SALES_STATUS_OPTIONS, required: true },
     { name: "usd_try", label: "USD/TRY (TCMB)", type: "number", placeholder: "Otomatik" },
     { name: "eur_try", label: "EUR/TRY (TCMB)", type: "number", placeholder: "Otomatik" },

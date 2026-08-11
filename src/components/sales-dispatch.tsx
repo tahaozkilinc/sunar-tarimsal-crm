@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { Badge, Button, Card, EmptyState, Field, Input, Select, Spinner } from "./ui";
+import { Badge, Button, Card, DeadlineBadge, EmptyState, Field, Input, Select, Spinner } from "./ui";
 import { MovementPhotos, type MovementPhoto } from "./movement-photos";
 import { formatDate, formatNumber } from "@/lib/format";
 import { baseRole } from "@/lib/nav";
@@ -37,6 +37,7 @@ type Sale = {
   unit: string | null;
   status: string;
   dispatch_closed_at: string | null;
+  final_sale_date: string | null;
 };
 type Ref = { id: string; name: string };
 type Wh = { id: string; name: string };
@@ -120,7 +121,7 @@ export function SalesDispatch({ role }: { role: Role }) {
     const [saleRes, whRes, prRes, coRes, invRes] = await Promise.all([
       supabase
         .from(isSalesOps ? "dispatch_sales" : "sales_orders")
-        .select("id,order_no,customer_id,contract_id,product_id,quantity,unit,status,dispatch_closed_at")
+        .select("id,order_no,customer_id,contract_id,product_id,quantity,unit,status,dispatch_closed_at,final_sale_date")
         .neq("status", "cancelled")
         .order("id"),
       // Sevkiyat yurtiçi depo/fabrikadan yapılır; yurtdışı depolar bu listede yer almaz.
@@ -301,6 +302,9 @@ export function SalesDispatch({ role }: { role: Role }) {
                       {!isSalesOps && allowedCount === 0 && (
                         <Badge color="yellow">Depo atanmamış</Badge>
                       )}
+                      <div className="mt-1">
+                        <DeadlineBadge date={s.final_sale_date} />
+                      </div>
                     </div>
                     <div className="flex items-center gap-3 text-sm">
                       <span className="text-gray-500">

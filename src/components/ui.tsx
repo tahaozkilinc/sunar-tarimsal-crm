@@ -207,6 +207,23 @@ export function Badge({
 }
 
 // ---------------------------------------------------------------------------
+// DeadlineBadge — bir tarihe göre "N gün kaldı" / "N gün gecikti" rozeti.
+// Satışlar paneli ve Satış Operasyon ekranında AYNI mantıkla kullanılır
+// (tek yerden — ikisi de farklı davranmasın diye).
+// ---------------------------------------------------------------------------
+export function DeadlineBadge({ date }: { date: string | null | undefined }) {
+  if (!date) return null;
+  const target = new Date(date.slice(0, 10) + "T00:00:00");
+  if (Number.isNaN(target.getTime())) return null;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const days = Math.round((target.getTime() - today.getTime()) / 86_400_000);
+  const label = days < 0 ? `${-days} gün gecikti` : days === 0 ? "Bugün son gün" : `${days} gün kaldı`;
+  const color: keyof typeof badgeColors = days < 0 ? "red" : days <= 2 ? "red" : days <= 7 ? "yellow" : "green";
+  return <Badge color={color}>{label}</Badge>;
+}
+
+// ---------------------------------------------------------------------------
 // Spinner
 // ---------------------------------------------------------------------------
 export function Spinner({ className }: { className?: string }) {
