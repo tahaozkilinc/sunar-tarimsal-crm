@@ -5,6 +5,7 @@ import { Tabs } from "./ui";
 import { ResourceManager } from "./resource-manager";
 import { InventoryView } from "./inventory-view";
 import { StockMap } from "./stock-map";
+import { WarehouseDetailExtra } from "./warehouse-detail-extra";
 import { stockMovementsResource, warehousesResource } from "@/lib/resources";
 import { baseRole } from "@/lib/nav";
 import type { Role } from "@/lib/types";
@@ -49,7 +50,12 @@ export function InventoryTabs({ role }: { role: Role }) {
       )}
 
       {tab === "warehouses" && canManage && (
-        <ResourceManager config={warehousesResource} role={role} hideTitle />
+        <ResourceManager
+          config={warehousesResource}
+          role={role}
+          hideTitle
+          detailExtra={(row) => <WarehouseDetailExtra warehouseId={String(row.id)} role={role} />}
+        />
       )}
     </div>
   );

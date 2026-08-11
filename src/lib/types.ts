@@ -66,6 +66,7 @@ export interface Warehouse {
   id: string;
   name: string;
   type: "warehouse" | "factory" | "foreign"; // foreign = yurtdışı depo
+  parent_id: string | null; // doluysa bu bir antrepo bölümü/alt deposu
   city: string | null;
   country: string | null;
   lat: number | null; // haritadan seçilen tam konum (doluysa city/country tahmininin önüne geçer)
@@ -113,6 +114,7 @@ export interface StockMovement {
   movement_type: string;
   quantity: number;
   unit: string;
+  stock_status: "MİLLİ" | "YERLİ" | null; // girişteki malın gümrük/menşe durumu (opsiyonel)
   movement_date: string;
   movement_time: string | null; // opsiyonel: aracın fiilen hareket ettiği saat
   vehicle_plate: string | null;
