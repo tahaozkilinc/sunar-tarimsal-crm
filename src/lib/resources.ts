@@ -77,8 +77,10 @@ export interface ResourceConfig {
   writeRoles: Role[];
   fields: FieldDef[];
   listFields: string[];
-  searchFields?: string[];
-  filterFields?: string[];
+  // Filtre kenar çubuğu artık otomatik: reference/select/boolean -> açılır liste,
+  // date/number/money -> aralık, geri kalan (text/textarea/select_other/...) ->
+  // serbest metin arama. Tüm alanlar için ayrıca listelemeye gerek yok (bkz.
+  // resource-manager.tsx). file/map alanları filtrelenemez.
   orderBy?: { column: string; ascending?: boolean };
   filter?: Record<string, string | number | boolean | string[]>;
   defaultValues?: Record<string, unknown>;
@@ -204,8 +206,6 @@ export const companiesResource: ResourceConfig = {
   singular: "Firma",
   writeRoles: ["admin", "purchasing", "sales", "operations"],
   orderBy: { column: "name", ascending: true },
-  searchFields: ["name", "city", "phone", "email"],
-  filterFields: ["type"],
   listFields: ["name", "type", "city", "phone"],
   fields: [
     { name: "name", label: "Firma Adı", type: "text", required: true, unique: true },
@@ -229,7 +229,6 @@ export const contactsResource: ResourceConfig = {
   // burada UI'daki "Ekle" düğmesi de açılır. (_view rolleri ham rolle hariç kalır.)
   writeRoles: ["admin", "purchasing", "sales", "operations"],
   orderBy: { column: "full_name", ascending: true },
-  searchFields: ["full_name", "title", "phone"],
   listFields: ["full_name", "title", "company_id", "phone"],
   fields: [
     { name: "company_id", label: "Firma", type: "reference", ref: { table: "companies", labelField: "name" }, required: true },
@@ -247,7 +246,6 @@ export const activitiesResource: ResourceConfig = {
   singular: "Aktivite",
   writeRoles: ["admin", "purchasing", "sales", "operations"],
   orderBy: { column: "created_at", ascending: false },
-  searchFields: ["subject"],
   listFields: ["subject", "activity_type", "company_id", "due_date", "status"],
   fields: [
     { name: "subject", label: "Konu", type: "text", required: true },
@@ -266,8 +264,6 @@ export const purchaseContractsResource: ResourceConfig = {
   writeRoles: ["admin", "purchasing"],
   defaultValues: { unit: "ton", currency: "USD" },
   orderBy: { column: "created_at", ascending: false },
-  searchFields: ["contract_no", "vessel", "origin_country"],
-  filterFields: ["status", "supplier_id", "product_id"],
   listFields: ["contract_no", "supplier_id", "product_id", "quantity", "eta", "status"],
   fxCapture: true,
   uppercaseText: true,
@@ -311,8 +307,6 @@ export const combinedShipmentsResource: ResourceConfig = {
   singular: "Kombine Gemi",
   writeRoles: ["admin", "purchasing"],
   orderBy: { column: "created_at", ascending: false },
-  searchFields: ["name", "vessel"],
-  filterFields: ["status"],
   listFields: ["name", "vessel", "eta", "status"],
   fields: [
     { name: "name", label: "Kombine Gemi Adı", type: "text", required: true },
@@ -333,8 +327,6 @@ export const stockMovementsResource: ResourceConfig = {
   writeRoles: ["admin", "operations"],
   defaultValues: { unit: "ton" },
   orderBy: { column: "movement_date", ascending: false },
-  searchFields: ["vehicle_plate", "driver_name"],
-  filterFields: ["warehouse_id", "movement_type", "product_id"],
   listFields: ["movement_date", "contract_id", "product_id", "warehouse_id", "movement_type", "quantity"],
   fields: [
     { name: "movement_date", label: "Tarih", type: "date", required: true },
@@ -358,7 +350,6 @@ export const salesOrdersResource: ResourceConfig = {
   writeRoles: ["admin", "sales"],
   defaultValues: { unit: "ton", currency: "TRY" },
   orderBy: { column: "created_at", ascending: false },
-  searchFields: ["order_no"],
   listFields: ["order_no", "customer_id", "product_id", "quantity", "delivery_date", "status"],
   fxCapture: true,
   // Bir satış, kaynak bağlantının (gemi) toplam tonajını aşamaz (fazla satış engeli).
@@ -398,8 +389,6 @@ export const sellableContractsResource: ResourceConfig = {
   singular: "Bağlantı",
   writeRoles: [],
   orderBy: { column: "eta", ascending: true },
-  searchFields: ["contract_no", "vessel", "origin_country"],
-  filterFields: ["status", "product_id"],
   listFields: ["contract_no", "vessel", "product_id", "quantity", "eta", "status"],
   fields: [
     { name: "contract_no", label: "Sözleşme No", type: "text" },
@@ -421,7 +410,6 @@ export const productsResource: ResourceConfig = {
   writeRoles: ["admin", "purchasing", "operations"],
   defaultValues: { unit: "ton", is_active: true },
   orderBy: { column: "name", ascending: true },
-  searchFields: ["name", "code"],
   filter: { is_active: true },
   softDelete: { column: "is_active" },
   listFields: ["name", "code", "category", "unit", "is_active"],
@@ -441,7 +429,6 @@ export const warehousesResource: ResourceConfig = {
   singular: "Depo",
   writeRoles: ["admin", "operations"],
   orderBy: { column: "name", ascending: true },
-  searchFields: ["name", "city"],
   listFields: ["name", "type", "city", "lat", "capacity", "is_active"],
   fields: [
     { name: "name", label: "Ad", type: "text", required: true, unique: true },
@@ -467,8 +454,6 @@ export const warehouseExpensesResource: ResourceConfig = {
   writeRoles: ["admin", "operations", "maliyet"],
   defaultValues: { currency: "USD", expense_type: "storage" },
   orderBy: { column: "expense_date", ascending: false },
-  searchFields: ["notes"],
-  filterFields: ["warehouse_id", "expense_type", "contract_id"],
   listFields: ["expense_date", "warehouse_id", "expense_type", "contract_id", "amount", "currency"],
   fxCapture: true,
   fields: [
@@ -491,7 +476,6 @@ export const principalsResource: ResourceConfig = {
   singular: "Firma",
   writeRoles: ["admin"],
   orderBy: { column: "name", ascending: true },
-  searchFields: ["name"],
   listFields: ["name", "is_active"],
   fields: [
     { name: "name", label: "Firma Adı", type: "text", required: true, unique: true },
