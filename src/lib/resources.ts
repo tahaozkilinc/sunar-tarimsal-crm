@@ -193,6 +193,14 @@ export const SALE_TYPE_OPTIONS: SelectOption[] = [
   { value: "MİLLİ", label: "Milli", color: "blue" },
 ];
 
+// Depoya giren malın gümrük/menşe durumu (satıştaki Transit/Milli'den ayrı —
+// burada iki seçenek de farklı: depo stoğu bazen yerli tedarik, bazen
+// gümrüklenmiş/millileşmiş mal olabiliyor).
+export const STOCK_STATUS_OPTIONS: SelectOption[] = [
+  { value: "MİLLİ", label: "Milli", color: "blue" },
+  { value: "YERLİ", label: "Yerli", color: "green" },
+];
+
 export const ACTIVITY_TYPE_OPTIONS: SelectOption[] = [
   { value: "call", label: "Telefon" },
   { value: "meeting", label: "Toplantı" },
@@ -348,6 +356,8 @@ export const stockMovementsResource: ResourceConfig = {
     { name: "movement_type", label: "Hareket Tipi", type: "select", options: MOVEMENT_TYPE_OPTIONS, required: true },
     { name: "quantity", label: "Miktar", type: "number", required: true, positive: true },
     { name: "unit", label: "Birim", type: "text" },
+    // Girişte (Giriş / Yurtdışı Depo Girişi / Düzeltme) malın durumu — opsiyonel.
+    { name: "stock_status", label: "Milli / Yerli", type: "select", options: STOCK_STATUS_OPTIONS },
     { name: "vehicle_plate", label: "Araç Plakası", type: "text" },
     { name: "driver_name", label: "Şoför", type: "text" },
     { name: "notes", label: "Notlar", type: "textarea" },
@@ -451,6 +461,9 @@ export const warehousesResource: ResourceConfig = {
   fields: [
     { name: "name", label: "Ad", type: "text", required: true, unique: true },
     { name: "type", label: "Tür", type: "select", options: LOCATION_TYPE_OPTIONS, required: true },
+    // Tek antrepoda birden fazla bölüm/depo olabilir — gerekirse bu bölümün
+    // bağlı olduğu ana depo/antrepo buradan seçilir (opsiyonel).
+    { name: "parent_id", label: "Bağlı Olduğu Ana Depo (Antrepo)", type: "reference", ref: { table: "warehouses", labelField: "name" } },
     { name: "city", label: "Şehir", type: "text" },
     { name: "country", label: "Ülke", type: "text", placeholder: "Yurtdışı depo için" },
     // Tek widget: haritaya tıkla ya da "Konumumu Kullan" ile tam enlem/boylam

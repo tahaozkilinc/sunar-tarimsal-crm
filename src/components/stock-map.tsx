@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import "leaflet/dist/leaflet.css";
+import "leaflet.markercluster/dist/MarkerCluster.css";
+import "leaflet.markercluster/dist/MarkerCluster.Default.css";
 import { createClient } from "@/lib/supabase/client";
 import { Badge, Card, EmptyState, Spinner } from "./ui";
 import { formatNumber } from "@/lib/format";
@@ -125,6 +127,11 @@ export function StockMap() {
     let map: any;
     (async () => {
       const L = (await import("leaflet")).default;
+      // leaflet.markercluster kendi paketini import etmez; global L'ye "yapışır"
+      // (klasik <script> sırası varsayımı) — bundler'da bunu garanti etmek için
+      // içe aktarmadan önce elle set ediyoruz.
+      (window as unknown as { L: typeof L }).L = L;
+      await import("leaflet.markercluster");
       if (cancelled || !mapDivRef.current) return;
       map = L.map(mapDivRef.current, { scrollWheelZoom: true }).setView(TURKEY_CENTER, 6);
       mapRef.current = map;
@@ -136,18 +143,29 @@ export function StockMap() {
       tiles.on("tileerror", () => setTilesFailed(true));
       tiles.addTo(map);
 
+      // Yakın depolar aynı noktada/çok yakında üst üste binen baloncuklar
+      // yerine tek bir "N depo" kümesi olarak gösterilir; tıklanınca/yakınlaşınca
+      // ayrışır (aynı noktadaysa "spiderfy" ile daireye dizilir).
+      const clusterGroup = L.markerClusterGroup({ maxClusterRadius: 50 });
+
       const bounds: [number, number][] = [];
       for (const w of onMap) {
         if (!w.coords) continue;
         const r = 8 + 26 * Math.sqrt(w.total / maxTon);
+        const d = r * 2;
         const color = w.type === "factory" ? FACTORY : w.type === "foreign" ? FOREIGN : BRAND;
-        const marker = L.circleMarker(w.coords, {
-          radius: r,
-          color: "#ffffff",
-          weight: 2,
-          fillColor: color,
-          fillOpacity: 0.75,
-        }).addTo(map);
+        // circleMarker (Path) DEĞİL: markercluster kümeleme/spiderfy sırasında
+        // çocuk katmanlarda setOpacity(n) çağırıyor — bu yalnızca L.Marker'da
+        // var, Path/CircleMarker'da yok (yalnızca setStyle var). Aynı "tonaja
+        // göre büyüklük" görünümünü divIcon'lu bir L.marker ile koruyoruz.
+        const icon = L.divIcon({
+          className: "wh-marker",
+          html: `<div style="width:${d}px;height:${d}px;border-radius:50%;background:${color};opacity:0.75;border:2px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.15)"></div>`,
+          iconSize: [d, d],
+          iconAnchor: [r, r],
+        });
+        const marker = L.marker(w.coords, { icon });
+        clusterGroup.addLayer(marker);
 
         const list = w.products
           .map((p) => `<div style="display:flex;justify-content:space-between;gap:12px">
@@ -169,6 +187,7 @@ export function StockMap() {
         marker.bindTooltip(`${escapeHtml(w.name)} — ${formatNumber(w.total)} ton`, { direction: "top" });
         bounds.push(w.coords);
       }
+      clusterGroup.addTo(map);
       if (bounds.length > 1) map.fitBounds(bounds, { padding: [40, 40] });
       else if (bounds.length === 1) map.setView(bounds[0], 7);
       // Konteyner boyutu geç oturursa yeniden ölç.
@@ -215,7 +234,10 @@ export function StockMap() {
           <span className="inline-flex items-center gap-1.5">
             <span className="h-3 w-3 rounded-full border-2 border-white" style={{ background: FOREIGN }} /> Yurtdışı
           </span>
-          <span className="text-gray-400">Daire büyüklüğü ≈ tonaj · üstüne gelince / tıklayınca ürün kırılımı</span>
+          <span className="text-gray-400">
+            Daire büyüklüğü ≈ tonaj · üstüne gelince / tıklayınca ürün kırılımı · yakın depolar sayı
+            rozetiyle gruplanır, tıklayınca ayrışır
+          </span>
         </div>
       </div>
 
