@@ -30,6 +30,7 @@ export interface FieldDef {
     | "textarea"
     | "date"
     | "select"
+    | "select_other" // sabit seçenekler + "Diğer" seçilirse serbest metin kutusu açılır
     | "reference"
     | "boolean"
     | "email"
@@ -45,6 +46,9 @@ export interface FieldDef {
   // "map" tipi için: bu alan enlem (lat) kolonuna bağlanır, pairField boylam
   // (lng) kolonunun adıdır — tek widget iki kolonu birlikte okur/yazar.
   pairField?: string;
+  // true ise bu alan formda kendinden ÖNCEKİ alanla aynı satırda, dar bir
+  // sütunda gösterilir (ör. "Miktar" yanında "Birim") — alt satıra düşmez.
+  inlineAfter?: boolean;
   options?: SelectOption[];
   // labelField: tek etiket kolonu. labelFields: sırayla denenen yedek kolonlar
   // (ilk boş olmayan kullanılır; ör. gemi adı yoksa sözleşme no).
@@ -82,6 +86,9 @@ export interface ResourceConfig {
   fxCapture?: boolean;
   // Silme işlemini soft-delete'e çevirir (DELETE yerine column=false yapar).
   softDelete?: { column: string };
+  // true ise bu kaynağın "text" tipi alanları (textarea/notlar hariç) yazarken
+  // otomatik BÜYÜK HARFE çevrilir (Türkçe locale) — veri girişini standartlaştırır.
+  uppercaseText?: boolean;
 }
 
 // ---- Ortak seçenek listeleri ----
@@ -114,6 +121,21 @@ export const LOCATION_TYPE_OPTIONS: SelectOption[] = [
   { value: "warehouse", label: "Depo", color: "blue" },
   { value: "factory", label: "Fabrika", color: "purple" },
   { value: "foreign", label: "Yurtdışı Depo", color: "yellow" },
+];
+
+// Elle yazmaya kapalı: miktarın birimi yalnızca bu ikisinden seçilir.
+export const UNIT_OPTIONS: SelectOption[] = [
+  { value: "ton", label: "TON" },
+  { value: "kg", label: "KG" },
+];
+
+// Sözleşme "Alıcı"sı: sabit 3 seçenek + "Diğer" (serbest metin, select_other
+// widget'ı ekler). Değerler zaten büyük harf — "Diğer" ile serbest yazılan
+// metin de forceUppercase ile büyütüldüğü için veri tek kasada kalır.
+export const BUYER_OPTIONS: SelectOption[] = [
+  { value: "SUNAR", label: "Sunar" },
+  { value: "MISIR", label: "Mısır" },
+  { value: "ELİTA TİCARET", label: "Elita Ticaret" },
 ];
 
 export const EXPENSE_TYPE_OPTIONS: SelectOption[] = [
@@ -247,12 +269,16 @@ export const purchaseContractsResource: ResourceConfig = {
   filterFields: ["status", "supplier_id", "product_id"],
   listFields: ["contract_no", "supplier_id", "product_id", "quantity", "eta", "status"],
   fxCapture: true,
+  uppercaseText: true,
   fields: [
-    { name: "contract_no", label: "Sözleşme No", type: "text", required: true, unique: true },
+    // Sözleşme No artık ZORUNLU DEĞİL: sonradan da girilebilir (DB'de zaten
+    // NOT NULL değil; uq_pc_contract_no yalnızca DOLU değerlerde benzersizlik
+    // ister — 0035_data_integrity.sql — yani boş bırakmak hâlâ güvenli).
+    { name: "contract_no", label: "Sözleşme No", type: "text", unique: true },
     { name: "supplier_id", label: "Tedarikçi", type: "reference", ref: { table: "companies", labelField: "name", filter: { type: ["supplier", "both"] } }, required: true },
     { name: "product_id", label: "Ürün (Yağlı Tohum)", type: "reference", ref: { table: "products", labelField: "name", filter: { is_active: ["true"] } } },
-    { name: "quantity", label: "Miktar (ton)", type: "number", required: true, positive: true },
-    { name: "unit", label: "Birim", type: "text" },
+    { name: "quantity", label: "Miktar", type: "number", required: true, positive: true },
+    { name: "unit", label: "Birim", type: "select", options: UNIT_OPTIONS, required: true, inlineAfter: true },
     { name: "price", label: "Birim Fiyat", type: "money", required: true, positive: true },
     { name: "currency", label: "Para Birimi", type: "select", options: CURRENCY_OPTIONS },
     { name: "incoterm", label: "Teslim Şekli", type: "select", options: INCOTERM_OPTIONS },
@@ -266,7 +292,7 @@ export const purchaseContractsResource: ResourceConfig = {
     { name: "assigned_to", label: "Operasyon Sorumlusu", type: "reference", ref: { table: "profiles", labelField: "full_name", filter: { role: ["operations"] } } },
     { name: "agent_id", label: "Yurtdışı Acente (Yükleme Takibi)", type: "reference", ref: { table: "companies", labelField: "name", filter: { type: ["agent"] } } },
     { name: "payment_due_date", label: "Öngörülen Ödeme Tarihi", type: "date" },
-    { name: "buyer", label: "Alıcı", type: "text" },
+    { name: "buyer", label: "Alıcı", type: "select_other", options: BUYER_OPTIONS },
     { name: "principal_id", label: "Kimin Adına", type: "reference", ref: { table: "principals", labelField: "name" } },
     { name: "created_at", label: "Sözleşme Tarihi", type: "date", readOnly: true },
     { name: "contract_file_url", label: "Sözleşme Dosyası (PDF)", type: "file", bucket: "contracts" },
