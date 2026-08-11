@@ -48,6 +48,7 @@ type Movement = {
   warehouse_id: string | null;
   quantity: number | null;
   movement_date: string | null;
+  movement_time: string | null;
   vehicle_plate: string | null;
   driver_name: string | null;
   notes: string | null;
@@ -82,6 +83,7 @@ export function SalesDispatch({ role }: { role: Role }) {
   const [plate, setPlate] = useState("");
   const [driver, setDriver] = useState("");
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+  const [time, setTime] = useState(new Date().toTimeString().slice(0, 5));
   const [saving, setSaving] = useState(false);
   const [formErr, setFormErr] = useState<string | null>(null);
   const [flash, setFlash] = useState<string | null>(null);
@@ -143,7 +145,7 @@ export function SalesDispatch({ role }: { role: Role }) {
 
     const { data: mv, error: mvErr } = await supabase
       .from("stock_movements")
-      .select("id,sale_id,contract_id,warehouse_id,quantity,movement_date,vehicle_plate,driver_name,notes,created_at,created_by")
+      .select("id,sale_id,contract_id,warehouse_id,quantity,movement_date,movement_time,vehicle_plate,driver_name,notes,created_at,created_by")
       .eq("movement_type", "outbound_sale")
       .order("created_at", { ascending: false });
     if (mvErr) setError(mvErr.message);
@@ -206,6 +208,7 @@ export function SalesDispatch({ role }: { role: Role }) {
       vehicle_plate: plate.trim() || null,
       driver_name: driver.trim() || null,
       movement_date: date,
+      movement_time: time || null,
     });
     setSaving(false);
     if (err) { setFormErr(err.message); return; }
@@ -319,6 +322,7 @@ export function SalesDispatch({ role }: { role: Role }) {
                                 <span className="font-medium">{formatNumber(m.quantity)} ton</span>
                                 <span className="ml-2 text-xs text-gray-500">
                                   {formatDate(m.movement_date)}
+                                  {m.movement_time ? ` ${m.movement_time.slice(0, 5)}` : ""}
                                   {m.vehicle_plate ? ` · ${m.vehicle_plate}` : ""}
                                   {m.driver_name ? ` · ${m.driver_name}` : ""}
                                   {" · "}
@@ -491,9 +495,18 @@ export function SalesDispatch({ role }: { role: Role }) {
               <Field label="Şoför">
                 <Input value={driver} onChange={(e) => setDriver(e.target.value)} placeholder="Opsiyonel" />
               </Field>
-              <Field label="Tarih">
-                <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
-              </Field>
+              <div className="flex items-start gap-2">
+                <div className="min-w-0 flex-1">
+                  <Field label="Tarih">
+                    <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+                  </Field>
+                </div>
+                <div className="w-28 shrink-0">
+                  <Field label="Saat">
+                    <Input type="time" value={time} onChange={(e) => setTime(e.target.value)} />
+                  </Field>
+                </div>
+              </div>
 
               {formErr && (
                 <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">

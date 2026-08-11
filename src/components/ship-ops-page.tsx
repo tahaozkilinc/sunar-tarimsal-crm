@@ -34,6 +34,7 @@ type Movement = {
   vehicle_plate: string | null;
   driver_name: string | null;
   movement_date: string | null;
+  movement_time: string | null;
   created_at: string;
   created_by: string | null;
 };
@@ -107,6 +108,7 @@ export function ShipOpsPage({
   const [qty,    setQty]    = useState("");
   const [qtyUnit, setQtyUnit] = useState<"ton" | "kg">("ton");
   const [date,   setDate]   = useState(new Date().toISOString().slice(0, 10));
+  const [time,   setTime]   = useState(new Date().toTimeString().slice(0, 5));
   const [saving, setSaving] = useState(false);
   const [formErr, setFormErr] = useState<string | null>(null);
   const [flash, setFlash]   = useState<string | null>(null);
@@ -144,7 +146,7 @@ export function ShipOpsPage({
     const ids = [contractId, ...siblingIdsRef.current];
     const { data } = await supabase
       .from("stock_movements")
-      .select("id,contract_id,warehouse_id,quantity,vehicle_plate,driver_name,movement_date,created_at,created_by")
+      .select("id,contract_id,warehouse_id,quantity,vehicle_plate,driver_name,movement_date,movement_time,created_at,created_by")
       .in("contract_id", ids)
       .eq("movement_type", "inbound")
       .order("created_at", { ascending: true });
@@ -325,6 +327,7 @@ export function ShipOpsPage({
       vehicle_plate:  plate.trim() || null,
       driver_name:    driver.trim() || null,
       movement_date:  date,
+      movement_time:  time || null,
     });
     if (err) { setSaving(false); setFormErr(err.message); return; }
     if (targetContract.status !== "arrived" && targetContract.status !== "completed") {
@@ -426,9 +429,10 @@ export function ShipOpsPage({
     const body = movements.map((m, i) => {
       const cInfo = isCombined ? (allContracts.find((c) => c.id === m.contract_id)) : null;
       const cLabel = cInfo ? `${pName(cInfo.product_id)} (${cInfo.contract_no || "—"})` : "";
+      const t = m.movement_time ? m.movement_time.slice(0, 5) : timeFmt(m.created_at);
       return isCombined
-        ? [i + 1, cLabel, formatDate(m.movement_date), timeFmt(m.created_at), m.vehicle_plate || "", m.driver_name || "", wName(m.warehouse_id), Number(m.quantity) || 0]
-        : [i + 1, formatDate(m.movement_date), timeFmt(m.created_at), m.vehicle_plate || "", m.driver_name || "", wName(m.warehouse_id), Number(m.quantity) || 0];
+        ? [i + 1, cLabel, formatDate(m.movement_date), t, m.vehicle_plate || "", m.driver_name || "", wName(m.warehouse_id), Number(m.quantity) || 0]
+        : [i + 1, formatDate(m.movement_date), t, m.vehicle_plate || "", m.driver_name || "", wName(m.warehouse_id), Number(m.quantity) || 0];
     });
     const depotRows = byWarehouse.map(bw => ["", "", "", "", "", bw.name + " (toplam)", bw.qty]);
     const csv = [headers, ...body, [], ["", "", "", "", "", "TOPLAM", totalDrawn], ...depotRows]
@@ -753,7 +757,7 @@ export function ShipOpsPage({
                           <td className="px-3 py-2 text-gray-400">{i + 1}</td>
                           <td className="px-3 py-2 text-xs">
                             <div>{formatDate(m.movement_date)}</div>
-                            <div className="text-gray-400">{timeFmt(m.created_at)}</div>
+                            <div className="text-gray-400">{m.movement_time ? m.movement_time.slice(0, 5) : timeFmt(m.created_at)}</div>
                           </td>
                           {isCombined && (
                             <td className="px-3 py-2 text-xs text-gray-600">
@@ -834,7 +838,7 @@ export function ShipOpsPage({
                           {m.vehicle_plate || <span className="text-gray-400">Plakasız</span>}
                         </div>
                         <div className="mt-0.5 text-xs text-gray-500">
-                          {formatDate(m.movement_date)} · {timeFmt(m.created_at)}
+                          {formatDate(m.movement_date)} · {m.movement_time ? m.movement_time.slice(0, 5) : timeFmt(m.created_at)}
                         </div>
                       </div>
                       <div className="shrink-0 text-right">
@@ -991,13 +995,26 @@ export function ShipOpsPage({
                       )}
                       <div className="mt-1 text-xs text-gray-400">Bir araç en fazla 40 ton (40.000 kg)</div>
                     </Field>
-                    <Field label="Tarih">
-                      <Input
-                        type="date"
-                        value={date}
-                        onChange={e => setDate(e.target.value)}
-                      />
-                    </Field>
+                    <div className="flex items-start gap-2">
+                      <div className="min-w-0 flex-1">
+                        <Field label="Tarih">
+                          <Input
+                            type="date"
+                            value={date}
+                            onChange={e => setDate(e.target.value)}
+                          />
+                        </Field>
+                      </div>
+                      <div className="w-28 shrink-0">
+                        <Field label="Saat">
+                          <Input
+                            type="time"
+                            value={time}
+                            onChange={e => setTime(e.target.value)}
+                          />
+                        </Field>
+                      </div>
+                    </div>
                     {formErr && (
                       <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
                         {formErr}
