@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Badge, Card, DeadlineBadge, Spinner } from "./ui";
-import { formatNumber } from "@/lib/format";
+import { formatDate, formatNumber } from "@/lib/format";
 import { AlertTriangle } from "lucide-react";
 
 // Satışlar sekmesinin yanındaki küçük panel: her satışın ne kadarının FİİLEN
@@ -118,8 +118,9 @@ export function SalesFulfillmentPanel() {
                   <div className="truncate text-xs text-gray-500">
                     {pName(r.product_id)}{r.order_no ? ` · ${r.order_no}` : ""}
                   </div>
-                  {!r.closed && (
-                    <div className="mt-1">
+                  {!r.closed && r.final_sale_date && (
+                    <div className="mt-1 flex items-center gap-1.5">
+                      <span className="text-[11px] text-gray-500">Son Teslim: {formatDate(r.final_sale_date)}</span>
                       <DeadlineBadge date={r.final_sale_date} />
                     </div>
                   )}
