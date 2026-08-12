@@ -13,18 +13,20 @@ import { CONTRACT_STATUS_OPTIONS } from "@/lib/resources";
 // Bir gemiye taraf ataması ship-ops-page'deki "Operasyon Tarafları" kartından
 // (assign_ship_parties) yapılır.
 
-type OpsType = "surveyor" | "port" | "carrier";
+type OpsType = "surveyor" | "port" | "carrier" | "agent";
 
-const PARTY_FIELD: Record<OpsType, "surveyor_id" | "port_id" | "carrier_id"> = {
+const PARTY_FIELD: Record<OpsType, "surveyor_id" | "port_id" | "carrier_id" | "agent_id"> = {
   surveyor: "surveyor_id",
   port: "port_id",
   carrier: "carrier_id",
+  agent: "agent_id",
 };
 
 const TYPE_LABEL: Record<OpsType, string> = {
   surveyor: "Gözetim",
   port: "Liman",
   carrier: "Nakliyeci",
+  agent: "Acente",
 };
 
 // Gemi sayılırken/tonaj toplanırken iptal edilmiş bağlantılar hariç tutulur.

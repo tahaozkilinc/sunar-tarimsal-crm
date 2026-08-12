@@ -611,7 +611,7 @@ export function ShipOpsPage({
               <div className="rounded-lg border border-border bg-gray-50 px-3 py-2 text-sm">{cName(contract.carrier_id)}</div>
             )}
           </Field>
-          <Field label="Yurtdışı Acente">
+          <Field label="Acente">
             {canWrite && contract.status !== "completed" ? (
               <Select value={agentId} onChange={e => setAgentId(e.target.value)}>
                 <option value="">Seçiniz...</option>

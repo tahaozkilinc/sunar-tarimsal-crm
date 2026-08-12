@@ -129,7 +129,7 @@ export const COMPANY_TYPE_OPTIONS: SelectOption[] = [
   { value: "surveyor", label: "Gözetim Şirketi", color: "yellow" },
   { value: "port", label: "Liman", color: "gray" },
   { value: "carrier", label: "Nakliyeci", color: "red" },
-  { value: "agent", label: "Yurtdışı Acente", color: "purple" },
+  { value: "agent", label: "Acente", color: "purple" },
 ];
 
 export const LOCATION_TYPE_OPTIONS: SelectOption[] = [
@@ -312,7 +312,7 @@ export const purchaseContractsResource: ResourceConfig = {
     { name: "laycan_end", label: "Laycan Bitiş", type: "date" },
     { name: "status", label: "Durum", type: "select", options: CONTRACT_STATUS_OPTIONS, required: true },
     { name: "assigned_to", label: "Operasyon Sorumlusu", type: "reference", ref: { table: "profiles", labelField: "full_name", filter: { role: ["operations"] } } },
-    { name: "agent_id", label: "Yurtdışı Acente (Yükleme Takibi)", type: "reference", ref: { table: "companies", labelField: "name", filter: { type: ["agent"] } } },
+    { name: "agent_id", label: "Acente (Yükleme Takibi)", type: "reference", ref: { table: "companies", labelField: "name", filter: { type: ["agent"] } } },
     { name: "payment_due_date", label: "Öngörülen Ödeme Tarihi", type: "date" },
     { name: "buyer", label: "Alıcı", type: "select_other", options: BUYER_OPTIONS },
     { name: "principal_id", label: "Kimin Adına", type: "reference", ref: { table: "principals", labelField: "name" } },

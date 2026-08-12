@@ -98,7 +98,7 @@ export function CompanyDetailView({ company, role }: { company: Company; role: R
         />
       </div>
 
-      {company.type === "surveyor" || company.type === "port" || company.type === "carrier" ? (
+      {company.type === "surveyor" || company.type === "port" || company.type === "carrier" || company.type === "agent" ? (
         <CompanyShipStats companyId={company.id} companyType={company.type} />
       ) : (
         <CompanyReport companyId={company.id} />

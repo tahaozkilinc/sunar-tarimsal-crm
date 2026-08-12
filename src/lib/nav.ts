@@ -83,7 +83,7 @@ export const ROLE_LABELS: Record<Role, string> = {
   viewer: "Görüntüleyici (Tümü)",
   nakliyeci: "Nakliyeci",
   gozetim: "Gözetim",
-  acente: "Yurtdışı Acente",
+  acente: "Acente",
   sales_ops: "Satış Operasyon",
   purchasing_view: "Satın Alma (Görüntüleme)",
   operations_view: "Operasyon (Görüntüleme)",
