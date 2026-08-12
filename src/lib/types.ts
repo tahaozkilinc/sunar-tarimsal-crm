@@ -103,7 +103,6 @@ export interface PurchaseContract {
   carrier_id: string | null;
   agent_id: string | null; // yurtdışı yükleme takip acentesi
   broker_id: string | null;
-  combined_shipment_id: string | null;
   created_at: string;
   notes: string | null;
 }
