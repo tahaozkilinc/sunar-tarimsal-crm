@@ -32,7 +32,7 @@ export interface Company {
   id: string;
   name: string;
   symbol: string | null; // kısa, serbest bir sembol/kod (opsiyonel)
-  type: "supplier" | "customer" | "both" | "surveyor" | "port" | "carrier" | "agent";
+  type: "supplier" | "customer" | "both" | "surveyor" | "port" | "carrier" | "agent" | "broker";
   city: string | null;
   country: string | null;
   phone: string | null;
@@ -102,6 +102,7 @@ export interface PurchaseContract {
   port_id: string | null;
   carrier_id: string | null;
   agent_id: string | null; // yurtdışı yükleme takip acentesi
+  broker_id: string | null;
   combined_shipment_id: string | null;
   created_at: string;
   notes: string | null;
