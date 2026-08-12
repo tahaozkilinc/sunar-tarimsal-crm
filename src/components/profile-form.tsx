@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Button, Card, Field, Input } from "./ui";
 import { ROLE_LABELS } from "@/lib/nav";
+import { L } from "@/lib/i18n";
 import type { Role } from "@/lib/types";
 import { KeyRound, UserCog } from "lucide-react";
 
@@ -19,6 +20,9 @@ export function ProfileForm({
 }) {
   const supabase = createClient();
   const router = useRouter();
+  // Acente yabancı uyruklu olabileceğinden profil sayfası İngilizce (bkz. src/lib/i18n.ts).
+  const isEn = role === "acente";
+  const t = (tr: string, en: string) => L(isEn, tr, en);
 
   // --- İsim ---
   const [name, setName] = useState(fullName || "");
@@ -28,7 +32,7 @@ export function ProfileForm({
   const saveName = async () => {
     const trimmed = name.trim();
     if (!trimmed) {
-      setNameMsg({ ok: false, text: "İsim boş olamaz." });
+      setNameMsg({ ok: false, text: t("İsim boş olamaz.", "Name cannot be empty.") });
       return;
     }
     setSavingName(true);
@@ -39,10 +43,10 @@ export function ProfileForm({
     if (!error) await supabase.auth.updateUser({ data: { full_name: trimmed } });
     setSavingName(false);
     if (error) {
-      setNameMsg({ ok: false, text: `Güncellenemedi: ${error.message}` });
+      setNameMsg({ ok: false, text: `${t("Güncellenemedi", "Could not update")}: ${error.message}` });
       return;
     }
-    setNameMsg({ ok: true, text: "İsim güncellendi." });
+    setNameMsg({ ok: true, text: t("İsim güncellendi.", "Name updated.") });
     router.refresh();
   };
 
@@ -54,11 +58,11 @@ export function ProfileForm({
 
   const savePw = async () => {
     if (pw.length < 6) {
-      setPwMsg({ ok: false, text: "Şifre en az 6 karakter olmalı." });
+      setPwMsg({ ok: false, text: t("Şifre en az 6 karakter olmalı.", "Password must be at least 6 characters.") });
       return;
     }
     if (pw !== pw2) {
-      setPwMsg({ ok: false, text: "Şifreler eşleşmiyor." });
+      setPwMsg({ ok: false, text: t("Şifreler eşleşmiyor.", "Passwords do not match.") });
       return;
     }
     setSavingPw(true);
@@ -66,40 +70,40 @@ export function ProfileForm({
     const { error } = await supabase.auth.updateUser({ password: pw });
     setSavingPw(false);
     if (error) {
-      setPwMsg({ ok: false, text: `Şifre değiştirilemedi: ${error.message}` });
+      setPwMsg({ ok: false, text: `${t("Şifre değiştirilemedi", "Could not change password")}: ${error.message}` });
       return;
     }
     setPw("");
     setPw2("");
-    setPwMsg({ ok: true, text: "Şifreniz güncellendi." });
+    setPwMsg({ ok: true, text: t("Şifreniz güncellendi.", "Your password has been updated.") });
   };
 
   return (
     <div className="mx-auto max-w-lg space-y-4">
-      <h1 className="text-xl font-bold">Profilim</h1>
+      <h1 className="text-xl font-bold">{t("Profilim", "My Profile")}</h1>
 
       <Card className="space-y-4 p-5">
         <div className="flex items-center gap-2 border-b border-border pb-3">
           <UserCog className="h-5 w-5 text-brand" />
-          <h2 className="font-semibold">Hesap Bilgileri</h2>
+          <h2 className="font-semibold">{t("Hesap Bilgileri", "Account Information")}</h2>
         </div>
-        <Field label="E-posta">
+        <Field label={t("E-posta", "Email")}>
           <Input value={email || ""} disabled />
         </Field>
-        <Field label="Rol">
-          <Input value={ROLE_LABELS[role]} disabled />
+        <Field label={t("Rol", "Role")}>
+          <Input value={isEn ? "Agent" : ROLE_LABELS[role]} disabled />
         </Field>
-        <Field label="Ad Soyad">
+        <Field label={t("Ad Soyad", "Full Name")}>
           <Input
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="Adınız Soyadınız"
+            placeholder={t("Adınız Soyadınız", "Your full name")}
           />
         </Field>
         <Msg m={nameMsg} />
         <div className="flex justify-end">
           <Button onClick={saveName} disabled={savingName}>
-            {savingName ? "Kaydediliyor..." : "İsmi Kaydet"}
+            {savingName ? t("Kaydediliyor...", "Saving...") : t("İsmi Kaydet", "Save Name")}
           </Button>
         </div>
       </Card>
@@ -107,18 +111,18 @@ export function ProfileForm({
       <Card className="space-y-4 p-5">
         <div className="flex items-center gap-2 border-b border-border pb-3">
           <KeyRound className="h-5 w-5 text-brand" />
-          <h2 className="font-semibold">Şifre Değiştir</h2>
+          <h2 className="font-semibold">{t("Şifre Değiştir", "Change Password")}</h2>
         </div>
-        <Field label="Yeni Şifre">
+        <Field label={t("Yeni Şifre", "New Password")}>
           <Input
             type="password"
             autoComplete="new-password"
             value={pw}
             onChange={(e) => setPw(e.target.value)}
-            placeholder="En az 6 karakter"
+            placeholder={t("En az 6 karakter", "At least 6 characters")}
           />
         </Field>
-        <Field label="Yeni Şifre (Tekrar)">
+        <Field label={t("Yeni Şifre (Tekrar)", "New Password (Confirm)")}>
           <Input
             type="password"
             autoComplete="new-password"
@@ -129,7 +133,7 @@ export function ProfileForm({
         <Msg m={pwMsg} />
         <div className="flex justify-end">
           <Button onClick={savePw} disabled={savingPw}>
-            {savingPw ? "Değiştiriliyor..." : "Şifreyi Değiştir"}
+            {savingPw ? t("Değiştiriliyor...", "Changing...") : t("Şifreyi Değiştir", "Change Password")}
           </Button>
         </div>
       </Card>
