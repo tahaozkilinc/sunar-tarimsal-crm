@@ -481,7 +481,39 @@ export function ResourceManager({
   const [filters, setFilters] = useState<Record<string, string>>({});
   const [textFilters, setTextFilters] = useState<Record<string, string>>({});
   const [rangeFilters, setRangeFilters] = useState<Record<string, { from: string; to: string }>>({});
-  const [filtersOpen, setFiltersOpen] = useState(false);
+  // Sütun başlığındaki filtre ikonu: aynı anda yalnızca bir sütunun
+  // popover'ı açık olur (Excel/Sheets deseni). Masaüstünde sütun başlığına,
+  // mobilde (tablonun sütunları olmadığından) ayrı bir "Filtrele" düğmesine
+  // bağlanır — ikisi de aynı openFilterCol state'ini kullanır.
+  const [openFilterCol, setOpenFilterCol] = useState<string | null>(null);
+  const [filterPopoverPos, setFilterPopoverPos] = useState({ top: 0, left: 0 });
+  const filterPopoverRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const onDoc = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (target.closest("[data-filter-trigger]")) return; // tetikleyicinin kendi onClick'i toggle eder
+      if (filterPopoverRef.current && !filterPopoverRef.current.contains(target)) {
+        setOpenFilterCol(null);
+      }
+    };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, []);
+
+  const FILTER_POPOVER_WIDTH = 256; // w-64
+  const toggleFilterPopover = (name: string, anchor: HTMLElement) => {
+    if (openFilterCol === name) {
+      setOpenFilterCol(null);
+      return;
+    }
+    const r = anchor.getBoundingClientRect();
+    // Sağ kenara taşarsa (sondaki sütunlar) içeri katla — sonuncu sütunun
+    // popover'ı ekranın dışına çıkmasın.
+    const left = Math.min(r.left, window.innerWidth - FILTER_POPOVER_WIDTH - 12);
+    setFilterPopoverPos({ top: r.bottom + 6, left: Math.max(12, left) });
+    setOpenFilterCol(name);
+  };
   // Kota bilgisi (ör. satışta seçili geminin toplam / satılan / kalan tonajı)
   const [quotaInfo, setQuotaInfo] = useState<{
     capacity: number;
@@ -1085,6 +1117,68 @@ export function ResourceManager({
     return [];
   };
 
+  const isFilterable = (f: FieldDef) =>
+    dropdownFilterFields.includes(f) || rangeFilterFields.includes(f) || textFilterFields.includes(f);
+  const isFieldActive = (f: FieldDef) => {
+    if (dropdownFilterFields.includes(f)) return !!filters[f.name];
+    if (rangeFilterFields.includes(f)) {
+      const r = rangeFilters[f.name];
+      return !!(r && (r.from || r.to));
+    }
+    return !!textFilters[f.name]?.trim();
+  };
+
+  // Tek bir alanın filtre kontrolünü (etiket olmadan) döner — hem sütun
+  // başlığı popover'ında hem mobildeki "Filtrele" panelinde kullanılır.
+  const renderFilterControl = (f: FieldDef) => {
+    if (dropdownFilterFields.includes(f))
+      return (
+        <SearchableSelect
+          value={filters[f.name] ?? ""}
+          onChange={(v) => setFilters((prev) => ({ ...prev, [f.name]: v }))}
+          options={filterOptions(f)}
+          placeholder="Tümü"
+          className="w-full"
+        />
+      );
+    if (rangeFilterFields.includes(f)) {
+      const r = rangeFilters[f.name] ?? { from: "", to: "" };
+      const isDate = f.type === "date";
+      return (
+        <div className="flex items-center gap-1.5">
+          <Input
+            type={isDate ? "date" : "number"}
+            value={r.from}
+            onChange={(e) =>
+              setRangeFilters((prev) => ({ ...prev, [f.name]: { from: e.target.value, to: prev[f.name]?.to ?? "" } }))
+            }
+            placeholder={isDate ? undefined : "min"}
+            className="min-w-0 flex-1"
+          />
+          <span className="shrink-0 text-xs text-gray-400">–</span>
+          <Input
+            type={isDate ? "date" : "number"}
+            value={r.to}
+            onChange={(e) =>
+              setRangeFilters((prev) => ({ ...prev, [f.name]: { from: prev[f.name]?.from ?? "", to: e.target.value } }))
+            }
+            placeholder={isDate ? undefined : "maks"}
+            className="min-w-0 flex-1"
+          />
+        </div>
+      );
+    }
+    return (
+      <Input
+        autoFocus
+        value={textFilters[f.name] ?? ""}
+        onChange={(e) => setTextFilters((prev) => ({ ...prev, [f.name]: e.target.value }))}
+        placeholder="Ara..."
+        className="w-full"
+      />
+    );
+  };
+
   return (
     <div className="space-y-4">
       {/* Üst bar */}
@@ -1093,16 +1187,29 @@ export function ResourceManager({
           hideTitle ? "sm:justify-end" : "sm:justify-between"
         }`}
       >
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
           {!hideTitle && (
             <h1 className="text-lg font-semibold">{title || config.title}</h1>
+          )}
+          {/* Masaüstünde filtreler sütun başlıklarında (Excel deseni); burada
+              yalnızca aktif sayısı + temizle görünür. Mobilde tablo sütunu
+              olmadığından ayrı bir "Filtrele" düğmesi gerekir. */}
+          {hasActiveFilters && (
+            <span className="hidden items-center gap-2 text-xs text-gray-500 sm:inline-flex">
+              <Filter className="h-3.5 w-3.5 text-brand" />
+              {activeFilterCount} filtre aktif
+              <button type="button" onClick={clearAllFilters} className="font-medium text-brand hover:underline">
+                Temizle
+              </button>
+            </span>
           )}
           {hasFilterUI && (
             <button
               type="button"
-              onClick={() => setFiltersOpen((o) => !o)}
-              className={`relative inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border ${
-                filtersOpen || hasActiveFilters
+              data-filter-trigger
+              onClick={(e) => toggleFilterPopover("__mobile__", e.currentTarget)}
+              className={`relative inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border sm:hidden ${
+                openFilterCol === "__mobile__" || hasActiveFilters
                   ? "border-brand bg-brand/5 text-brand"
                   : "border-border bg-white text-gray-500 hover:bg-gray-50"
               }`}
@@ -1136,111 +1243,62 @@ export function ResourceManager({
         </div>
       </div>
 
-      {/* Filtre paneli: istenince açılır, tablonun ÜSTÜNDE — sürekli yer kaplamaz */}
-      {hasFilterUI && filtersOpen && (
-        <div className="rounded-xl border border-border bg-card p-4">
+      {/* Mobil filtre paneli: sütun başlığı olmadığından tek panelde tümü. */}
+      {hasFilterUI && openFilterCol === "__mobile__" && (
+        <div ref={filterPopoverRef} className="rounded-xl border border-border bg-card p-4 sm:hidden">
           <div className="mb-3 flex items-center justify-between">
             <span className="text-sm font-semibold">Filtreler</span>
             <div className="flex items-center gap-3">
               {hasActiveFilters && (
-                <button
-                  type="button"
-                  onClick={clearAllFilters}
-                  className="text-xs font-medium text-brand hover:underline"
-                >
+                <button type="button" onClick={clearAllFilters} className="text-xs font-medium text-brand hover:underline">
                   Temizle
                 </button>
               )}
-              <button
-                type="button"
-                onClick={() => setFiltersOpen(false)}
-                className="text-gray-400 hover:text-gray-600"
-                title="Kapat"
-              >
+              <button type="button" onClick={() => setOpenFilterCol(null)} className="text-gray-400 hover:text-gray-600" title="Kapat">
                 <X className="h-4 w-4" />
               </button>
             </div>
           </div>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {dropdownFilterFields.map((f) => {
-              const active = !!filters[f.name];
-              return (
-                <div
-                  key={f.name}
-                  className={`rounded-lg border p-2 ${active ? "border-brand bg-brand/5" : "border-transparent"}`}
-                >
-                  <label className={`mb-1 flex items-center gap-1 text-xs font-medium ${active ? "text-brand" : "text-gray-600"}`}>
-                    {active && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-brand" />}
-                    {f.label}
-                  </label>
-                  <SearchableSelect
-                    value={filters[f.name] ?? ""}
-                    onChange={(v) => setFilters((prev) => ({ ...prev, [f.name]: v }))}
-                    options={filterOptions(f)}
-                    placeholder="Tümü"
-                    className="w-full"
-                  />
-                </div>
-              );
-            })}
-            {rangeFilterFields.map((f) => {
-              const r = rangeFilters[f.name] ?? { from: "", to: "" };
-              const isDate = f.type === "date";
-              const active = !!(r.from || r.to);
-              return (
-                <div
-                  key={f.name}
-                  className={`rounded-lg border p-2 ${active ? "border-brand bg-brand/5" : "border-transparent"}`}
-                >
-                  <label className={`mb-1 flex items-center gap-1 text-xs font-medium ${active ? "text-brand" : "text-gray-600"}`}>
-                    {active && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-brand" />}
-                    {f.label}
-                  </label>
-                  <div className="flex items-center gap-1.5">
-                    <Input
-                      type={isDate ? "date" : "number"}
-                      value={r.from}
-                      onChange={(e) =>
-                        setRangeFilters((prev) => ({ ...prev, [f.name]: { from: e.target.value, to: prev[f.name]?.to ?? "" } }))
-                      }
-                      placeholder={isDate ? undefined : "min"}
-                      className="min-w-0 flex-1"
-                    />
-                    <span className="shrink-0 text-xs text-gray-400">–</span>
-                    <Input
-                      type={isDate ? "date" : "number"}
-                      value={r.to}
-                      onChange={(e) =>
-                        setRangeFilters((prev) => ({ ...prev, [f.name]: { from: prev[f.name]?.from ?? "", to: e.target.value } }))
-                      }
-                      placeholder={isDate ? undefined : "maks"}
-                      className="min-w-0 flex-1"
-                    />
-                  </div>
-                </div>
-              );
-            })}
-            {textFilterFields.map((f) => {
-              const active = !!textFilters[f.name]?.trim();
-              return (
-                <div
-                  key={f.name}
-                  className={`rounded-lg border p-2 ${active ? "border-brand bg-brand/5" : "border-transparent"}`}
-                >
-                  <label className={`mb-1 flex items-center gap-1 text-xs font-medium ${active ? "text-brand" : "text-gray-600"}`}>
-                    {active && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-brand" />}
-                    {f.label}
-                  </label>
-                  <Input
-                    value={textFilters[f.name] ?? ""}
-                    onChange={(e) => setTextFilters((prev) => ({ ...prev, [f.name]: e.target.value }))}
-                    placeholder="Ara..."
-                    className="w-full"
-                  />
-                </div>
-              );
-            })}
+          <div className="space-y-3">
+            {[...dropdownFilterFields, ...rangeFilterFields, ...textFilterFields].map((f) => (
+              <div key={f.name} className={`rounded-lg border p-2 ${isFieldActive(f) ? "border-brand bg-brand/5" : "border-transparent"}`}>
+                <label className={`mb-1 flex items-center gap-1 text-xs font-medium ${isFieldActive(f) ? "text-brand" : "text-gray-600"}`}>
+                  {isFieldActive(f) && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-brand" />}
+                  {f.label}
+                </label>
+                {renderFilterControl(f)}
+              </div>
+            ))}
           </div>
+        </div>
+      )}
+
+      {/* Sütun başlığı filtre popover'ı (masaüstü) — position:fixed, tablonun
+          overflow-x-auto kapsayıcısının dışına, viewport'a göre konumlanır. */}
+      {openFilterCol && openFilterCol !== "__mobile__" && (
+        <div
+          ref={filterPopoverRef}
+          className="fixed z-30 w-64 rounded-lg border border-border bg-white p-3 shadow-lg"
+          style={{ top: filterPopoverPos.top, left: filterPopoverPos.left }}
+        >
+          <div className="mb-2 flex items-center justify-between">
+            <span className="text-xs font-semibold text-gray-600">{fieldByName[openFilterCol]?.label}</span>
+            {isFieldActive(fieldByName[openFilterCol]) && (
+              <button
+                type="button"
+                onClick={() => {
+                  const f = fieldByName[openFilterCol];
+                  if (dropdownFilterFields.includes(f)) setFilters((prev) => ({ ...prev, [f.name]: "" }));
+                  else if (rangeFilterFields.includes(f)) setRangeFilters((prev) => ({ ...prev, [f.name]: { from: "", to: "" } }));
+                  else setTextFilters((prev) => ({ ...prev, [f.name]: "" }));
+                }}
+                className="text-[11px] font-medium text-brand hover:underline"
+              >
+                Temizle
+              </button>
+            )}
+          </div>
+          {renderFilterControl(fieldByName[openFilterCol])}
         </div>
       )}
 
@@ -1269,7 +1327,27 @@ export function ResourceManager({
                 <tr className="border-b border-border bg-gray-50 text-left text-xs uppercase text-gray-500">
                   {listFieldDefs.map((f) => (
                     <th key={f.name} className="px-4 py-3 font-medium">
-                      {f.label}
+                      <div className="flex items-center gap-1">
+                        <span>{f.label}</span>
+                        {isFilterable(f) && (
+                          <button
+                            type="button"
+                            data-filter-trigger
+                            onClick={(e) => toggleFilterPopover(f.name, e.currentTarget)}
+                            className={`relative inline-flex h-5 w-5 shrink-0 items-center justify-center rounded normal-case ${
+                              openFilterCol === f.name || isFieldActive(f)
+                                ? "text-brand"
+                                : "text-gray-400 hover:text-gray-600"
+                            }`}
+                            title={`${f.label} filtrele`}
+                          >
+                            <Filter className="h-3 w-3" />
+                            {isFieldActive(f) && (
+                              <span className="absolute right-0 top-0 h-1.5 w-1.5 rounded-full bg-brand" />
+                            )}
+                          </button>
+                        )}
+                      </div>
                     </th>
                   ))}
                   <th className="px-4 py-3" />
