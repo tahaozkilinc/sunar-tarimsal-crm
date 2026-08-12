@@ -371,7 +371,7 @@ export const salesOrdersResource: ResourceConfig = {
   writeRoles: ["admin", "sales"],
   defaultValues: { unit: "ton", currency: "TRY" },
   orderBy: { column: "created_at", ascending: false },
-  listFields: ["order_no", "customer_id", "sale_type", "product_id", "quantity", "delivery_date", "status"],
+  listFields: ["order_no", "customer_id", "sale_type", "product_id", "quantity", "final_sale_date", "status"],
   fxCapture: true,
   uppercaseText: true,
   // Kaynak bağlantı (gemi) artık elle seçilmiyor: fn_sales_order_autofill_contract
@@ -395,12 +395,10 @@ export const salesOrdersResource: ResourceConfig = {
     { name: "quantity", label: "Miktar", type: "number", required: true, positive: true },
     { name: "unit", label: "Birim", type: "select", options: UNIT_OPTIONS, required: true, inlineAfter: true },
     { name: "price", label: "Birim Fiyat", type: "money", min: 0 },
-    { name: "currency", label: "Para Birimi", type: "select", options: CURRENCY_OPTIONS },
-    { name: "delivery_date", label: "Teslim Tarihi (Başlangıç)", type: "date" },
-    { name: "delivery_date_to", label: "Teslim Tarihi (Bitiş)", type: "date", inlineAfter: true },
+    { name: "currency", label: "Para Birimi", type: "select", options: CURRENCY_OPTIONS, inlineAfter: true },
     // Sevkiyatın bitirilmesi beklenen son gün — yaklaştıkça/geçtikçe Satışlar
     // panelinde ve Satış Operasyon ekranında uyarı rozeti gösterilir.
-    { name: "final_sale_date", label: "Son Satış Tarihi", type: "date", required: true },
+    { name: "final_sale_date", label: "Son Teslim Tarihi", type: "date", required: true },
     { name: "status", label: "Durum", type: "select", options: SALES_STATUS_OPTIONS, required: true },
     { name: "usd_try", label: "USD/TRY (TCMB)", type: "number", placeholder: "Otomatik" },
     { name: "eur_try", label: "EUR/TRY (TCMB)", type: "number", placeholder: "Otomatik" },
