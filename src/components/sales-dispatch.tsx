@@ -302,9 +302,12 @@ export function SalesDispatch({ role }: { role: Role }) {
                       {!isSalesOps && allowedCount === 0 && (
                         <Badge color="yellow">Depo atanmamış</Badge>
                       )}
-                      <div className="mt-1">
-                        <DeadlineBadge date={s.final_sale_date} />
-                      </div>
+                      {s.final_sale_date && (
+                        <div className="mt-1 flex items-center gap-2">
+                          <span className="text-xs text-gray-500">Son Teslim Tarihi: {formatDate(s.final_sale_date)}</span>
+                          <DeadlineBadge date={s.final_sale_date} />
+                        </div>
+                      )}
                     </div>
                     <div className="flex items-center gap-3 text-sm">
                       <span className="text-gray-500">

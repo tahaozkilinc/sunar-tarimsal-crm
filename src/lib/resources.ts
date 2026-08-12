@@ -98,6 +98,12 @@ export interface ResourceConfig {
   // true ise bu kaynağın "text" tipi alanları (textarea/notlar hariç) yazarken
   // otomatik BÜYÜK HARFE çevrilir (Türkçe locale) — veri girişini standartlaştırır.
   uppercaseText?: boolean;
+  // true ise sayfa açılışında yalnızca en son (orderBy'a göre) 20 kayıt
+  // çekilir/render edilir; "Daha Fazla Göster" ile tümü açılır. Yalnızca
+  // KRONOLOJİK (created_at/tarih DESC) kayıtlar için anlamlıdır — ada göre
+  // alfabetik listelerde (firmalar, depolar) "ilk 20" kafa karıştırır,
+  // bu yüzden genele değil yalnızca gerekene açılır.
+  limitToRecent?: boolean;
 }
 
 // ---- Ortak seçenek listeleri ----
@@ -347,6 +353,7 @@ export const stockMovementsResource: ResourceConfig = {
   defaultValues: { unit: "ton" },
   orderBy: { column: "movement_date", ascending: false },
   listFields: ["movement_date", "contract_id", "product_id", "warehouse_id", "movement_type", "quantity"],
+  limitToRecent: true,
   fields: [
     { name: "movement_date", label: "Tarih", type: "date", required: true },
     { name: "movement_time", label: "Saat", type: "time", inlineAfter: true },

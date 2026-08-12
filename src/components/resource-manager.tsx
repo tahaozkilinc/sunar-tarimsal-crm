@@ -24,6 +24,10 @@ import { Download, Eye, Filter, MapPin, Paperclip, Pencil, Plus, Trash2, X } fro
 
 type Row = Record<string, unknown>;
 
+// Sayfa açılışında varsayılan olarak yalnızca bu kadar kayıt çekilir/render
+// edilir (performans); "Daha Fazla Göster" ile kullanıcı isterse tümünü açar.
+const ROW_LIMIT = 20;
+
 // Formda ardışık alanları satırlara gruplar: inlineAfter=true olan bir alan,
 // kendinden önceki alanla AYNI satırda (dar sütun) gösterilir — ör. "Miktar"
 // yanında "Birim". Sırası config.fields dizisindeki sırayla birebir aynıdır.
@@ -453,6 +457,10 @@ export function ResourceManager({
   const supabase = useMemo(() => createClient(), []);
   const router = useRouter();
   const [rows, setRows] = useState<Row[]>([]);
+  // Performans: sayfa açılışında tüm tablo çekilmez/render edilmez — yalnızca
+  // son ROW_LIMIT kayıt. "Daha Fazla Göster" ile kullanıcı isterse tümünü açar.
+  const [expanded, setExpanded] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
   const [refData, setRefData] = useState<Record<string, Row[]>>({});
   // optionsSource'lu alanlar için: field adı -> başka bir tablodan türetilmiş seçenekler.
   const [dynamicOptions, setDynamicOptions] = useState<Record<string, SelectOption[]>>({});
@@ -544,6 +552,15 @@ export function ResourceManager({
     setDynamicOptions(result);
   }, [config.fields, supabase]);
 
+  // Filtre paneli (filters/textFilters/rangeFilters) TAMAMEN istemci
+  // tarafında, o an rows'ta olan üzerinde çalışır (bkz. aşağıdaki `filtered`).
+  // Bu yüzden bir filtre aktifken sorguyu ASLA sınırlamıyoruz — aksi halde
+  // "son 20"nin dışında kalan eşleşmeler sessizce görünmez olurdu.
+  const hasActiveFilter =
+    Object.values(filters).some((v) => v !== "") ||
+    Object.values(textFilters).some((v) => v.trim() !== "") ||
+    Object.values(rangeFilters).some((r) => r.from !== "" || r.to !== "");
+
   const loadRows = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -558,11 +575,28 @@ export function ResourceManager({
       query = query.order(config.orderBy.column, {
         ascending: config.orderBy.ascending ?? false,
       });
+    const limited = config.limitToRecent && !expanded && !hasActiveFilter;
+    // Sınırlıyken bir fazlasını çekip "daha var mı"yı anlıyoruz — ayrı bir
+    // count sorgusuna gerek kalmadan.
+    if (limited) query = query.limit(ROW_LIMIT + 1);
     const { data, error } = await query;
     if (error) setError(error.message);
-    setRows((data as Row[]) || []);
+    const all = (data as Row[]) || [];
+    if (limited && all.length > ROW_LIMIT) {
+      setHasMore(true);
+      setRows(all.slice(0, ROW_LIMIT));
+    } else {
+      setHasMore(false);
+      setRows(all);
+    }
     setLoading(false);
-  }, [supabase, config.table, config.orderBy, filterKey]);
+  }, [supabase, config.table, config.orderBy, config.limitToRecent, filterKey, expanded, hasActiveFilter]);
+
+  // Filtre değişince tekrar sınırlı (hızlı) görünüme dön — beklenmedik şekilde
+  // büyük bir sorgu asılı kalmasın.
+  useEffect(() => {
+    setExpanded(false);
+  }, [filterKey]);
 
   useEffect(() => {
     loadRefs();
@@ -825,7 +859,7 @@ export function ResourceManager({
         v = v === "" || v === undefined || v === null ? null : Number(v);
       } else if (field.type === "map") {
         // "map" tek widget ama iki kolon yazar: kendi adı (lat) + pairField (lng).
-        v = v === "" || v === undefined ? null : Number(v);
+        v = v === "" || v === undefined || v === null ? null : Number(v);
         const pv = form[field.pairField!];
         payload[field.pairField!] = pv === "" || pv === undefined || pv === null ? null : Number(pv);
       } else if (field.type === "boolean") {
@@ -1313,6 +1347,14 @@ export function ResourceManager({
             ))}
           </div>
         </>
+      )}
+
+      {!loading && hasMore && (
+        <div className="flex justify-center">
+          <Button variant="secondary" size="sm" onClick={() => setExpanded(true)}>
+            Daha Fazla Göster
+          </Button>
+        </div>
       )}
 
       {/* Form modalı */}
