@@ -231,9 +231,10 @@ export const companiesResource: ResourceConfig = {
   singular: "Firma",
   writeRoles: ["admin", "purchasing", "sales", "operations"],
   orderBy: { column: "name", ascending: true },
-  listFields: ["name", "type", "city", "phone"],
+  listFields: ["name", "symbol", "type", "city", "phone"],
   fields: [
     { name: "name", label: "Firma Adı", type: "text", required: true, unique: true },
+    { name: "symbol", label: "Sembol", type: "text", inlineAfter: true },
     { name: "type", label: "Tür", type: "select", options: COMPANY_TYPE_OPTIONS, required: true },
     { name: "city", label: "Şehir", type: "text" },
     { name: "country", label: "Ülke", type: "text" },
