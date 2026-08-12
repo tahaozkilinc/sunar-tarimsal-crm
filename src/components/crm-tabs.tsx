@@ -10,13 +10,13 @@ import { activitiesResource, companiesResource } from "@/lib/resources";
 import type { Role } from "@/lib/types";
 import { baseRole } from "@/lib/nav";
 
-type CrmModule = "purchasing" | "sales" | "surveyor" | "port" | "carrier";
+type CrmModule = "purchasing" | "sales" | "surveyor" | "port" | "carrier" | "agent";
 type ActivitiesModule = "purchasing" | "sales" | "operations";
 
-// Operasyon iş ortakları artık tek modül değil; gözetim/liman/nakliyeci ayrı.
-// Firmalar type'a göre (surveyor/port/carrier), aktiviteler tek module=operations
-// altında olduğundan ilgili türdeki firma id'lerine göre kapsanır.
-const OPERATIONS_MODULES: CrmModule[] = ["surveyor", "port", "carrier"];
+// Operasyon iş ortakları artık tek modül değil; gözetim/liman/nakliyeci/acente
+// ayrı. Firmalar type'a göre (surveyor/port/carrier/agent), aktiviteler tek
+// module=operations altında olduğundan ilgili türdeki firma id'lerine göre kapsanır.
+const OPERATIONS_MODULES: CrmModule[] = ["surveyor", "port", "carrier", "agent"];
 
 const MODULE_META: Record<
   CrmModule,
@@ -63,16 +63,23 @@ const MODULE_META: Record<
     typeFilter: ["carrier"],
     activitiesModule: "operations",
   },
+  agent: {
+    toggleLabel: "Acente",
+    companyLabel: "Acenteler",
+    companyType: "agent",
+    typeFilter: ["agent"],
+    activitiesModule: "operations",
+  },
 };
 
 // Rol başına görünür CRM modülleri. admin/viewer hepsini; satın alma/satış kendi
-// modülünü; operasyon üç iş ortağı türünü ayrı ayrı görür.
+// modülünü; operasyon dört iş ortağı türünü (gözetim/liman/nakliyeci/acente) ayrı ayrı görür.
 function modulesForRole(role: Role): CrmModule[] {
   const base = baseRole(role);
   if (base === "admin" || base === "viewer")
-    return ["purchasing", "sales", "surveyor", "port", "carrier"];
+    return ["purchasing", "sales", "surveyor", "port", "carrier", "agent"];
   if (base === "sales") return ["sales"];
-  if (base === "operations") return ["surveyor", "port", "carrier"];
+  if (base === "operations") return ["surveyor", "port", "carrier", "agent"];
   return ["purchasing"];
 }
 
@@ -141,7 +148,7 @@ export function CrmTabs({ role }: { role: Role }) {
           {isOps && (
             <OperationPartnerStats
               key={`ps-${effModule}`}
-              companyType={effModule as "surveyor" | "port" | "carrier"}
+              companyType={effModule as "surveyor" | "port" | "carrier" | "agent"}
             />
           )}
           <ResourceManager

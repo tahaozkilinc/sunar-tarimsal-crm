@@ -39,7 +39,7 @@ const ROLE_OPTIONS: Role[] = [
 const EXTERNAL_ROLE_COMPANY: Partial<Record<Role, { type: string; label: string; hint: string }>> = {
   nakliyeci: { type: "carrier",  label: "Nakliyeci Firması", hint: "Önce CRM'den Nakliyeci türünde bir firma ekleyin." },
   gozetim:   { type: "surveyor", label: "Gözetim Firması",   hint: "Önce CRM'den Gözetim Şirketi türünde bir firma ekleyin." },
-  acente:    { type: "agent",    label: "Acente Firması",    hint: "Önce CRM'den Yurtdışı Acente türünde bir firma ekleyin." },
+  acente:    { type: "agent",    label: "Acente Firması",    hint: "Önce CRM'den Acente türünde bir firma ekleyin." },
 };
 
 type ExtCompany = { id: string; name: string; type: string };
