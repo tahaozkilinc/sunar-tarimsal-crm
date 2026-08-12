@@ -59,7 +59,7 @@ export interface Product {
   code: string | null;
   category: string | null;
   unit: string;
-  hs_code: string | null; // GTİP kodu (TUİK karşılaştırması için)
+  hs_code: string | null; // GTİP kodu
   is_active: boolean;
 }
 

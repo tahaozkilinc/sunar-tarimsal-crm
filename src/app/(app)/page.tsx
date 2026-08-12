@@ -5,7 +5,7 @@ import { Card } from "@/components/ui";
 import { baseRole, ROLE_LABELS } from "@/lib/nav";
 import { formatDate, formatNumber } from "@/lib/format";
 import { L } from "@/lib/i18n";
-import { AlertTriangle, BarChart3, Calculator, Send, ShoppingCart, TrendingUp, Truck, Users, Wallet } from "lucide-react";
+import { AlertTriangle, Calculator, Send, ShoppingCart, TrendingUp, Truck, Users, Wallet } from "lucide-react";
 
 const sum = <T,>(rows: T[], pick: (r: T) => unknown) =>
   rows.reduce((a, r) => a + (Number(pick(r)) || 0), 0);
@@ -38,9 +38,8 @@ export default async function DashboardPage() {
   const canCrm = v || ["admin", "purchasing", "sales"].includes(base);
   const canSalesOps = v || base === "sales_ops";
 
-  const year = new Date().getFullYear();
   const canExp = canO || canM || canB;
-  const [c, s, inv, mv, crm, tuik, exp] = await Promise.all([
+  const [c, s, inv, mv, crm, exp] = await Promise.all([
     canB || canO
       ? supabase
           .from("purchase_contracts")
@@ -55,9 +54,6 @@ export default async function DashboardPage() {
       : Promise.resolve({ data: null }),
     canCrm
       ? supabase.from("crm_activities").select("status,due_date")
-      : Promise.resolve({ data: null }),
-    canB
-      ? supabase.from("tuik_monthly_imports").select("hs_code").eq("year", year)
       : Promise.resolve({ data: null }),
     canExp
       ? supabase.from("warehouse_expenses").select("contract_id").eq("is_auto", true).eq("amount", 0)
@@ -248,23 +244,6 @@ export default async function DashboardPage() {
       main: `${formatNumber(baglantiTon)} ton`,
       sub: `${baglantiActive.length} aktif sözleşme · yolda ${formatNumber(yolda)} ton`,
     });
-  if (canB) {
-    // Farklı GTİP'lerin tonu toplanmaz (mısır + yağ + küspe anlamsız);
-    // kart bu yıl verisi girilmiş GTİP sayısını gösterir.
-    const tuikRows = (tuik.data as { hs_code: string }[] | null) || [];
-    const gtipCount = new Set(tuikRows.map((r) => r.hs_code)).size;
-    cards.push({
-      title: "İthalat",
-      href: "/imports",
-      icon: BarChart3,
-      tone: "bg-emerald-50 text-emerald-700",
-      main: gtipCount > 0 ? `${gtipCount} GTİP` : "TÜİK",
-      sub:
-        gtipCount > 0
-          ? `${year} TÜİK verisi girildi · payımızı gör`
-          : "TÜİK karşılaştırması · aylık ithalat",
-    });
-  }
   if (canS)
     cards.push({
       title: "Satış",
