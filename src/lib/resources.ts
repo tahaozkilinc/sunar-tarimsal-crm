@@ -64,6 +64,10 @@ export interface FieldDef {
   formHidden?: boolean;
   readOnly?: boolean;
   placeholder?: string;
+  // "date" alanı için: liste/detay hücresinde tarihin yanına her zaman
+  // DeadlineBadge (kaç gün kaldı/geçti) eklenir — yalnız yaklaşınca değil,
+  // her zaman görünür olsun diye (bkz. resource-manager.tsx renderCell).
+  showDeadline?: boolean;
 }
 
 // Bir kaydın bir "kapasiteyi" (ör. bağlantı tonajı) aşmasını engelleyen kota tanımı.
@@ -364,7 +368,10 @@ export const salesOrdersResource: ResourceConfig = {
   singular: "Satış",
   writeRoles: ["admin", "sales"],
   defaultValues: { unit: "ton", currency: "TRY" },
-  orderBy: { column: "created_at", ascending: false },
+  // En yakın son teslim tarihi en üstte (kullanıcı isteği: sevkiyatı en
+  // yaklaşan satış ilk sırada görünsün). final_sale_date NULL olan (eski/
+  // geçiş öncesi) kayıtlar Postgres'in varsayılan davranışıyla en sona düşer.
+  orderBy: { column: "final_sale_date", ascending: true },
   listFields: ["order_no", "customer_id", "sale_type", "product_id", "quantity", "final_sale_date", "status"],
   fxCapture: true,
   uppercaseText: true,
@@ -392,7 +399,7 @@ export const salesOrdersResource: ResourceConfig = {
     { name: "currency", label: "Para Birimi", type: "select", options: CURRENCY_OPTIONS, inlineAfter: true },
     // Sevkiyatın bitirilmesi beklenen son gün — yaklaştıkça/geçtikçe Satışlar
     // panelinde ve Satış Operasyon ekranında uyarı rozeti gösterilir.
-    { name: "final_sale_date", label: "Son Teslim Tarihi", type: "date", required: true },
+    { name: "final_sale_date", label: "Son Teslim Tarihi", type: "date", required: true, showDeadline: true },
     { name: "status", label: "Durum", type: "select", options: SALES_STATUS_OPTIONS, required: true },
     { name: "usd_try", label: "USD/TRY (TCMB)", type: "number", placeholder: "Otomatik" },
     { name: "eur_try", label: "EUR/TRY (TCMB)", type: "number", placeholder: "Otomatik" },

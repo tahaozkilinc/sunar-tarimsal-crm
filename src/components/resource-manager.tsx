@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 import {
   Badge,
   Button,
+  DeadlineBadge,
   EmptyState,
   Field,
   Input,
@@ -739,6 +740,14 @@ export function ResourceManager({
       case "boolean":
         return value ? <Badge color="green">Evet</Badge> : <Badge color="gray">Hayır</Badge>;
       case "date":
+        if (field.showDeadline) {
+          return (
+            <span className="inline-flex items-center gap-1.5">
+              <span>{formatDate(value as string)}</span>
+              <DeadlineBadge date={value as string} />
+            </span>
+          );
+        }
         return formatDate(value as string);
       case "time":
         return String(value).slice(0, 5);
