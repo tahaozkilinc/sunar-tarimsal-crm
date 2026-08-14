@@ -39,7 +39,7 @@ export function CrmActivitySummary({
   module,
   companyIds,
 }: {
-  module: "purchasing" | "sales" | "operations";
+  module: "purchasing" | "sales" | "operations" | "broker";
   companyIds?: string[];
 }) {
   const supabase = useMemo(() => createClient(), []);
