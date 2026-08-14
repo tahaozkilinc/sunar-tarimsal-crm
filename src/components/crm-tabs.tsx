@@ -10,12 +10,15 @@ import { activitiesResource, companiesResource, warehousesResource } from "@/lib
 import type { Role } from "@/lib/types";
 import { baseRole } from "@/lib/nav";
 
-type CrmModule = "purchasing" | "sales" | "surveyor" | "port" | "carrier" | "agent" | "warehouses";
-type ActivitiesModule = "purchasing" | "sales" | "operations";
+type CrmModule = "purchasing" | "sales" | "surveyor" | "port" | "carrier" | "agent" | "broker" | "warehouses";
+type ActivitiesModule = "purchasing" | "sales" | "operations" | "broker";
 
 // Operasyon iş ortakları artık tek modül değil; gözetim/liman/nakliyeci/acente
 // ayrı. Firmalar type'a göre (surveyor/port/carrier/agent), aktiviteler tek
 // module=operations altında olduğundan ilgili türdeki firma id'lerine göre kapsanır.
+// Broker BUNA DAHİL DEĞİL: satın alma tarafına ait (operasyona değil), kendi
+// izole module='broker' kovasını kullanır (bkz. 0058/0059) — mevcut
+// Tedarikçiler (purchasing) sekmesinin aktivite listesine hiç karışmaz.
 const OPERATIONS_MODULES: CrmModule[] = ["surveyor", "port", "carrier", "agent"];
 
 const MODULE_META: Record<
@@ -70,6 +73,13 @@ const MODULE_META: Record<
     typeFilter: ["agent"],
     activitiesModule: "operations",
   },
+  broker: {
+    toggleLabel: "Broker",
+    companyLabel: "Brokerlar",
+    companyType: "broker",
+    typeFilter: ["broker"],
+    activitiesModule: "broker",
+  },
   // Depolar companies değil warehouses tablosu üzerinde çalışır — companies/
   // activities iki-sekme deseni buraya uymaz, kendi ayrı dalı var (aşağıda,
   // effModule === "warehouses" erken dönüşü). Buradaki alanların toggleLabel
@@ -83,15 +93,18 @@ const MODULE_META: Record<
   },
 };
 
-// Rol başına görünür CRM modülleri. admin/viewer hepsini; satın alma/satış kendi
-// modülünü; operasyon dört iş ortağı türünü (gözetim/liman/nakliyeci/acente) +
-// Depolar'ı ayrı ayrı görür (depo yönetimi zaten operasyonun işi, bkz. warehouses_write).
+// Rol başına görünür CRM modülleri. admin/viewer hepsini; satış kendi modülünü;
+// operasyon dört iş ortağı türünü (gözetim/liman/nakliyeci/acente) + Depolar'ı
+// ayrı ayrı görür (depo yönetimi zaten operasyonun işi, bkz. warehouses_write);
+// satın alma kendi modülüne ek olarak broker'ı görür (bağlantı açılırken
+// broker seçildiği için satın almaya ait, operasyona değil).
 function modulesForRole(role: Role): CrmModule[] {
   const base = baseRole(role);
   if (base === "admin" || base === "viewer")
-    return ["purchasing", "sales", "surveyor", "port", "carrier", "agent", "warehouses"];
+    return ["purchasing", "sales", "surveyor", "port", "carrier", "agent", "broker", "warehouses"];
   if (base === "sales") return ["sales"];
   if (base === "operations") return ["surveyor", "port", "carrier", "agent", "warehouses"];
+  if (base === "purchasing") return ["purchasing", "broker"];
   return ["purchasing"];
 }
 
@@ -184,10 +197,10 @@ export function CrmTabs({ role }: { role: Role }) {
 
       {tab === "companies" && (
         <div className="space-y-4">
-          {isOps && (
+          {(isOps || effModule === "broker") && (
             <OperationPartnerStats
               key={`ps-${effModule}`}
-              companyType={effModule as "surveyor" | "port" | "carrier" | "agent"}
+              companyType={effModule as "surveyor" | "port" | "carrier" | "agent" | "broker"}
             />
           )}
           <ResourceManager

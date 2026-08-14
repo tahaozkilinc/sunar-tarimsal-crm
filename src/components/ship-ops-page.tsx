@@ -24,6 +24,7 @@ type Contract = {
   port_id: string | null;
   carrier_id: string | null;
   agent_id: string | null;
+  assigned_to: string | null;
 };
 type Movement = {
   id: string;
@@ -94,6 +95,7 @@ export function ShipOpsPage({
   const [warehouses, setWarehouses] = useState<Ref[]>([]);
   const [products, setProducts]   = useState<Ref[]>([]);
   const [companies, setCompanies] = useState<CompanyRef[]>([]);
+  const [opsUsers, setOpsUsers]   = useState<Ref[]>([]); // role='operations' -> "Operasyon Sorumlusu" seçenekleri
   const [creatorNames, setCreatorNames] = useState<Record<string, string>>({});
   const [canWrite, setCanWrite]   = useState(false); // araç tonajı + irsaliye (admin/operations/nakliyeci/gozetim)
   const [canManage, setCanManage] = useState(false); // taraf atama, gemiyi bitir, numune galerisi (admin/operations)
@@ -131,6 +133,7 @@ export function ShipOpsPage({
   const [portId,     setPortId]     = useState("");
   const [carrierId,  setCarrierId]  = useState("");
   const [agentId,    setAgentId]    = useState("");
+  const [assignedToId, setAssignedToId] = useState("");
   const [assignSaving, setAssignSaving] = useState(false);
   const [assignErr, setAssignErr] = useState<string | null>(null);
   const [assignFlash, setAssignFlash] = useState<string | null>(null);
@@ -170,7 +173,7 @@ export function ShipOpsPage({
   useEffect(() => {
     (async () => {
       const CONTRACT_COLS =
-        "id,contract_no,vessel,product_id,supplier_id,quantity,unit,eta,status,surveyor_id,port_id,carrier_id,agent_id";
+        "id,contract_no,vessel,product_id,supplier_id,quantity,unit,eta,status,surveyor_id,port_id,carrier_id,agent_id,assigned_to";
       const [c0, w, p, co, pn, { data: au }] = await Promise.all([
         supabase
           .from("purchase_contracts")
@@ -181,7 +184,7 @@ export function ShipOpsPage({
         supabase.from("warehouses").select("id,name").eq("is_active", true).neq("type", "foreign").order("name"),
         supabase.from("products").select("id,name"),
         supabase.from("companies").select("id,name,type").order("name"),
-        supabase.from("profile_names").select("id,full_name"),
+        supabase.from("profile_names").select("id,full_name,role"),
         supabase.auth.getUser(),
       ]);
       // Dış roller (nakliyeci/gozetim/acente) tabloyu okuyamaz (fiyat gizli);
@@ -205,11 +208,12 @@ export function ShipOpsPage({
       setPortId(cd?.port_id ?? "");
       setCarrierId(cd?.carrier_id ?? "");
       setAgentId(cd?.agent_id ?? "");
+      setAssignedToId(cd?.assigned_to ?? "");
+      const pnRows = (pn.data as { id: string; full_name: string | null; role: string | null }[] | null) || [];
       const names: Record<string, string> = {};
-      ((pn.data as { id: string; full_name: string | null }[] | null) || []).forEach((x) => {
-        names[x.id] = x.full_name || "—";
-      });
+      pnRows.forEach((x) => { names[x.id] = x.full_name || "—"; });
       setCreatorNames(names);
+      setOpsUsers(pnRows.filter((x) => x.role === "operations").map((x) => ({ id: x.id, name: x.full_name || "—" })));
       let isManager = false;
       if (au.user) {
         const { data: prof } = await supabase
@@ -249,7 +253,8 @@ export function ShipOpsPage({
     surveyorId !== (contract?.surveyor_id ?? "") ||
     portId     !== (contract?.port_id ?? "") ||
     carrierId  !== (contract?.carrier_id ?? "") ||
-    agentId    !== (contract?.agent_id ?? "");
+    agentId    !== (contract?.agent_id ?? "") ||
+    assignedToId !== (contract?.assigned_to ?? "");
 
   const totalDrawn = useMemo(
     () => movements.reduce((a, m) => a + (Number(m.quantity) || 0), 0),
@@ -372,6 +377,7 @@ export function ShipOpsPage({
       p_port_id:     portId || null,
       p_carrier_id:  carrierId || null,
       p_agent_id:    agentId || null,
+      p_assigned_to: assignedToId || null,
     });
     if (rpcResult.error) { setAssignSaving(false); setAssignErr(rpcResult.error.message); return; }
     const parties = {
@@ -379,6 +385,7 @@ export function ShipOpsPage({
       port_id:     portId || null,
       carrier_id:  carrierId || null,
       agent_id:    agentId || null,
+      assigned_to: assignedToId || null,
     };
     setContract(prev => prev ? { ...prev, ...parties } : prev);
     setAssignSaving(false);
@@ -483,7 +490,7 @@ export function ShipOpsPage({
         <div className="mb-3 flex items-center justify-between">
           <span className="text-sm font-semibold">Operasyon Tarafları</span>
         </div>
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
           <Field label="Gözetim Şirketi">
             {canWrite && contract.status !== "completed" ? (
               <Select value={surveyorId} onChange={e => setSurveyorId(e.target.value)}>
@@ -522,6 +529,16 @@ export function ShipOpsPage({
               </Select>
             ) : (
               <div className="rounded-lg border border-border bg-gray-50 px-3 py-2 text-sm">{cName(contract.agent_id)}</div>
+            )}
+          </Field>
+          <Field label="Operasyon Sorumlusu">
+            {canWrite && contract.status !== "completed" ? (
+              <Select value={assignedToId} onChange={e => setAssignedToId(e.target.value)}>
+                <option value="">Seçiniz...</option>
+                {opsUsers.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+              </Select>
+            ) : (
+              <div className="rounded-lg border border-border bg-gray-50 px-3 py-2 text-sm">{creatorName(contract.assigned_to)}</div>
             )}
           </Field>
         </div>

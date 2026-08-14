@@ -134,6 +134,7 @@ export const COMPANY_TYPE_OPTIONS: SelectOption[] = [
   { value: "port", label: "Liman", color: "gray" },
   { value: "carrier", label: "Nakliyeci", color: "red" },
   { value: "agent", label: "Acente", color: "purple" },
+  { value: "broker", label: "Broker", color: "green" },
 ];
 
 export const LOCATION_TYPE_OPTIONS: SelectOption[] = [
@@ -323,6 +324,7 @@ export const purchaseContractsResource: ResourceConfig = {
     // ister — 0035_data_integrity.sql — yani boş bırakmak hâlâ güvenli).
     { name: "contract_no", label: "Sözleşme No", type: "text", unique: true },
     { name: "supplier_id", label: "Tedarikçi", type: "reference", ref: { table: "companies", labelField: "name", filter: { type: ["supplier", "both"] } }, required: true },
+    { name: "broker_id", label: "Broker", type: "reference", ref: { table: "companies", labelField: "name", filter: { type: ["broker"] } } },
     { name: "product_id", label: "Ürün (Yağlı Tohum)", type: "reference", ref: { table: "products", labelField: "name", filter: { is_active: ["true"] } } },
     { name: "quantity", label: "Miktar", type: "number", required: true, positive: true },
     { name: "unit", label: "Birim", type: "select", options: UNIT_OPTIONS, required: true, inlineAfter: true },
@@ -336,8 +338,12 @@ export const purchaseContractsResource: ResourceConfig = {
     { name: "laycan_start", label: "Laycan Başlangıç", type: "date" },
     { name: "laycan_end", label: "Laycan Bitiş", type: "date" },
     { name: "status", label: "Durum", type: "select", options: CONTRACT_STATUS_OPTIONS, required: true },
-    { name: "assigned_to", label: "Operasyon Sorumlusu", type: "reference", ref: { table: "profiles", labelField: "full_name", filter: { role: ["operations"] } } },
-    { name: "agent_id", label: "Acente (Yükleme Takibi)", type: "reference", ref: { table: "companies", labelField: "name", filter: { type: ["agent"] } } },
+    // Sözleşme açılışında zorunlu DEĞİL: ship-ops sayfasındaki "Operasyon
+    // Tarafları" kartından (gözetim/liman/nakliyeci ile aynı akış) sonradan
+    // atanır (bkz. assign_ship_parties, 0057). formHidden -> formdan gizli
+    // ama Detay görünümünde ve DB'de kalır (bkz. resource-manager.tsx).
+    { name: "assigned_to", label: "Operasyon Sorumlusu", type: "reference", ref: { table: "profiles", labelField: "full_name", filter: { role: ["operations"] } }, formHidden: true },
+    { name: "agent_id", label: "Acente (Yükleme Takibi)", type: "reference", ref: { table: "companies", labelField: "name", filter: { type: ["agent"] } }, formHidden: true },
     { name: "payment_due_date", label: "Öngörülen Ödeme Tarihi", type: "date" },
     { name: "buyer", label: "Alıcı", type: "select_other", options: BUYER_OPTIONS },
     { name: "principal_id", label: "Kimin Adına", type: "reference", ref: { table: "principals", labelField: "name" } },
