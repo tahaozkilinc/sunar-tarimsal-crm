@@ -5,12 +5,13 @@ import { Tabs } from "./ui";
 import { ResourceManager } from "./resource-manager";
 import { CrmActivitySummary } from "./crm-activity-summary";
 import { OperationPartnerStats } from "./company-ship-stats";
+import { WarehouseDetailExtra } from "./warehouse-detail-extra";
 import { createClient } from "@/lib/supabase/client";
-import { activitiesResource, companiesResource } from "@/lib/resources";
+import { activitiesResource, companiesResource, warehousesResource } from "@/lib/resources";
 import type { Role } from "@/lib/types";
 import { baseRole } from "@/lib/nav";
 
-type CrmModule = "purchasing" | "sales" | "surveyor" | "port" | "carrier" | "agent";
+type CrmModule = "purchasing" | "sales" | "surveyor" | "port" | "carrier" | "agent" | "warehouses";
 type ActivitiesModule = "purchasing" | "sales" | "operations";
 
 // Operasyon iş ortakları artık tek modül değil; gözetim/liman/nakliyeci/acente
@@ -70,16 +71,28 @@ const MODULE_META: Record<
     typeFilter: ["agent"],
     activitiesModule: "operations",
   },
+  // Depolar companies değil warehouses tablosu üzerinde çalışır — companies/
+  // activities iki-sekme deseni buraya uymaz, kendi ayrı dalı var (aşağıda,
+  // effModule === "warehouses" erken dönüşü). Buradaki alanların toggleLabel
+  // DIŞINDAKİ hiçbiri o dalda okunmaz; tip basit kalsın diye dolgu değer.
+  warehouses: {
+    toggleLabel: "Depolar",
+    companyLabel: "Depolar",
+    companyType: "",
+    typeFilter: [],
+    activitiesModule: "purchasing",
+  },
 };
 
 // Rol başına görünür CRM modülleri. admin/viewer hepsini; satın alma/satış kendi
-// modülünü; operasyon dört iş ortağı türünü (gözetim/liman/nakliyeci/acente) ayrı ayrı görür.
+// modülünü; operasyon dört iş ortağı türünü (gözetim/liman/nakliyeci/acente) +
+// Depolar'ı ayrı ayrı görür (depo yönetimi zaten operasyonun işi, bkz. warehouses_write).
 function modulesForRole(role: Role): CrmModule[] {
   const base = baseRole(role);
   if (base === "admin" || base === "viewer")
-    return ["purchasing", "sales", "surveyor", "port", "carrier", "agent"];
+    return ["purchasing", "sales", "surveyor", "port", "carrier", "agent", "warehouses"];
   if (base === "sales") return ["sales"];
-  if (base === "operations") return ["surveyor", "port", "carrier", "agent"];
+  if (base === "operations") return ["surveyor", "port", "carrier", "agent", "warehouses"];
   return ["purchasing"];
 }
 
@@ -115,6 +128,32 @@ export function CrmTabs({ role }: { role: Role }) {
       on = false;
     };
   }, [supabase, showsOps]);
+
+  // Depolar: companies/activities iki-sekme deseni buraya uymuyor (warehouses
+  // tablosu, aktivite kavramı yok) — Stok'taki ("Depolar / Fabrikalar" sekmesi)
+  // AYNI kaynak + AYNI WarehouseDetailExtra kullanılır, tek veri kaynağı.
+  if (effModule === "warehouses") {
+    return (
+      <div className="space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h1 className="text-xl font-bold">CRM</h1>
+          {available.length > 1 && (
+            <Tabs
+              value={effModule}
+              onChange={(k) => setCrmModule(k as CrmModule)}
+              tabs={available.map((m) => ({ key: m, label: MODULE_META[m].toggleLabel }))}
+            />
+          )}
+        </div>
+        <ResourceManager
+          config={warehousesResource}
+          role={role}
+          hideTitle
+          detailExtra={(row) => <WarehouseDetailExtra warehouseId={String(row.id)} role={role} />}
+        />
+      </div>
+    );
+  }
 
   const opIds = isOps ? opCompanyIds[effModule] ?? [] : undefined;
   const activitiesFilter: Record<string, string | number | boolean | string[]> = isOps

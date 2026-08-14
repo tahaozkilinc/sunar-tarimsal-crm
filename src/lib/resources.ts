@@ -270,6 +270,26 @@ export const contactsResource: ResourceConfig = {
   ],
 };
 
+// contacts (companies) ile AYNI desen, depo için — bkz. 0064. Ayrı bir tablo:
+// contacts.company_id NOT NULL olduğundan bu ilişkiyi contacts'a eklemek o
+// tabloyu riske atardı.
+export const warehouseContactsResource: ResourceConfig = {
+  table: "warehouse_contacts",
+  title: "Depo Yetkilileri",
+  singular: "Yetkili",
+  writeRoles: ["admin", "operations"],
+  orderBy: { column: "full_name", ascending: true },
+  listFields: ["full_name", "title", "phone", "email"],
+  fields: [
+    { name: "warehouse_id", label: "Depo", type: "reference", ref: { table: "warehouses", labelField: "name" }, required: true },
+    { name: "full_name", label: "Ad Soyad", type: "text", required: true },
+    { name: "title", label: "Ünvan", type: "text" },
+    { name: "phone", label: "Telefon", type: "tel" },
+    { name: "email", label: "E-posta", type: "email" },
+    { name: "notes", label: "Notlar", type: "textarea" },
+  ],
+};
+
 export const activitiesResource: ResourceConfig = {
   table: "crm_activities",
   title: "Aktiviteler",
