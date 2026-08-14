@@ -315,7 +315,7 @@ export const purchaseContractsResource: ResourceConfig = {
   writeRoles: ["admin", "purchasing"],
   defaultValues: { unit: "ton", currency: "USD" },
   orderBy: { column: "created_at", ascending: false },
-  listFields: ["contract_no", "supplier_id", "product_id", "quantity", "eta", "status"],
+  listFields: ["contract_no", "supplier_id", "product_id", "quantity", "eta", "status", "created_by"],
   fxCapture: true,
   uppercaseText: true,
   fields: [
@@ -348,6 +348,9 @@ export const purchaseContractsResource: ResourceConfig = {
     { name: "buyer", label: "Alıcı", type: "select_other", options: BUYER_OPTIONS },
     { name: "principal_id", label: "Kimin Adına", type: "reference", ref: { table: "principals", labelField: "name" } },
     { name: "created_at", label: "Sözleşme Tarihi", type: "date", readOnly: true },
+    // profiles yerine profile_names (geniş okunabilir, yalnızca ad) — bkz.
+    // ship-ops-page.tsx'teki "Giren" kolonuyla aynı desen.
+    { name: "created_by", label: "Ekleyen", type: "reference", ref: { table: "profile_names", labelField: "full_name" }, readOnly: true },
     { name: "contract_file_url", label: "Sözleşme Dosyası (PDF)", type: "file", bucket: "contracts" },
     { name: "usd_try", label: "USD/TRY (TCMB)", type: "number", placeholder: "Otomatik" },
     { name: "eur_try", label: "EUR/TRY (TCMB)", type: "number", placeholder: "Otomatik" },
@@ -363,7 +366,7 @@ export const stockMovementsResource: ResourceConfig = {
   writeRoles: ["admin", "operations"],
   defaultValues: { unit: "ton" },
   orderBy: { column: "movement_date", ascending: false },
-  listFields: ["movement_date", "contract_id", "product_id", "warehouse_id", "movement_type", "quantity"],
+  listFields: ["movement_date", "contract_id", "product_id", "warehouse_id", "movement_type", "quantity", "created_by"],
   limitToRecent: true,
   fields: [
     { name: "movement_date", label: "Tarih", type: "date", required: true },
@@ -378,6 +381,10 @@ export const stockMovementsResource: ResourceConfig = {
     { name: "stock_status", label: "Milli / Yerli", type: "select", options: STOCK_STATUS_OPTIONS },
     { name: "vehicle_plate", label: "Araç Plakası", type: "text" },
     { name: "driver_name", label: "Şoför", type: "text" },
+    // Gemiden boşaltma (ship-ops-page.tsx) da, buradaki elle giriş de AYNI
+    // tabloya yazar — ikisi için de kim girdiğini gösterir (bkz. DB default
+    // auth.uid(); profile_names geniş okunabilir, yalnızca ad).
+    { name: "created_by", label: "Giren", type: "reference", ref: { table: "profile_names", labelField: "full_name" }, readOnly: true },
     { name: "notes", label: "Notlar", type: "textarea" },
   ],
 };
@@ -392,7 +399,7 @@ export const salesOrdersResource: ResourceConfig = {
   // yaklaşan satış ilk sırada görünsün). final_sale_date NULL olan (eski/
   // geçiş öncesi) kayıtlar Postgres'in varsayılan davranışıyla en sona düşer.
   orderBy: { column: "final_sale_date", ascending: true },
-  listFields: ["order_no", "customer_id", "sale_type", "product_id", "quantity", "final_sale_date", "status"],
+  listFields: ["order_no", "customer_id", "sale_type", "product_id", "quantity", "final_sale_date", "status", "created_by"],
   fxCapture: true,
   uppercaseText: true,
   // Kaynak bağlantı (gemi) artık elle seçilmiyor: fn_sales_order_autofill_contract
@@ -424,6 +431,7 @@ export const salesOrdersResource: ResourceConfig = {
     { name: "usd_try", label: "USD/TRY (TCMB)", type: "number", placeholder: "Otomatik" },
     { name: "eur_try", label: "EUR/TRY (TCMB)", type: "number", placeholder: "Otomatik" },
     { name: "fx_date", label: "Kur Tarihi", type: "date" },
+    { name: "created_by", label: "Satışı Giren", type: "reference", ref: { table: "profile_names", labelField: "full_name" }, readOnly: true },
     { name: "notes", label: "Notlar", type: "textarea" },
   ],
 };
