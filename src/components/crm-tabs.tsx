@@ -5,7 +5,6 @@ import { Tabs } from "./ui";
 import { ResourceManager } from "./resource-manager";
 import { CrmActivitySummary } from "./crm-activity-summary";
 import { OperationPartnerStats } from "./company-ship-stats";
-import { WarehouseDetailExtra } from "./warehouse-detail-extra";
 import { createClient } from "@/lib/supabase/client";
 import { activitiesResource, companiesResource, warehousesResource } from "@/lib/resources";
 import type { Role } from "@/lib/types";
@@ -130,8 +129,9 @@ export function CrmTabs({ role }: { role: Role }) {
   }, [supabase, showsOps]);
 
   // Depolar: companies/activities iki-sekme deseni buraya uymuyor (warehouses
-  // tablosu, aktivite kavramı yok) — Stok'taki ("Depolar / Fabrikalar" sekmesi)
-  // AYNI kaynak + AYNI WarehouseDetailExtra kullanılır, tek veri kaynağı.
+  // tablosu, aktivite kavramı yok). Diğer CRM modülleri gibi satır tıklanınca
+  // ayrı bir sayfaya gider (bkz. /crm/warehouses/[id], WarehouseDetailView) —
+  // satır-içi açılır panel değil.
   if (effModule === "warehouses") {
     return (
       <div className="space-y-4">
@@ -149,7 +149,7 @@ export function CrmTabs({ role }: { role: Role }) {
           config={warehousesResource}
           role={role}
           hideTitle
-          detailExtra={(row) => <WarehouseDetailExtra warehouseId={String(row.id)} role={role} />}
+          rowHref={(row) => `/crm/warehouses/${row.id}`}
         />
       </div>
     );
