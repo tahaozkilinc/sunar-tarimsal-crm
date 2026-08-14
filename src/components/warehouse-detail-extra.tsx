@@ -1,9 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { Badge, Card, Select } from "./ui";
 import { PhotoGallery } from "./photo-gallery";
+import { ResourceManager } from "./resource-manager";
 import { formatDate, formatNumber } from "@/lib/format";
 import {
   attributeByWarehouse,
@@ -12,27 +14,34 @@ import {
   type AttributionMovement,
   type LedgerMovement,
 } from "@/lib/stock-attribution";
-import { MOVEMENT_TYPE_OPTIONS, STOCK_STATUS_OPTIONS } from "@/lib/resources";
+import { MOVEMENT_TYPE_OPTIONS, STOCK_STATUS_OPTIONS, warehouseContactsResource } from "@/lib/resources";
 import { baseRole } from "@/lib/nav";
 import type { Role } from "@/lib/types";
 
-// Depo Detayı görünümüne (ResourceManager detailExtra) enjekte edilir:
+// Depo Detayı görünümüne (ResourceManager detailExtra) enjekte edilir — Stok'ta
+// (InventoryView) ve CRM'de ("Depolar" modülü) AYNI bileşen kullanılır, tek
+// veri kaynağı, ikisi birbirinden kopuk değil:
 //   1) Depo fotoğrafları (PhotoGallery, warehouse_photos)
-//   2) "Hangi Gemiden Geldi" kırılımı — depoya giren malın hangi bağlantı
+//   2) Depo Yetkilileri — bu depodaki kişiler (warehouse_contacts, bkz. 0064;
+//      contacts'a company_id NOT NULL olduğundan eklenemedi, ayrı tablo).
+//   3) "Hangi Gemiden Geldi" kırılımı — depoya giren malın hangi bağlantı
 //      (gemi/parti) hangi oranda kaynaklık ettiği (bkz. attributeByWarehouse:
 //      çıkış hareketleri belirli bir gemiye ait değildir, giren payına
 //      ORANTILI düşülür — kesin değil, tahminidir).
-//   3) "Milli / Yerli" kırılımı — AYNI teknik, stock_status'e göre.
-//   4) Giriş / Çıkış Geçmişi — HER hareketi kendi tarihiyle, ürün bazında
+//   4) "Tedarikçi Bazlı Dağılım" — AYNI teknik, gemi yerine sözleşmenin
+//      tedarikçi firmasına göre ("depo bazlı kiminle ne kadar çalıştık").
+//   5) "Milli / Yerli" kırılımı — AYNI teknik, stock_status'e göre.
+//   6) Giriş / Çıkış Geçmişi — HER hareketi kendi tarihiyle, ürün bazında
 //      koşan bakiyeyle listeler (buildLedger; tahmini değil, gerçek veri).
 //      Bu bilgi operasyondan (gemi boşaltma / sevkiyat) OTOMATİK gelir —
 //      elle ayrıca bir şey girilmez.
 
 type Movement = AttributionMovement &
   LedgerMovement & { contract_id: string | null; stock_status: string | null; sale_id: string | null };
-type ContractRef = { id: string; vessel: string | null; contract_no: string | null };
+type ContractRef = { id: string; vessel: string | null; contract_no: string | null; supplier_id: string | null };
 type ProductRef = { id: string; name: string };
 type SaleRef = { id: string; order_no: string | null };
+type CompanyRef = { id: string; name: string };
 
 export function WarehouseDetailExtra({ warehouseId, role }: { warehouseId: string; role: Role }) {
   const supabase = useMemo(() => createClient(), []);
@@ -42,6 +51,7 @@ export function WarehouseDetailExtra({ warehouseId, role }: { warehouseId: strin
   const [contracts, setContracts] = useState<ContractRef[]>([]);
   const [products, setProducts] = useState<ProductRef[]>([]);
   const [sales, setSales] = useState<SaleRef[]>([]);
+  const [suppliers, setSuppliers] = useState<CompanyRef[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -63,15 +73,23 @@ export function WarehouseDetailExtra({ warehouseId, role }: { warehouseId: strin
       const saleIds = Array.from(new Set(rows.map((r) => r.sale_id).filter(Boolean))) as string[];
       const [cRes, sRes] = await Promise.all([
         contractIds.length > 0
-          ? supabase.from("purchase_contracts").select("id,vessel,contract_no").in("id", contractIds)
+          ? supabase.from("purchase_contracts").select("id,vessel,contract_no,supplier_id").in("id", contractIds)
           : Promise.resolve({ data: [] as ContractRef[] }),
         saleIds.length > 0
           ? supabase.from("sales_orders").select("id,order_no").in("id", saleIds)
           : Promise.resolve({ data: [] as SaleRef[] }),
       ]);
       if (!on) return;
-      setContracts((cRes.data as ContractRef[] | null) || []);
+      const contractRows = (cRes.data as ContractRef[] | null) || [];
+      setContracts(contractRows);
       setSales((sRes.data as SaleRef[] | null) || []);
+
+      const supplierIds = Array.from(new Set(contractRows.map((c) => c.supplier_id).filter(Boolean))) as string[];
+      const { data: coData } = supplierIds.length > 0
+        ? await supabase.from("companies").select("id,name").in("id", supplierIds)
+        : { data: [] as CompanyRef[] };
+      if (!on) return;
+      setSuppliers((coData as CompanyRef[] | null) || []);
       setLoading(false);
     })();
     return () => {
@@ -98,6 +116,7 @@ export function WarehouseDetailExtra({ warehouseId, role }: { warehouseId: strin
 
   const contractLabel = (id: string) =>
     contracts.find((c) => c.id === id)?.vessel || contracts.find((c) => c.id === id)?.contract_no || "—";
+  const supplierName = (id: string) => suppliers.find((s) => s.id === id)?.name || "—";
   const productName = (id: string | null) => (id && products.find((p) => p.id === id)?.name) || "—";
   const saleLabel = (id: string | null) => (id && sales.find((s) => s.id === id)?.order_no) || null;
   const movementLabel = (t: string) => MOVEMENT_TYPE_OPTIONS.find((o) => o.value === t)?.label || t;
@@ -109,6 +128,18 @@ export function WarehouseDetailExtra({ warehouseId, role }: { warehouseId: strin
       .sort((a, b) => b.ton - a.ton);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [movements, warehouseId, contracts]);
+
+  // "Depo bazlı kiminle ne kadar çalıştık" — gemi yerine sözleşmenin tedarikçi
+  // firmasına göre AYNI orantılı kırılım (attributeByWarehouse).
+  const bySupplier = useMemo(() => {
+    const supplierOf = (r: Movement) =>
+      (r.contract_id && contracts.find((c) => c.id === r.contract_id)?.supplier_id) || null;
+    const map = attributeByWarehouse(movements, supplierOf).get(warehouseId) || new Map();
+    return Array.from(map.entries())
+      .map(([key, ton]) => ({ key, name: key === UNASSIGNED_KEY ? "Kaynağı belirsiz" : supplierName(key), ton }))
+      .sort((a, b) => b.ton - a.ton);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [movements, warehouseId, contracts, suppliers]);
 
   const byStatus = useMemo(() => {
     const map = attributeByWarehouse(movements, (r) => r.stock_status).get(warehouseId) || new Map();
@@ -143,6 +174,23 @@ export function WarehouseDetailExtra({ warehouseId, role }: { warehouseId: strin
       </div>
 
       <div>
+        <div className="mb-2 text-sm font-medium">Depo Yetkilileri</div>
+        <ResourceManager
+          config={{
+            ...warehouseContactsResource,
+            listFields: ["full_name", "title", "phone", "email"],
+            fields: warehouseContactsResource.fields.map((f) =>
+              f.name === "warehouse_id" ? { ...f, formHidden: true } : f,
+            ),
+          }}
+          role={role}
+          filter={{ warehouse_id: warehouseId }}
+          defaultValues={{ warehouse_id: warehouseId }}
+          hideTitle
+        />
+      </div>
+
+      <div>
         <div className="mb-1 text-sm font-medium">Hangi Gemiden Geldi (mevcut stok, tahmini)</div>
         <p className="mb-2 text-xs text-gray-400">
           Aynı depoda birden fazla geminin malı aynı anda bulunabilir. Çıkış hareketleri belirli bir gemiye
@@ -160,6 +208,39 @@ export function WarehouseDetailExtra({ warehouseId, role }: { warehouseId: strin
                 <span className="shrink-0 font-semibold">{formatNumber(r.ton)} ton</span>
               </div>
             ))}
+          </div>
+        )}
+      </div>
+
+      <div>
+        <div className="mb-1 text-sm font-medium">Tedarikçi Bazlı Dağılım (depo bazlı kiminle ne kadar çalıştık)</div>
+        <p className="mb-2 text-xs text-gray-400">
+          Yukarıdaki gemi kırılımıyla aynı orantılı yönteme göre, hangi tedarikçi firmadan gelen malın
+          bu depoda ne kadarının hâlâ durduğu.
+        </p>
+        {loading ? (
+          <div className="text-xs text-gray-400">Yükleniyor...</div>
+        ) : bySupplier.length === 0 ? (
+          <div className="text-xs text-gray-400">Bu depoda kayıtlı giriş yok.</div>
+        ) : (
+          <div className="space-y-1.5">
+            {bySupplier.map((r) =>
+              r.key === UNASSIGNED_KEY ? (
+                <div key={r.key} className="flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-1.5 text-sm">
+                  <span className="truncate text-gray-500">{r.name}</span>
+                  <span className="shrink-0 font-semibold">{formatNumber(r.ton)} ton</span>
+                </div>
+              ) : (
+                <Link
+                  key={r.key}
+                  href={`/crm/${r.key}`}
+                  className="flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-gray-50"
+                >
+                  <span className="truncate text-brand hover:underline">{r.name}</span>
+                  <span className="shrink-0 font-semibold">{formatNumber(r.ton)} ton</span>
+                </Link>
+              ),
+            )}
           </div>
         )}
       </div>
