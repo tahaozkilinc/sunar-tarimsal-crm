@@ -5,27 +5,22 @@ import { Tabs } from "./ui";
 import { ResourceManager } from "./resource-manager";
 import { InventoryView } from "./inventory-view";
 import { StockMap } from "./stock-map";
-import { WarehouseDetailExtra } from "./warehouse-detail-extra";
-import { stockMovementsResource, warehousesResource } from "@/lib/resources";
+import { stockMovementsResource } from "@/lib/resources";
 import { baseRole } from "@/lib/nav";
 import type { Role } from "@/lib/types";
 
 export function InventoryTabs({ role }: { role: Role }) {
   const [tab, setTab] = useState("stock");
 
-  // Stok hareketi + depo/fabrika yönetimi yalnızca yönetebilenlere (admin/operasyon).
-  // Stok Durumu ve Harita herkese görünür (görüntüleme).
+  // Stok hareketi yalnızca yönetebilenlere (admin/operasyon). Stok Durumu ve
+  // Harita herkese görünür (görüntüleme). Depo/fabrika yönetimi CRM ->
+  // Depolar'a taşındı (bkz. crm-tabs.tsx) — burada tekrarlanmıyor.
   const canManage = ["admin", "operations"].includes(baseRole(role));
 
   const tabs = [
     { key: "stock", label: "Stok Durumu" },
     { key: "map", label: "Harita" },
-    ...(canManage
-      ? [
-          { key: "movements", label: "Stok Hareketleri" },
-          { key: "warehouses", label: "Depolar / Fabrikalar" },
-        ]
-      : []),
+    ...(canManage ? [{ key: "movements", label: "Stok Hareketleri" }] : []),
   ];
 
   return (
@@ -33,7 +28,7 @@ export function InventoryTabs({ role }: { role: Role }) {
       <h1 className="text-xl font-bold">Stok</h1>
       <Tabs value={tab} onChange={setTab} tabs={tabs} />
 
-      {tab === "stock" && <InventoryView hideTitle role={role} />}
+      {tab === "stock" && <InventoryView hideTitle />}
 
       {tab === "map" && <StockMap />}
 
@@ -45,17 +40,8 @@ export function InventoryTabs({ role }: { role: Role }) {
             Bir malı A&apos;dan B&apos;ye taşımak için B&apos;ye &quot;Giriş&quot;, A&apos;da &quot;Transfer&quot; girin.
             Gemi boşaltma girişleri Operasyon ekranından yapılır.
           </p>
-          <ResourceManager config={stockMovementsResource} role={role} hideTitle />
+          <ResourceManager config={stockMovementsResource} role={role} hideTitle bulkSelect />
         </div>
-      )}
-
-      {tab === "warehouses" && canManage && (
-        <ResourceManager
-          config={warehousesResource}
-          role={role}
-          hideTitle
-          detailExtra={(row) => <WarehouseDetailExtra warehouseId={String(row.id)} role={role} />}
-        />
       )}
     </div>
   );

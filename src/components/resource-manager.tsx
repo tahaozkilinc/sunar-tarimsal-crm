@@ -444,6 +444,7 @@ export function ResourceManager({
   hideTitle,
   hideFilters,
   rowHref,
+  bulkSelect,
 }: {
   config: ResourceConfig;
   role: Role;
@@ -454,6 +455,10 @@ export function ResourceManager({
   hideTitle?: boolean;
   hideFilters?: boolean;
   rowHref?: (row: Row) => string;
+  // true ise satır başına onay kutusu + "N seçili -> Sil" toplu işlem çubuğu
+  // eklenir (yalnızca canWrite). Şimdilik yalnızca toplu SİLME var — ör. Stok
+  // Hareketleri'nde çok sayıda hatalı/yinelenen kaydı tek tek silmek yerine.
+  bulkSelect?: boolean;
 }) {
   const supabase = useMemo(() => createClient(), []);
   const router = useRouter();
@@ -489,6 +494,11 @@ export function ResourceManager({
   const [openFilterCol, setOpenFilterCol] = useState<string | null>(null);
   const [filterPopoverPos, setFilterPopoverPos] = useState({ top: 0, left: 0 });
   const filterPopoverRef = useRef<HTMLDivElement>(null);
+  // Toplu seçim (bulkSelect): seçili satır id'leri. Filtre değişince temizlenir
+  // (aşağıda) — görünmeyen bir satır sessizce seçili kalıp yanlışlıkla toplu
+  // silmeye dahil olmasın diye.
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkDeleting, setBulkDeleting] = useState(false);
 
   useEffect(() => {
     const onDoc = (e: MouseEvent) => {
@@ -856,6 +866,12 @@ export function ResourceManager({
     });
   }, [rows, filters, textFilters, rangeFilters, fieldByName, refData]);
 
+  // Filtre değişince toplu seçim temizlenir — görünmeyen bir satır sessizce
+  // seçili kalıp yanlışlıkla toplu silmeye dahil olmasın.
+  useEffect(() => {
+    setSelected(new Set());
+  }, [filters, textFilters, rangeFilters]);
+
   const exportRows = () => {
     const headers = config.fields.map((f) => f.label);
     const body = filtered.map((row) => config.fields.map((f) => cellText(f, row)));
@@ -1032,6 +1048,43 @@ export function ResourceManager({
       if (error) { alert("Silinemedi: " + error.message); return; }
     }
     loadRows();
+  };
+
+  const toggleSelect = (id: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const allFilteredSelected =
+    filtered.length > 0 && filtered.every((r) => selected.has(String(r.id)));
+  const toggleSelectAll = () => {
+    setSelected(allFilteredSelected ? new Set() : new Set(filtered.map((r) => String(r.id))));
+  };
+
+  const removeMany = async () => {
+    const ids = Array.from(selected);
+    if (ids.length === 0) return;
+    if (!window.confirm(`${ids.length} kayıt silinsin mi?`)) return;
+    setBulkDeleting(true);
+    // .select("id") ile geri okunuyor: RLS bazı satırları sessizce reddedebilir
+    // (ör. operasyon kullanıcısı kendisine atanmamış bir gemiye ait hareketi
+    // silmeye çalışırsa) — kaç satırın GERÇEKTEN silindiği burada ayırt edilir.
+    const query = config.softDelete
+      ? supabase.from(config.table).update({ [config.softDelete.column]: false }).in("id", ids)
+      : supabase.from(config.table).delete().in("id", ids);
+    const { data, error } = await query.select("id");
+    setBulkDeleting(false);
+    if (error) { alert("Silinemedi: " + error.message); return; }
+    const deletedCount = data?.length || 0;
+    setSelected(new Set());
+    loadRows();
+    if (deletedCount < ids.length) {
+      alert(`${deletedCount}/${ids.length} kayıt silindi. Kalanlar için yetkiniz olmayabilir.`);
+    }
   };
 
   // --- detay görünümü + kayda özel not ---
@@ -1329,11 +1382,43 @@ export function ResourceManager({
         <EmptyState message={rows.length === 0 ? "Kayıt bulunamadı." : "Filtreyle eşleşen kayıt yok."} />
       ) : (
         <>
+          {bulkSelect && canWrite && selected.size > 0 && (
+            <div className="mb-3 flex items-center gap-3 rounded-lg border border-brand/30 bg-brand/5 px-3 py-2 text-sm">
+              <span className="font-medium">{selected.size} seçili</span>
+              <button
+                type="button"
+                onClick={removeMany}
+                disabled={bulkDeleting}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-white px-2.5 py-1 text-xs font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                {bulkDeleting ? "Siliniyor..." : "Sil"}
+              </button>
+              <button
+                type="button"
+                onClick={() => setSelected(new Set())}
+                className="text-xs text-gray-500 hover:underline"
+              >
+                Seçimi temizle
+              </button>
+            </div>
+          )}
           {/* Masaüstü tablo */}
           <div className="hidden overflow-x-auto rounded-xl border border-border bg-card md:block">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border bg-gray-50 text-left text-xs uppercase text-gray-500">
+                  {bulkSelect && canWrite && (
+                    <th className="w-10 px-4 py-3">
+                      <input
+                        type="checkbox"
+                        checked={allFilteredSelected}
+                        onChange={toggleSelectAll}
+                        aria-label="Tümünü seç"
+                        className="h-4 w-4 rounded border-border"
+                      />
+                    </th>
+                  )}
                   {listFieldDefs.map((f) => (
                     <th key={f.name} className="px-4 py-3 font-medium">
                       <div className="flex items-center gap-1">
@@ -1369,6 +1454,17 @@ export function ResourceManager({
                     onClick={() => onRowOpen(row)}
                     className="cursor-pointer border-b border-border last:border-0 hover:bg-gray-50"
                   >
+                    {bulkSelect && canWrite && (
+                      <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                        <input
+                          type="checkbox"
+                          checked={selected.has(String(row.id))}
+                          onChange={() => toggleSelect(String(row.id))}
+                          aria-label="Satırı seç"
+                          className="h-4 w-4 rounded border-border"
+                        />
+                      </td>
+                    )}
                     {listFieldDefs.map((f) => (
                       <td key={f.name} className="px-4 py-3">
                         {renderCell(f, row)}

@@ -5,15 +5,15 @@ import { createClient } from "@/lib/supabase/client";
 import { Badge, Card, EmptyState, Input, Spinner } from "./ui";
 import { formatNumber } from "@/lib/format";
 import { ChevronDown, ChevronRight, Search } from "lucide-react";
-import { WarehouseDetailExtra } from "./warehouse-detail-extra";
-import type { Role } from "@/lib/types";
+import { WarehouseShipSummary } from "./warehouse-ship-summary";
 
 // Depo bazlı stok görünümü: her depo tek satır (toplam kullanılabilir tonaj +
 // ürün sayısı), tıklanınca hemen altında açılır (ör. pending-arrivals.tsx'teki
-// aynı akordeon deseni) — ürün kırılımı + WarehouseDetailExtra (hangi gemiden
-// geldi, milli/yerli, giriş/çıkış geçmişi, fotoğraflar) orada gösterilir.
-// Kullanıcı isteği: "hangi depoda gemiden malın geldiğini" tek tıkla, karışık
-// olmadan görsün.
+// aynı akordeon deseni) — açılan kısım BİLEREK SADE: yalnızca gemi/hammadde/
+// depoya ilk giriş tarihi/miktar (WarehouseShipSummary). Depo yönetiminin
+// tamamı (fotoğraf, yetkililer, milli/yerli, tam geçmiş, tedarikçi dağılımı)
+// artık CRM -> Depolar'da (bkz. crm-tabs.tsx, WarehouseDetailExtra) — burada
+// tekrarlanmıyor.
 //
 // Üstte AYRICA ürün bazlı "Rezerve Stok" özeti var: henüz fiilen sevk
 // edilmemiş (taslak/onaylı, dispatch tamamlanmamış) satışların tonajı —
@@ -41,7 +41,7 @@ const LOC_BADGE: Record<string, { color: "blue" | "purple" | "yellow"; label: st
   foreign: { color: "yellow", label: "Yurtdışı" },
 };
 
-export function InventoryView({ hideTitle = false, role }: { hideTitle?: boolean; role: Role }) {
+export function InventoryView({ hideTitle = false }: { hideTitle?: boolean }) {
   const supabase = useMemo(() => createClient(), []);
   const [rows, setRows] = useState<InventoryRow[]>([]);
   const [reservations, setReservations] = useState<Reservation[]>([]);
@@ -250,32 +250,8 @@ export function InventoryView({ hideTitle = false, role }: { hideTitle?: boolean
                       </div>
                     </button>
                     {isOpen && (
-                      <div className="space-y-4 border-t border-border bg-gray-50/50 px-3 py-4 sm:px-4">
-                        <div className="overflow-x-auto rounded-lg border border-border bg-white">
-                          <table className="w-full text-sm">
-                            <thead>
-                              <tr className="border-b border-border bg-gray-50 text-left text-xs uppercase text-gray-500">
-                                <th className="px-3 py-2 font-medium">Ürün</th>
-                                <th className="px-3 py-2 text-right font-medium">Giren</th>
-                                <th className="px-3 py-2 text-right font-medium">Satılan (fiili)</th>
-                                <th className="px-3 py-2 text-right font-medium">Kullanılabilir</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {w.products.map((p) => (
-                                <tr key={p.product_id} className="border-b border-border last:border-0">
-                                  <td className="px-3 py-2">{p.product_name}</td>
-                                  <td className="px-3 py-2 text-right">{formatNumber(p.received_qty)}</td>
-                                  <td className="px-3 py-2 text-right">{formatNumber(p.sold_qty)}</td>
-                                  <td className={`px-3 py-2 text-right font-semibold ${p.available_qty < 0 ? "text-red-600" : ""}`}>
-                                    {formatNumber(p.available_qty)}
-                                  </td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                        <WarehouseDetailExtra warehouseId={w.id} role={role} />
+                      <div className="border-t border-border bg-gray-50/50 px-3 py-4 sm:px-4">
+                        <WarehouseShipSummary warehouseId={w.id} />
                       </div>
                     )}
                   </div>
