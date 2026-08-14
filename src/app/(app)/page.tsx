@@ -4,7 +4,8 @@ import { createClient } from "@/lib/supabase/server";
 import { Card } from "@/components/ui";
 import { baseRole, ROLE_LABELS } from "@/lib/nav";
 import { formatDate, formatNumber } from "@/lib/format";
-import { AlertTriangle, BarChart3, Calculator, Send, ShoppingCart, TrendingUp, Truck, Users, Wallet } from "lucide-react";
+import { L } from "@/lib/i18n";
+import { AlertTriangle, Calculator, Send, ShoppingCart, TrendingUp, Truck, Users, Wallet } from "lucide-react";
 
 const sum = <T,>(rows: T[], pick: (r: T) => unknown) =>
   rows.reduce((a, r) => a + (Number(pick(r)) || 0), 0);
@@ -27,6 +28,8 @@ export default async function DashboardPage() {
   // Hepsi salt-okunur; kartlar yalnızca özet/yönlendirme amaçlıdır.
   const v = role === "viewer";
   const base = baseRole(role);
+  // Acente yabancı uyruklu olabileceğinden paneli İngilizce görür (bkz. src/lib/i18n.ts).
+  const isEn = role === "acente";
   const canB = v || ["admin", "purchasing"].includes(base);
   const canS = v || ["admin", "sales"].includes(base);
   const canO = v || ["admin", "operations", "nakliyeci", "gozetim", "acente"].includes(base);
@@ -35,9 +38,8 @@ export default async function DashboardPage() {
   const canCrm = v || ["admin", "purchasing", "sales"].includes(base);
   const canSalesOps = v || base === "sales_ops";
 
-  const year = new Date().getFullYear();
   const canExp = canO || canM || canB;
-  const [c, s, inv, mv, crm, tuik, exp] = await Promise.all([
+  const [c, s, inv, mv, crm, exp] = await Promise.all([
     canB || canO
       ? supabase
           .from("purchase_contracts")
@@ -52,9 +54,6 @@ export default async function DashboardPage() {
       : Promise.resolve({ data: null }),
     canCrm
       ? supabase.from("crm_activities").select("status,due_date")
-      : Promise.resolve({ data: null }),
-    canB
-      ? supabase.from("tuik_monthly_imports").select("hs_code").eq("year", year)
       : Promise.resolve({ data: null }),
     canExp
       ? supabase.from("warehouse_expenses").select("contract_id").eq("is_auto", true).eq("amount", 0)
@@ -131,23 +130,31 @@ export default async function DashboardPage() {
       .forEach((r) =>
         alerts.push({
           tone: "red",
-          text: `${shipName(r)}: ETA geçti (${formatDate(r.eta)}), gemi hâlâ gelmedi`,
+          text: L(
+            isEn,
+            `${shipName(r)}: ETA geçti (${formatDate(r.eta)}), gemi hâlâ gelmedi`,
+            `${shipName(r)}: ETA passed (${formatDate(r.eta)}), ship has not arrived yet`,
+          ),
           href: shipHref(r),
         }),
       );
     enRoute
       .filter((r) => r.eta && r.eta >= todayStr && r.eta <= in3)
       .forEach((r) => {
-        const eksik = [
-          !r.surveyor_id && "gözetim",
-          !r.port_id && "liman",
-          !r.carrier_id && "nakliyeci",
-        ]
-          .filter(Boolean)
-          .join(", ");
+        const eksik = isEn
+          ? [!r.surveyor_id && "surveyor", !r.port_id && "port", !r.carrier_id && "carrier"]
+              .filter(Boolean)
+              .join(", ")
+          : [!r.surveyor_id && "gözetim", !r.port_id && "liman", !r.carrier_id && "nakliyeci"]
+              .filter(Boolean)
+              .join(", ");
         alerts.push({
           tone: "amber",
-          text: `${shipName(r)}: ETA yaklaşıyor (${formatDate(r.eta)})${eksik ? ` — atanmamış: ${eksik}` : ""}`,
+          text: L(
+            isEn,
+            `${shipName(r)}: ETA yaklaşıyor (${formatDate(r.eta)})${eksik ? ` — atanmamış: ${eksik}` : ""}`,
+            `${shipName(r)}: ETA approaching (${formatDate(r.eta)})${eksik ? ` — not yet assigned: ${eksik}` : ""}`,
+          ),
           href: shipHref(r),
         });
       });
@@ -237,23 +244,6 @@ export default async function DashboardPage() {
       main: `${formatNumber(baglantiTon)} ton`,
       sub: `${baglantiActive.length} aktif sözleşme · yolda ${formatNumber(yolda)} ton`,
     });
-  if (canB) {
-    // Farklı GTİP'lerin tonu toplanmaz (mısır + yağ + küspe anlamsız);
-    // kart bu yıl verisi girilmiş GTİP sayısını gösterir.
-    const tuikRows = (tuik.data as { hs_code: string }[] | null) || [];
-    const gtipCount = new Set(tuikRows.map((r) => r.hs_code)).size;
-    cards.push({
-      title: "İthalat",
-      href: "/imports",
-      icon: BarChart3,
-      tone: "bg-emerald-50 text-emerald-700",
-      main: gtipCount > 0 ? `${gtipCount} GTİP` : "TÜİK",
-      sub:
-        gtipCount > 0
-          ? `${year} TÜİK verisi girildi · payımızı gör`
-          : "TÜİK karşılaştırması · aylık ithalat",
-    });
-  }
   if (canS)
     cards.push({
       title: "Satış",
@@ -274,12 +264,12 @@ export default async function DashboardPage() {
     });
   if (canO)
     cards.push({
-      title: "Operasyon",
+      title: L(isEn, "Operasyon", "Operations"),
       href: "/operations",
       icon: Truck,
       tone: "bg-amber-50 text-amber-700",
-      main: `${formatNumber(buAy)} ton`,
-      sub: `bu ay giriş · ${inbound.length} giriş hareketi`,
+      main: `${formatNumber(buAy)} ${L(isEn, "ton", "tons")}`,
+      sub: L(isEn, `bu ay giriş · ${inbound.length} giriş hareketi`, `received this month · ${inbound.length} entries`),
     });
   if (canF)
     cards.push({
@@ -304,16 +294,18 @@ export default async function DashboardPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-xl font-bold">
-          Merhaba, {profile.full_name || profile.email}
+          {L(isEn, "Merhaba", "Hello")}, {profile.full_name || profile.email}
         </h1>
-        <p className="text-sm text-gray-500">{ROLE_LABELS[role]} paneli</p>
+        <p className="text-sm text-gray-500">
+          {isEn ? "Agent" : ROLE_LABELS[role]} {L(isEn, "paneli", "panel")}
+        </p>
       </div>
 
       {shownAlerts.length > 0 && (
         <Card className="p-4">
           <div className="mb-1 flex items-center gap-2">
             <AlertTriangle className="h-4 w-4 text-amber-500" />
-            <h2 className="text-sm font-semibold">Dikkat Gerekenler</h2>
+            <h2 className="text-sm font-semibold">{L(isEn, "Dikkat Gerekenler", "Needs Attention")}</h2>
             <span className="text-xs text-gray-400">({alerts.length})</span>
           </div>
           <div className="divide-y divide-border">
@@ -329,7 +321,7 @@ export default async function DashboardPage() {
             ))}
             {alerts.length > shownAlerts.length && (
               <div className="px-2 py-1.5 text-xs text-gray-400">
-                +{alerts.length - shownAlerts.length} uyarı daha
+                {L(isEn, `+${alerts.length - shownAlerts.length} uyarı daha`, `+${alerts.length - shownAlerts.length} more`)}
               </div>
             )}
           </div>
@@ -337,7 +329,7 @@ export default async function DashboardPage() {
       )}
 
       {cards.length === 0 ? (
-        <p className="text-sm text-gray-500">Görüntülenecek veri yok.</p>
+        <p className="text-sm text-gray-500">{L(isEn, "Görüntülenecek veri yok.", "No data to display.")}</p>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {cards.map((card) => {

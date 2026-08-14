@@ -30,12 +30,6 @@ export const NAV_ITEMS: NavItem[] = [
     roles: ["admin", "purchasing", "viewer"],
   },
   {
-    href: "/imports",
-    label: "İthalat",
-    icon: "BarChart3",
-    roles: ["admin", "purchasing", "viewer"],
-  },
-  {
     href: "/operations",
     label: "Operasyon",
     icon: "Truck",

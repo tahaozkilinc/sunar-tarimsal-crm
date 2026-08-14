@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { navForRole, ROLE_LABELS, type NavItem } from "@/lib/nav";
+import { L } from "@/lib/i18n";
 import type { Profile } from "@/lib/types";
 import {
   BarChart3,
@@ -35,7 +36,14 @@ const ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
   Calculator,
 };
 
-function Brand() {
+// Acente rolü yabancı uyruklu olabileceğinden kabuk (nav/kullanıcı kutusu)
+// onun için İngilizce gösterilir (bkz. src/lib/i18n.ts — hedefli, tek tek).
+const NAV_LABEL_EN: Record<string, string> = {
+  Panel: "Dashboard",
+  Operasyon: "Operations",
+};
+
+function Brand({ isEn }: { isEn: boolean }) {
   return (
     <div className="flex items-center gap-2 px-2 py-1">
       <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-brand text-white">
@@ -43,7 +51,7 @@ function Brand() {
       </div>
       <div className="leading-tight">
         <div className="text-sm font-bold">Sunar Tarımsal</div>
-        <div className="text-xs text-gray-500">CRM & Operasyon</div>
+        <div className="text-xs text-gray-500">{L(isEn, "CRM & Operasyon", "CRM & Operations")}</div>
       </div>
     </div>
   );
@@ -52,10 +60,12 @@ function Brand() {
 function NavLinks({
   items,
   pathname,
+  isEn,
   onClick,
 }: {
   items: NavItem[];
   pathname: string;
+  isEn: boolean;
   onClick?: () => void;
 }) {
   const isActive = (href: string) =>
@@ -76,7 +86,7 @@ function NavLinks({
             }`}
           >
             <Icon className="h-5 w-5 shrink-0" />
-            {item.label}
+            {isEn ? NAV_LABEL_EN[item.label] ?? item.label : item.label}
           </Link>
         );
       })}
@@ -86,10 +96,12 @@ function NavLinks({
 
 function UserBox({
   profile,
+  isEn,
   onLogout,
   onNavigate,
 }: {
   profile: Profile;
+  isEn: boolean;
   onLogout: () => void;
   onNavigate?: () => void;
 }) {
@@ -103,13 +115,13 @@ function UserBox({
         <div className="truncate text-sm font-medium">
           {profile.full_name || profile.email}
         </div>
-        <div className="text-xs text-gray-500">{ROLE_LABELS[profile.role]}</div>
+        <div className="text-xs text-gray-500">{isEn ? "Agent" : ROLE_LABELS[profile.role]}</div>
       </Link>
       <button
         onClick={onLogout}
         className="mt-1 flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm text-gray-600 hover:bg-gray-100"
       >
-        <LogOut className="h-5 w-5" /> Çıkış Yap
+        <LogOut className="h-5 w-5" /> {L(isEn, "Çıkış Yap", "Log Out")}
       </button>
     </div>
   );
@@ -126,6 +138,7 @@ export function AppShell({
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const items = navForRole(profile.role);
+  const isEn = profile.role === "acente";
 
   const logout = async () => {
     await createClient().auth.signOut();
@@ -137,10 +150,10 @@ export function AppShell({
     <div className="flex min-h-screen">
       {/* Masaüstü kenar çubuğu */}
       <aside className="hidden w-60 shrink-0 flex-col gap-2 border-r border-border bg-white p-3 md:flex print:hidden">
-        <Brand />
+        <Brand isEn={isEn} />
         <div className="mt-2 flex flex-1 flex-col">
-          <NavLinks items={items} pathname={pathname} />
-          <UserBox profile={profile} onLogout={logout} />
+          <NavLinks items={items} pathname={pathname} isEn={isEn} />
+          <UserBox profile={profile} isEn={isEn} onLogout={logout} />
         </div>
       </aside>
 
@@ -150,14 +163,14 @@ export function AppShell({
           <div className="absolute inset-0 bg-black/40" onClick={() => setOpen(false)} />
           <aside className="absolute left-0 top-0 flex h-full w-64 flex-col gap-2 bg-white p-3 shadow-xl">
             <div className="flex items-center justify-between">
-              <Brand />
+              <Brand isEn={isEn} />
               <button onClick={() => setOpen(false)} className="rounded-lg p-2 hover:bg-gray-100">
                 <X className="h-5 w-5" />
               </button>
             </div>
             <div className="mt-2 flex flex-1 flex-col">
-              <NavLinks items={items} pathname={pathname} onClick={() => setOpen(false)} />
-              <UserBox profile={profile} onLogout={logout} onNavigate={() => setOpen(false)} />
+              <NavLinks items={items} pathname={pathname} isEn={isEn} onClick={() => setOpen(false)} />
+              <UserBox profile={profile} isEn={isEn} onLogout={logout} onNavigate={() => setOpen(false)} />
             </div>
           </aside>
         </div>
@@ -170,7 +183,7 @@ export function AppShell({
           <button onClick={() => setOpen(true)} className="rounded-lg p-1.5 hover:bg-gray-100">
             <Menu className="h-6 w-6" />
           </button>
-          <Brand />
+          <Brand isEn={isEn} />
           <div className="w-8" />
         </header>
 

@@ -64,6 +64,10 @@ export interface FieldDef {
   formHidden?: boolean;
   readOnly?: boolean;
   placeholder?: string;
+  // "date" alanı için: liste/detay hücresinde tarihin yanına her zaman
+  // DeadlineBadge (kaç gün kaldı/geçti) eklenir — yalnız yaklaşınca değil,
+  // her zaman görünür olsun diye (bkz. resource-manager.tsx renderCell).
+  showDeadline?: boolean;
 }
 
 // Bir kaydın bir "kapasiteyi" (ör. bağlantı tonajı) aşmasını engelleyen kota tanımı.
@@ -322,26 +326,6 @@ export const purchaseContractsResource: ResourceConfig = {
     { name: "usd_try", label: "USD/TRY (TCMB)", type: "number", placeholder: "Otomatik" },
     { name: "eur_try", label: "EUR/TRY (TCMB)", type: "number", placeholder: "Otomatik" },
     { name: "fx_date", label: "Kur Tarihi", type: "date" },
-    { name: "combined_shipment_id", label: "Kombine Gemi", type: "reference", ref: { table: "combined_shipments", labelField: "name" } },
-    { name: "notes", label: "Notlar", type: "textarea" },
-  ],
-};
-
-export const combinedShipmentsResource: ResourceConfig = {
-  table: "combined_shipments",
-  title: "Kombine Gemiler",
-  singular: "Kombine Gemi",
-  writeRoles: ["admin", "purchasing"],
-  orderBy: { column: "created_at", ascending: false },
-  listFields: ["name", "vessel", "eta", "status"],
-  fields: [
-    { name: "name", label: "Kombine Gemi Adı", type: "text", required: true },
-    { name: "vessel", label: "Gemi Adı", type: "text" },
-    { name: "eta", label: "ETA (Tahmini Varış)", type: "date" },
-    { name: "status", label: "Durum", type: "select", options: CONTRACT_STATUS_OPTIONS, required: true },
-    { name: "surveyor_id", label: "Gözetim Şirketi", type: "reference", ref: { table: "companies", labelField: "name", filter: { type: ["surveyor"] } } },
-    { name: "port_id", label: "Liman", type: "reference", ref: { table: "companies", labelField: "name", filter: { type: ["port"] } } },
-    { name: "carrier_id", label: "Nakliyeci", type: "reference", ref: { table: "companies", labelField: "name", filter: { type: ["carrier"] } } },
     { name: "notes", label: "Notlar", type: "textarea" },
   ],
 };
@@ -378,7 +362,10 @@ export const salesOrdersResource: ResourceConfig = {
   singular: "Satış",
   writeRoles: ["admin", "sales"],
   defaultValues: { unit: "ton", currency: "TRY" },
-  orderBy: { column: "created_at", ascending: false },
+  // En yakın son teslim tarihi en üstte (kullanıcı isteği: sevkiyatı en
+  // yaklaşan satış ilk sırada görünsün). final_sale_date NULL olan (eski/
+  // geçiş öncesi) kayıtlar Postgres'in varsayılan davranışıyla en sona düşer.
+  orderBy: { column: "final_sale_date", ascending: true },
   listFields: ["order_no", "customer_id", "sale_type", "product_id", "quantity", "final_sale_date", "status"],
   fxCapture: true,
   uppercaseText: true,
@@ -406,7 +393,7 @@ export const salesOrdersResource: ResourceConfig = {
     { name: "currency", label: "Para Birimi", type: "select", options: CURRENCY_OPTIONS, inlineAfter: true },
     // Sevkiyatın bitirilmesi beklenen son gün — yaklaştıkça/geçtikçe Satışlar
     // panelinde ve Satış Operasyon ekranında uyarı rozeti gösterilir.
-    { name: "final_sale_date", label: "Son Teslim Tarihi", type: "date", required: true },
+    { name: "final_sale_date", label: "Son Teslim Tarihi", type: "date", required: true, showDeadline: true },
     { name: "status", label: "Durum", type: "select", options: SALES_STATUS_OPTIONS, required: true },
     { name: "usd_try", label: "USD/TRY (TCMB)", type: "number", placeholder: "Otomatik" },
     { name: "eur_try", label: "EUR/TRY (TCMB)", type: "number", placeholder: "Otomatik" },

@@ -24,7 +24,6 @@ type Contract = {
   port_id: string | null;
   carrier_id: string | null;
   agent_id: string | null;
-  combined_shipment_id: string | null;
 };
 type Movement = {
   id: string;
@@ -99,11 +98,6 @@ export function ShipOpsPage({
   const [canWrite, setCanWrite]   = useState(false); // araç tonajı + irsaliye (admin/operations/nakliyeci/gozetim)
   const [canManage, setCanManage] = useState(false); // taraf atama, gemiyi bitir, numune galerisi (admin/operations)
   const [contractSales, setContractSales] = useState<SaleRow[]>([]); // bu bağlantıdan karşılanan satışlar (yalnız canManage)
-  // Kombine gemi desteği
-  const siblingIdsRef = useRef<string[]>([]);
-  const [siblings, setSiblings]   = useState<Contract[]>([]);
-  const [combinedName, setCombinedName] = useState<string | null>(null);
-  const [selectedContractId, setSelectedContractId] = useState(contractId);
   const [loading, setLoading]     = useState(true);
   const [error, setError]         = useState<string | null>(null);
 
@@ -162,11 +156,10 @@ export function ShipOpsPage({
   );
 
   const loadMovements = useCallback(async () => {
-    const ids = [contractId, ...siblingIdsRef.current];
     const { data } = await supabase
       .from("stock_movements")
       .select("id,contract_id,warehouse_id,quantity,vehicle_plate,driver_name,movement_date,movement_time,created_at,created_by")
-      .in("contract_id", ids)
+      .eq("contract_id", contractId)
       .eq("movement_type", "inbound")
       .order("created_at", { ascending: true });
     const rows = (data as Movement[]) || [];
@@ -177,7 +170,7 @@ export function ShipOpsPage({
   useEffect(() => {
     (async () => {
       const CONTRACT_COLS =
-        "id,contract_no,vessel,product_id,supplier_id,quantity,unit,eta,status,surveyor_id,port_id,carrier_id,agent_id,combined_shipment_id";
+        "id,contract_no,vessel,product_id,supplier_id,quantity,unit,eta,status,surveyor_id,port_id,carrier_id,agent_id";
       const [c0, w, p, co, pn, { data: au }] = await Promise.all([
         supabase
           .from("purchase_contracts")
@@ -194,14 +187,13 @@ export function ShipOpsPage({
       // Dış roller (nakliyeci/gozetim/acente) tabloyu okuyamaz (fiyat gizli);
       // atandıkları gemiyi güvenli kolonlu external_contracts görünümünden alır.
       let c = c0;
-      let contractSource = "purchase_contracts";
       if (!c0.error && !c0.data) {
         const ext = await supabase
           .from("external_contracts")
           .select(CONTRACT_COLS)
           .eq("id", contractId)
           .maybeSingle();
-        if (ext.data) { c = ext; contractSource = "external_contracts"; }
+        if (ext.data) c = ext;
       }
       if (c.error) { setError(c.error.message); setLoading(false); return; }
       const cd = c.data as Contract | null;
@@ -227,32 +219,13 @@ export function ShipOpsPage({
         setCanManage(isManager);
         setCanWrite(r === "admin" || r === "operations" || r === "nakliyeci" || r === "gozetim");
       }
-      // Kombine gemi: diğer sözleşmeleri (ana kayıtla aynı kaynaktan) yükle
-      if (cd?.combined_shipment_id) {
-        const [sibRes, csRes] = await Promise.all([
-          supabase
-            .from(contractSource)
-            .select(CONTRACT_COLS)
-            .eq("combined_shipment_id", cd.combined_shipment_id)
-            .neq("id", contractId),
-          supabase.from("combined_shipments").select("name").eq("id", cd.combined_shipment_id).maybeSingle(),
-        ]);
-        const sibs = (sibRes.data as Contract[] | null) || [];
-        siblingIdsRef.current = sibs.map((s) => s.id);
-        setSiblings(sibs);
-        setCombinedName((csRes.data as { name: string } | null)?.name ?? null);
-      } else {
-        siblingIdsRef.current = [];
-        setSiblings([]);
-        setCombinedName(null);
-      }
-      // Bu bağlantı(lar)dan otomatik karşılanan satışlar — "gemi bazlı rapor".
+      // Bu bağlantıdan otomatik karşılanan satışlar — "gemi bazlı rapor".
       // Fiyat içermez; yalnız admin/operasyona (dış rollere gösterilmez).
       if (isManager) {
         const { data: salesData } = await supabase
           .from("sales_orders")
           .select("id,order_no,customer_id,quantity,unit,status,delivery_date")
-          .in("contract_id", [contractId, ...siblingIdsRef.current])
+          .eq("contract_id", contractId)
           .neq("status", "cancelled");
         setContractSales((salesData as SaleRow[]) || []);
       } else {
@@ -282,30 +255,9 @@ export function ShipOpsPage({
     () => movements.reduce((a, m) => a + (Number(m.quantity) || 0), 0),
     [movements],
   );
-  const isCombined = !!(contract?.combined_shipment_id && siblings.length > 0);
-  const allContracts = useMemo(
-    () => (contract ? [contract, ...siblings] : siblings),
-    [contract, siblings],
-  );
-  const contracted = isCombined
-    ? allContracts.reduce((a, c) => a + (Number(c.quantity) || 0), 0)
-    : Number(contract?.quantity) || 0;
+  const contracted = Number(contract?.quantity) || 0;
   const remaining  = contracted - totalDrawn;
   const unit       = contract?.unit || "ton";
-
-  // Per-contract breakdown for kombine view
-  const perContractStats = useMemo(() => {
-    if (!isCombined) return new Map<string, { contracted: number; drawn: number; unit: string }>();
-    const map = new Map<string, { contracted: number; drawn: number; unit: string }>();
-    allContracts.forEach((c) => {
-      map.set(c.id, { contracted: Number(c.quantity) || 0, drawn: 0, unit: c.unit || "ton" });
-    });
-    movements.forEach((m) => {
-      const s = map.get(m.contract_id);
-      if (s) s.drawn += Number(m.quantity) || 0;
-    });
-    return map;
-  }, [isCombined, allContracts, movements]);
 
   const byWarehouse = useMemo(() => {
     const map = new Map<string, number>();
@@ -345,33 +297,24 @@ export function ShipOpsPage({
     }
     setSaving(true);
     setFormErr(null);
-    const isCombined = !!(contract.combined_shipment_id && siblings.length > 0);
-    const targetId = isCombined ? selectedContractId : contract.id;
-    const targetContract = isCombined
-      ? ([contract, ...siblings].find((c) => c.id === targetId) ?? contract)
-      : contract;
     const { error: err } = await supabase.from("stock_movements").insert({
-      contract_id:    targetId,
-      product_id:     targetContract.product_id,
+      contract_id:    contract.id,
+      product_id:     contract.product_id,
       warehouse_id:   wh,
       movement_type:  "inbound",
       quantity:       q,
-      unit:           targetContract.unit || unit,
+      unit:           contract.unit || unit,
       vehicle_plate:  plate.trim() || null,
       driver_name:    driver.trim() || null,
       movement_date:  date,
       movement_time:  time || null,
     });
     if (err) { setSaving(false); setFormErr(err.message); return; }
-    if (targetContract.status !== "arrived" && targetContract.status !== "completed") {
+    if (contract.status !== "arrived" && contract.status !== "completed") {
       // DB tarafında 0004 trigger'ı (SECURITY DEFINER) durumu 'arrived' yapar;
       // buradan update atmak operasyon rolünde RLS'e takılıp sessizce 0 satır
       // güncelliyordu. Yalnızca yerel görünümü tazeliyoruz.
-      if (targetId === contract.id) {
-        setContract(prev => prev ? { ...prev, status: "arrived" } : prev);
-      } else {
-        setSiblings(prev => prev.map((s) => s.id === targetId ? { ...s, status: "arrived" } : s));
-      }
+      setContract(prev => prev ? { ...prev, status: "arrived" } : prev);
     }
     const msg = `${formatNumber(q)} ${unit} eklendi`;
     setFlash(msg);
@@ -409,39 +352,27 @@ export function ShipOpsPage({
 
   const finishShip = async () => {
     if (!contract) return;
-    const isCombined = !!(contract.combined_shipment_id && siblings.length > 0);
     if (remaining > 0 && !window.confirm(
       `${formatNumber(remaining)} ${unit} hâlâ boşaltılmadı. Gemiyi tamamlandı olarak işaretlemek istiyor musunuz?`
     )) return;
     // Statü geçişi DEFINER RPC ile: pc_write operasyona kapalı olduğundan
     // doğrudan update RLS'te sessizce 0 satır güncelliyordu (görünmez hata).
-    const allIds = isCombined ? [contract.id, ...siblings.map((s) => s.id)] : [contract.id];
-    const { error: err } = await supabase.rpc("complete_ships", { p_contract_ids: allIds });
+    const { error: err } = await supabase.rpc("complete_ships", { p_contract_ids: [contract.id] });
     if (err) { window.alert("Gemi bitirilemedi: " + err.message); return; }
     setContract(prev => prev ? { ...prev, status: "completed" } : prev);
-    if (isCombined) setSiblings(prev => prev.map((s) => ({ ...s, status: "completed" })));
   };
 
   const saveParties = async () => {
     if (!contract) return;
     setAssignSaving(true);
     setAssignErr(null);
-    const isCombined = !!(contract.combined_shipment_id && siblings.length > 0);
-    const rpcResult = isCombined
-      ? await supabase.rpc("assign_combined_ship_parties", {
-          p_combined_id: contract.combined_shipment_id!,
-          p_surveyor_id: surveyorId || null,
-          p_port_id:     portId || null,
-          p_carrier_id:  carrierId || null,
-          p_agent_id:    agentId || null,
-        })
-      : await supabase.rpc("assign_ship_parties", {
-          p_contract_id: contract.id,
-          p_surveyor_id: surveyorId || null,
-          p_port_id:     portId || null,
-          p_carrier_id:  carrierId || null,
-          p_agent_id:    agentId || null,
-        });
+    const rpcResult = await supabase.rpc("assign_ship_parties", {
+      p_contract_id: contract.id,
+      p_surveyor_id: surveyorId || null,
+      p_port_id:     portId || null,
+      p_carrier_id:  carrierId || null,
+      p_agent_id:    agentId || null,
+    });
     if (rpcResult.error) { setAssignSaving(false); setAssignErr(rpcResult.error.message); return; }
     const parties = {
       surveyor_id: surveyorId || null,
@@ -450,7 +381,6 @@ export function ShipOpsPage({
       agent_id:    agentId || null,
     };
     setContract(prev => prev ? { ...prev, ...parties } : prev);
-    if (isCombined) setSiblings(prev => prev.map((s) => ({ ...s, ...parties })));
     setAssignSaving(false);
     setAssignFlash("Atamalar kaydedildi");
     setTimeout(() => setAssignFlash(null), 1800);
@@ -458,16 +388,10 @@ export function ShipOpsPage({
 
   const exportCsv = () => {
     if (!contract) return;
-    const headers = isCombined
-      ? ["Sıra", "Bağlantı", "Tarih", "Saat Girişi", "Plaka", "Şoför", "Depo / Fabrika", `Miktar (${unit})`]
-      : ["Sıra", "Tarih", "Saat Girişi", "Plaka", "Şoför", "Depo / Fabrika", `Miktar (${unit})`];
+    const headers = ["Sıra", "Tarih", "Saat Girişi", "Plaka", "Şoför", "Depo / Fabrika", `Miktar (${unit})`];
     const body = movements.map((m, i) => {
-      const cInfo = isCombined ? (allContracts.find((c) => c.id === m.contract_id)) : null;
-      const cLabel = cInfo ? `${pName(cInfo.product_id)} (${cInfo.contract_no || "—"})` : "";
       const t = m.movement_time ? m.movement_time.slice(0, 5) : timeFmt(m.created_at);
-      return isCombined
-        ? [i + 1, cLabel, formatDate(m.movement_date), t, m.vehicle_plate || "", m.driver_name || "", wName(m.warehouse_id), Number(m.quantity) || 0]
-        : [i + 1, formatDate(m.movement_date), t, m.vehicle_plate || "", m.driver_name || "", wName(m.warehouse_id), Number(m.quantity) || 0];
+      return [i + 1, formatDate(m.movement_date), t, m.vehicle_plate || "", m.driver_name || "", wName(m.warehouse_id), Number(m.quantity) || 0];
     });
     const depotRows = byWarehouse.map(bw => ["", "", "", "", "", bw.name + " (toplam)", bw.qty]);
     const csv = [headers, ...body, [], ["", "", "", "", "", "TOPLAM", totalDrawn], ...depotRows]
@@ -539,35 +463,15 @@ export function ShipOpsPage({
 
       {/* ── Gemi bilgisi ── */}
       <div className="rounded-xl border border-border bg-white p-4">
-        {isCombined && (
-          <div className="mb-2 flex items-center gap-2">
-            <Badge color="blue">Kombine Gemi</Badge>
-            {combinedName && <span className="text-sm font-semibold text-gray-700">{combinedName}</span>}
-            <span className="text-xs text-gray-400">({allContracts.length} bağlantı)</span>
-          </div>
-        )}
         <div className="flex flex-wrap items-start justify-between gap-2">
           <div>
-            <h1 className="text-xl font-bold">{isCombined ? (combinedName || title) : title}</h1>
-            {isCombined ? (
-              <div className="mt-1 space-y-0.5">
-                {allContracts.map((c) => (
-                  <div key={c.id} className="text-sm text-gray-500">
-                    {pName(c.product_id)}
-                    {c.contract_no && ` · ${c.contract_no}`}
-                    {c.supplier_id && ` · ${cName(c.supplier_id)}`}
-                    {` · ${formatNumber(c.quantity)} ${c.unit || unit}`}
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="mt-0.5 text-sm text-gray-500">
-                {pName(contract.product_id)}
-                {contract.contract_no && ` · Söz. ${contract.contract_no}`}
-                {contract.supplier_id && ` · ${cName(contract.supplier_id)}`}
-                {contract.eta && ` · ETA ${formatDate(contract.eta)}`}
-              </div>
-            )}
+            <h1 className="text-xl font-bold">{title}</h1>
+            <div className="mt-0.5 text-sm text-gray-500">
+              {pName(contract.product_id)}
+              {contract.contract_no && ` · Söz. ${contract.contract_no}`}
+              {contract.supplier_id && ` · ${cName(contract.supplier_id)}`}
+              {contract.eta && ` · ETA ${formatDate(contract.eta)}`}
+            </div>
           </div>
           {statusOpt && <Badge color={statusOpt.color}>{statusOpt.label}</Badge>}
         </div>
@@ -578,7 +482,6 @@ export function ShipOpsPage({
       <Card className="p-4 print:hidden">
         <div className="mb-3 flex items-center justify-between">
           <span className="text-sm font-semibold">Operasyon Tarafları</span>
-          {isCombined && <span className="text-xs text-gray-400">Kombine gemideki tüm bağlantılara uygulanır</span>}
         </div>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <Field label="Gözetim Şirketi">
@@ -743,43 +646,6 @@ export function ShipOpsPage({
         </Card>
       </div>
 
-      {/* ── Kombine: bağlantı bazlı döküm ── */}
-      {isCombined && (
-        <div className="overflow-x-auto rounded-xl border border-border bg-white print:hidden">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border bg-gray-50 text-left text-xs uppercase text-gray-500">
-                <th className="px-3 py-2 font-medium">Bağlantı / Ürün</th>
-                <th className="px-3 py-2 font-medium">Tedarikçi</th>
-                <th className="px-3 py-2 text-right font-medium">Sözleşme</th>
-                <th className="px-3 py-2 text-right font-medium">Çekilen</th>
-                <th className="px-3 py-2 text-right font-medium">Kalan</th>
-              </tr>
-            </thead>
-            <tbody>
-              {allContracts.map((c) => {
-                const s = perContractStats.get(c.id);
-                const rem = (s?.contracted ?? 0) - (s?.drawn ?? 0);
-                return (
-                  <tr key={c.id} className="border-b border-border last:border-0">
-                    <td className="px-3 py-2">
-                      <div className="font-medium">{pName(c.product_id)}</div>
-                      <div className="text-xs text-gray-400">{c.contract_no || "—"}</div>
-                    </td>
-                    <td className="px-3 py-2 text-gray-600 text-xs">{cName(c.supplier_id)}</td>
-                    <td className="px-3 py-2 text-right">{formatNumber(s?.contracted)} {s?.unit}</td>
-                    <td className="px-3 py-2 text-right text-brand">{formatNumber(s?.drawn)}</td>
-                    <td className={`px-3 py-2 text-right font-semibold ${rem < 0 ? "text-red-600" : rem === 0 && (s?.drawn ?? 0) > 0 ? "text-emerald-600" : "text-amber-600"}`}>
-                      {rem < 0 ? `+${formatNumber(-rem)}` : formatNumber(rem)}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
-
       {/* ── Depo bazlı dağılım ── */}
       {byWarehouse.length > 0 && (
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
@@ -810,7 +676,6 @@ export function ShipOpsPage({
                   <tr className="border-b border-border bg-gray-50 text-left text-xs uppercase text-gray-500">
                     <th className="px-3 py-2.5 font-medium">#</th>
                     <th className="px-3 py-2.5 font-medium">Tarih / Saat</th>
-                    {isCombined && <th className="px-3 py-2.5 font-medium">Bağlantı</th>}
                     <th className="px-3 py-2.5 font-medium">Plaka</th>
                     <th className="px-3 py-2.5 font-medium">Şoför</th>
                     <th className="px-3 py-2.5 font-medium">Depo / Fabrika</th>
@@ -831,11 +696,6 @@ export function ShipOpsPage({
                             <div>{formatDate(m.movement_date)}</div>
                             <div className="text-gray-400">{m.movement_time ? m.movement_time.slice(0, 5) : timeFmt(m.created_at)}</div>
                           </td>
-                          {isCombined && (
-                            <td className="px-3 py-2 text-xs text-gray-600">
-                              {pName(allContracts.find((c) => c.id === m.contract_id)?.product_id ?? null)}
-                            </td>
-                          )}
                           <td className="px-3 py-2 font-medium tracking-wider">
                             {m.vehicle_plate || <span className="text-gray-400">—</span>}
                           </td>
@@ -871,7 +731,7 @@ export function ShipOpsPage({
                         </tr>
                         {open && (
                           <tr className="border-b border-border bg-gray-50/60 print:hidden">
-                            <td colSpan={isCombined ? 9 : 8} className="px-3 py-3">
+                            <td colSpan={8} className="px-3 py-3">
                               <MovementPhotos
                                 movementId={m.id}
                                 photos={photosByMovement[m.id]}
@@ -887,7 +747,7 @@ export function ShipOpsPage({
                 </tbody>
                 <tfoot>
                   <tr className="border-t-2 border-border">
-                    <td colSpan={isCombined ? 7 : 6} className="px-3 py-2 text-xs font-semibold text-gray-600">TOPLAM</td>
+                    <td colSpan={6} className="px-3 py-2 text-xs font-semibold text-gray-600">TOPLAM</td>
                     <td className="px-3 py-2 text-right font-bold">
                       {formatNumber(totalDrawn)} <span className="text-xs font-normal text-gray-400">{unit}</span>
                     </td>
@@ -978,18 +838,6 @@ export function ShipOpsPage({
                   </div>
                 ) : (
                   <Card className="space-y-3 p-4">
-                    {isCombined && (
-                      <Field label="Bağlantı / Ürün" required>
-                        <Select value={selectedContractId} onChange={e => setSelectedContractId(e.target.value)}>
-                          {allContracts.map((c) => (
-                            <option key={c.id} value={c.id}>
-                              {pName(c.product_id)}{c.contract_no ? ` — ${c.contract_no}` : ""}
-                              {c.supplier_id ? ` (${cName(c.supplier_id)})` : ""}
-                            </option>
-                          ))}
-                        </Select>
-                      </Field>
-                    )}
                     <Field label="Araç Plakası">
                       <Input
                         id="ship-ops-plate"
