@@ -59,7 +59,7 @@ export interface Product {
   code: string | null;
   category: string | null;
   unit: string;
-  hs_code: string | null; // GTİP kodu (TUİK karşılaştırması için)
+  hs_code: string | null; // GTİP kodu
   is_active: boolean;
 }
 
@@ -102,7 +102,6 @@ export interface PurchaseContract {
   port_id: string | null;
   carrier_id: string | null;
   agent_id: string | null; // yurtdışı yükleme takip acentesi
-  combined_shipment_id: string | null;
   created_at: string;
   notes: string | null;
 }

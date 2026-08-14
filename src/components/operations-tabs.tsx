@@ -10,6 +10,7 @@ import { ForeignLoading } from "./foreign-loading";
 import { PendingExpenses } from "./pending-expenses";
 import { warehouseExpensesResource, stockMovementsResource } from "@/lib/resources";
 import { baseRole } from "@/lib/nav";
+import { L } from "@/lib/i18n";
 import type { Role } from "@/lib/types";
 
 export function OperationsTabs({ role }: { role: Role }) {
@@ -27,10 +28,11 @@ export function OperationsTabs({ role }: { role: Role }) {
   }
 
   // Acente: yalnızca yurtdışı yükleme ekranı (kendi bağlantıları, RLS).
+  // Acente yabancı uyruklu olabileceğinden bu ekran İngilizce (bkz. src/lib/i18n.ts).
   if (base === "acente") {
     return (
       <div className="space-y-4">
-        <h1 className="text-xl font-bold">Yurtdışı Yükleme</h1>
+        <h1 className="text-xl font-bold">{L(true, "Yurtdışı Yükleme", "Overseas Loading")}</h1>
         <ForeignLoading role={role} />
       </div>
     );

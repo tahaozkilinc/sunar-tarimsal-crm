@@ -2,9 +2,25 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { Badge, EmptyState, Input, Spinner } from "./ui";
+import { Badge, Card, EmptyState, Input, Spinner } from "./ui";
 import { formatNumber } from "@/lib/format";
-import { Search } from "lucide-react";
+import { ChevronDown, ChevronRight, Search } from "lucide-react";
+import { WarehouseDetailExtra } from "./warehouse-detail-extra";
+import type { Role } from "@/lib/types";
+
+// Depo bazlı stok görünümü: her depo tek satır (toplam kullanılabilir tonaj +
+// ürün sayısı), tıklanınca hemen altında açılır (ör. pending-arrivals.tsx'teki
+// aynı akordeon deseni) — ürün kırılımı + WarehouseDetailExtra (hangi gemiden
+// geldi, milli/yerli, giriş/çıkış geçmişi, fotoğraflar) orada gösterilir.
+// Kullanıcı isteği: "hangi depoda gemiden malın geldiğini" tek tıkla, karışık
+// olmadan görsün.
+//
+// Üstte AYRICA ürün bazlı "Rezerve Stok" özeti var: henüz fiilen sevk
+// edilmemiş (taslak/onaylı, dispatch tamamlanmamış) satışların tonajı —
+// inventory view'ı (0043) yalnızca FİİLİ sevkiyatı düştüğünden bu tonaj
+// "kullanılabilir" görünür ama aslında bir müşteriye söz verilmiştir. Bu
+// depo-bazlı DEĞİL ürün-bazlıdır (satış hangi depodan çıkacağı henüz belli
+// olmayabilir — bkz. sale_warehouses), bu yüzden ayrı bir bölümde gösterilir.
 
 type InventoryRow = {
   warehouse_id: string;
@@ -16,6 +32,8 @@ type InventoryRow = {
   sold_qty: number;
   available_qty: number;
 };
+type Reservation = { id: string; product_id: string | null; quantity: number | null; status: string };
+type DispatchRow = { sale_id: string | null; quantity: number | null };
 
 const LOC_BADGE: Record<string, { color: "blue" | "purple" | "yellow"; label: string }> = {
   warehouse: { color: "blue", label: "Depo" },
@@ -23,21 +41,39 @@ const LOC_BADGE: Record<string, { color: "blue" | "purple" | "yellow"; label: st
   foreign: { color: "yellow", label: "Yurtdışı" },
 };
 
-export function InventoryView({ hideTitle = false }: { hideTitle?: boolean }) {
+export function InventoryView({ hideTitle = false, role }: { hideTitle?: boolean; role: Role }) {
   const supabase = useMemo(() => createClient(), []);
   const [rows, setRows] = useState<InventoryRow[]>([]);
+  const [reservations, setReservations] = useState<Reservation[]>([]);
+  const [dispatched, setDispatched] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const [expandedWh, setExpandedWh] = useState<string | null>(null);
 
   useEffect(() => {
     (async () => {
-      const { data, error } = await supabase
-        .from("inventory")
-        .select("*")
-        .order("warehouse_name");
-      if (error) setError(error.message);
-      setRows((data as InventoryRow[]) || []);
+      const [inv, res, disp] = await Promise.all([
+        supabase.from("inventory").select("*").order("warehouse_name"),
+        // Rezerve hesabı: fiyat/müşteri İÇERMEYEN dar görünüm (bkz. 0063) —
+        // operasyon/satış operasyon gibi sales_orders'ı okuyamayan roller de
+        // "ne kadarı rezerve" görebilsin diye.
+        supabase.from("sales_reservations").select("id,product_id,quantity,status"),
+        supabase
+          .from("stock_movements")
+          .select("sale_id,quantity")
+          .eq("movement_type", "outbound_sale")
+          .not("sale_id", "is", null),
+      ]);
+      if (inv.error) setError(inv.error.message);
+      setRows((inv.data as InventoryRow[]) || []);
+      setReservations((res.data as Reservation[]) || []);
+      const d: Record<string, number> = {};
+      ((disp.data as DispatchRow[] | null) || []).forEach((m) => {
+        if (!m.sale_id) return;
+        d[m.sale_id] = (d[m.sale_id] || 0) + (Number(m.quantity) || 0);
+      });
+      setDispatched(d);
       setLoading(false);
     })();
   }, [supabase]);
@@ -51,6 +87,69 @@ export function InventoryView({ hideTitle = false }: { hideTitle?: boolean }) {
         r.product_name.toLocaleLowerCase("tr").includes(q),
     );
   }, [rows, search]);
+
+  // Depo bazlı gruplama — panelin ilk bakışta gösterdiği "hangi depoda ne kadar var".
+  const warehouses = useMemo(() => {
+    const map = new Map<
+      string,
+      { id: string; name: string; type: string; total: number; products: InventoryRow[] }
+    >();
+    filtered.forEach((r) => {
+      const e = map.get(r.warehouse_id) || {
+        id: r.warehouse_id,
+        name: r.warehouse_name,
+        type: r.location_type,
+        total: 0,
+        products: [] as InventoryRow[],
+      };
+      e.total += Number(r.available_qty) || 0;
+      e.products.push(r);
+      map.set(r.warehouse_id, e);
+    });
+    return Array.from(map.values());
+  }, [filtered]);
+
+  // Ürün bazlı toplam kullanılabilir (TÜM depolar, arama kutusundan bağımsız —
+  // rezerve özeti her zaman tüm resmi gösterir).
+  const totalAvailableByProduct = useMemo(() => {
+    const map = new Map<string, number>();
+    rows.forEach((r) => map.set(r.product_id, (map.get(r.product_id) || 0) + (Number(r.available_qty) || 0)));
+    return map;
+  }, [rows]);
+
+  const productNames = useMemo(() => {
+    const map = new Map<string, string>();
+    rows.forEach((r) => map.set(r.product_id, r.product_name));
+    return map;
+  }, [rows]);
+
+  // Rezerve: her satışın SÖZ VERİLEN tonajından fiilen sevk edileni düş; kalan
+  // (varsa) o ürün için hâlâ "rezerve" — SalesFulfillmentPanel'deki aynı mantık.
+  const reservedByProduct = useMemo(() => {
+    const map = new Map<string, { reserved: number; count: number }>();
+    reservations.forEach((s) => {
+      if (!s.product_id) return;
+      const qty = Number(s.quantity) || 0;
+      const disp = dispatched[s.id] || 0;
+      const remaining = Math.round((qty - disp) * 100) / 100;
+      if (remaining <= 0.01) return;
+      const e = map.get(s.product_id) || { reserved: 0, count: 0 };
+      e.reserved += remaining;
+      e.count += 1;
+      map.set(s.product_id, e);
+    });
+    return Array.from(map.entries())
+      .map(([productId, v]) => ({
+        productId,
+        name: productNames.get(productId) || "—",
+        reserved: v.reserved,
+        count: v.count,
+        available: totalAvailableByProduct.get(productId) || 0,
+      }))
+      .sort((a, b) => b.reserved - a.reserved);
+  }, [reservations, dispatched, productNames, totalAvailableByProduct]);
+
+  const toggle = (id: string) => setExpandedWh((cur) => (cur === id ? null : id));
 
   return (
     <div className="space-y-4">
@@ -77,76 +176,113 @@ export function InventoryView({ hideTitle = false }: { hideTitle?: boolean }) {
         <div className="flex justify-center py-12">
           <Spinner />
         </div>
-      ) : filtered.length === 0 ? (
-        <EmptyState message="Stok kaydı bulunamadı. Operasyon hareketleri girildikçe burada görünür." />
       ) : (
         <>
-          {/* Masaüstü */}
-          <div className="hidden overflow-x-auto rounded-xl border border-border bg-card md:block">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border bg-gray-50 text-left text-xs uppercase text-gray-500">
-                  <th className="px-4 py-3 font-medium">Depo / Fabrika</th>
-                  <th className="px-4 py-3 font-medium">Ürün</th>
-                  <th className="px-4 py-3 text-right font-medium">Giren</th>
-                  <th className="px-4 py-3 text-right font-medium">Satılan</th>
-                  <th className="px-4 py-3 text-right font-medium">Kullanılabilir</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((r) => (
-                  <tr
-                    key={`${r.warehouse_id}-${r.product_id}`}
-                    className="border-b border-border last:border-0 hover:bg-gray-50"
-                  >
-                    <td className="px-4 py-3">
-                      <span className="mr-2">{r.warehouse_name}</span>
-                      <Badge color={(LOC_BADGE[r.location_type] || LOC_BADGE.warehouse).color}>
-                        {(LOC_BADGE[r.location_type] || LOC_BADGE.warehouse).label}
-                      </Badge>
-                    </td>
-                    <td className="px-4 py-3">{r.product_name}</td>
-                    <td className="px-4 py-3 text-right">{formatNumber(r.received_qty)}</td>
-                    <td className="px-4 py-3 text-right">{formatNumber(r.sold_qty)}</td>
-                    <td className="px-4 py-3 text-right font-semibold">
-                      {formatNumber(r.available_qty)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Mobil */}
-          <div className="space-y-3 md:hidden">
-            {filtered.map((r) => (
-              <div
-                key={`${r.warehouse_id}-${r.product_id}`}
-                className="rounded-xl border border-border bg-card p-4"
-              >
-                <div className="mb-2 flex items-center justify-between border-b border-border pb-2">
-                  <span className="font-semibold">{r.product_name}</span>
-                  <Badge color={(LOC_BADGE[r.location_type] || LOC_BADGE.warehouse).color}>
-                    {r.warehouse_name}
-                  </Badge>
-                </div>
-                <div className="grid grid-cols-3 gap-2 text-center text-sm">
-                  <div>
-                    <div className="text-xs text-gray-500">Giren</div>
-                    {formatNumber(r.received_qty)}
-                  </div>
-                  <div>
-                    <div className="text-xs text-gray-500">Satılan</div>
-                    {formatNumber(r.sold_qty)}
-                  </div>
-                  <div>
-                    <div className="text-xs text-gray-500">Kullanılabilir</div>
-                    <span className="font-semibold">{formatNumber(r.available_qty)}</span>
-                  </div>
-                </div>
+          {/* Rezerve stok özeti — henüz fiilen sevk edilmemiş satışlar */}
+          {reservedByProduct.length > 0 && (
+            <Card className="p-4">
+              <div className="mb-1 text-sm font-semibold">Rezerve Stok (bekleyen satışlar)</div>
+              <p className="mb-3 text-xs text-gray-400">
+                Bu ürünlerden bir kısmı satış kaydı açılmış ama henüz araç fiilen çıkmamış — fiziksel
+                stokta &quot;kullanılabilir&quot; görünse de bir müşteriye söz verilmiştir.
+              </p>
+              <div className="space-y-2.5">
+                {reservedByProduct.map((r) => {
+                  const free = Math.max(0, r.available - r.reserved);
+                  const total = r.available > 0 ? r.available : r.reserved;
+                  const reservedPct = total > 0 ? Math.min(100, (r.reserved / total) * 100) : 0;
+                  return (
+                    <div key={r.productId}>
+                      <div className="mb-1 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 text-sm">
+                        <span className="font-medium">{r.name}</span>
+                        <span className="text-xs text-gray-500">
+                          <span className="font-semibold text-amber-600">{formatNumber(r.reserved)} ton rezerve</span>
+                          {" "}({r.count} satış) · {formatNumber(free)} ton serbest / {formatNumber(r.available)} ton mevcut
+                        </span>
+                      </div>
+                      <div className="flex h-2.5 overflow-hidden rounded-full bg-gray-100">
+                        <div className="h-full bg-emerald-500" style={{ width: `${100 - reservedPct}%` }} />
+                        <div className="h-full bg-amber-400" style={{ width: `${reservedPct}%` }} />
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
-            ))}
-          </div>
+              <div className="mt-3 flex items-center gap-4 text-[11px] text-gray-500">
+                <span className="inline-flex items-center gap-1.5">
+                  <span className="h-2 w-2 rounded-full bg-emerald-500" /> Serbest
+                </span>
+                <span className="inline-flex items-center gap-1.5">
+                  <span className="h-2 w-2 rounded-full bg-amber-400" /> Rezerve (bekleyen satış)
+                </span>
+              </div>
+            </Card>
+          )}
+
+          {/* Depo bazlı liste — tıklayınca hemen altında açılır */}
+          {warehouses.length === 0 ? (
+            <EmptyState message="Stok kaydı bulunamadı. Operasyon hareketleri girildikçe burada görünür." />
+          ) : (
+            <div className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-card">
+              {warehouses.map((w) => {
+                const isOpen = expandedWh === w.id;
+                const loc = LOC_BADGE[w.type] || LOC_BADGE.warehouse;
+                return (
+                  <div key={w.id}>
+                    <button
+                      onClick={() => toggle(w.id)}
+                      className="flex w-full flex-wrap items-center justify-between gap-3 px-4 py-3 text-left hover:bg-gray-50"
+                    >
+                      <div className="flex min-w-0 items-center gap-2">
+                        {isOpen ? (
+                          <ChevronDown className="h-4 w-4 shrink-0 text-gray-400" />
+                        ) : (
+                          <ChevronRight className="h-4 w-4 shrink-0 text-gray-400" />
+                        )}
+                        <span className="truncate font-medium">{w.name}</span>
+                        <Badge color={loc.color}>{loc.label}</Badge>
+                        <span className="shrink-0 text-xs text-gray-400">{w.products.length} ürün</span>
+                      </div>
+                      <div className="text-right">
+                        <div className={`text-lg font-bold ${w.total < 0 ? "text-red-600" : ""}`}>
+                          {formatNumber(w.total)} <span className="text-xs font-normal text-gray-400">ton</span>
+                        </div>
+                      </div>
+                    </button>
+                    {isOpen && (
+                      <div className="space-y-4 border-t border-border bg-gray-50/50 px-3 py-4 sm:px-4">
+                        <div className="overflow-x-auto rounded-lg border border-border bg-white">
+                          <table className="w-full text-sm">
+                            <thead>
+                              <tr className="border-b border-border bg-gray-50 text-left text-xs uppercase text-gray-500">
+                                <th className="px-3 py-2 font-medium">Ürün</th>
+                                <th className="px-3 py-2 text-right font-medium">Giren</th>
+                                <th className="px-3 py-2 text-right font-medium">Satılan (fiili)</th>
+                                <th className="px-3 py-2 text-right font-medium">Kullanılabilir</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {w.products.map((p) => (
+                                <tr key={p.product_id} className="border-b border-border last:border-0">
+                                  <td className="px-3 py-2">{p.product_name}</td>
+                                  <td className="px-3 py-2 text-right">{formatNumber(p.received_qty)}</td>
+                                  <td className="px-3 py-2 text-right">{formatNumber(p.sold_qty)}</td>
+                                  <td className={`px-3 py-2 text-right font-semibold ${p.available_qty < 0 ? "text-red-600" : ""}`}>
+                                    {formatNumber(p.available_qty)}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                        <WarehouseDetailExtra warehouseId={w.id} role={role} />
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </>
       )}
     </div>

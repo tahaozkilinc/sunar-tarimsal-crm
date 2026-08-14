@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Badge, Button, Card, EmptyState, Field, Input, Select, Spinner } from "./ui";
 import { formatDate, formatNumber } from "@/lib/format";
+import { L } from "@/lib/i18n";
 import { Trash2 } from "lucide-react";
 import type { Role } from "@/lib/types";
 
@@ -15,6 +16,8 @@ import type { Role } from "@/lib/types";
 //   Gemiye Yükleme -> stock_movements 'transfer'  (−)
 // Türkiye'deki boşaltma mevcut gemi operasyonudur (bu ekrana dahil değil).
 // Acente rolü yalnızca agent_id'si kendi firması olan bağlantıları görür (RLS).
+// Acente yabancı uyruklu olabileceğinden bu ekran onun için İNGİLİZCE gösterilir
+// (bkz. src/lib/i18n.ts — L() ile tek tek, genel bir dil çerçevesi değil).
 
 type Wh = { id: string; name: string; city: string | null; country: string | null };
 type Contract = {
@@ -44,6 +47,8 @@ export function ForeignLoading({ role }: { role: Role }) {
   // Ham rol kontrolü: _view rolleri otomatik dışarıda kalır (salt-okunur).
   const canWrite = ["admin", "operations", "acente"].includes(role);
   const isAcente = role === "acente";
+  const isEn = isAcente;
+  const t = (tr: string, en: string) => L(isEn, tr, en);
 
   const [whs, setWhs] = useState<Wh[]>([]);
   const [contracts, setContracts] = useState<Contract[]>([]);
@@ -143,17 +148,22 @@ export function ForeignLoading({ role }: { role: Role }) {
   }, [whs, stockByWhContract, contracts]);
 
   const addMovement = async () => {
-    if (!whId) { setFormErr("Yurtdışı depo seçin."); return; }
-    if (!contractId) { setFormErr("Bağlantı seçin."); return; }
+    if (!whId) { setFormErr(t("Yurtdışı depo seçin.", "Select an overseas warehouse.")); return; }
+    if (!contractId) { setFormErr(t("Bağlantı seçin.", "Select a contract.")); return; }
     const q = parseFloat(qty.replace(",", "."));
-    if (!qty || isNaN(q) || q <= 0) { setFormErr("Geçerli bir miktar girin."); return; }
+    if (!qty || isNaN(q) || q <= 0) { setFormErr(t("Geçerli bir miktar girin.", "Enter a valid quantity.")); return; }
     const contract = contractOf(contractId);
-    if (!contract) { setFormErr("Bağlantı bulunamadı."); return; }
+    if (!contract) { setFormErr(t("Bağlantı bulunamadı.", "Contract not found.")); return; }
     if (dir === "load") {
       const cur = stockByWhContract.get(`${whId}|${contractId}`);
       const net = (cur?.in || 0) - (cur?.out || 0);
       if (q > net + 0.0001) {
-        setFormErr(`Bu depoda bu bağlantıdan yalnızca ${formatNumber(net)} ton var; ${formatNumber(q)} ton yüklenemez.`);
+        setFormErr(
+          t(
+            `Bu depoda bu bağlantıdan yalnızca ${formatNumber(net)} ton var; ${formatNumber(q)} ton yüklenemez.`,
+            `This warehouse only has ${formatNumber(net)} tons from this contract; ${formatNumber(q)} tons cannot be loaded.`,
+          ),
+        );
         return;
       }
     }
@@ -171,23 +181,28 @@ export function ForeignLoading({ role }: { role: Role }) {
     });
     setSaving(false);
     if (err) { setFormErr(err.message); return; }
-    setFlash(`${formatNumber(q)} ton ${dir === "in" ? "depoya girildi" : "gemiye yüklendi"}`);
+    setFlash(
+      t(
+        `${formatNumber(q)} ton ${dir === "in" ? "depoya girildi" : "gemiye yüklendi"}`,
+        `${formatNumber(q)} tons ${dir === "in" ? "entered the warehouse" : "loaded to ship"}`,
+      ),
+    );
     setQty(""); setPlate("");
     await load();
     setTimeout(() => setFlash(null), 2000);
   };
 
   const deleteMovement = async (id: string) => {
-    if (!window.confirm("Bu hareket silinsin mi?")) return;
+    if (!window.confirm(t("Bu hareket silinsin mi?", "Delete this movement?"))) return;
     const { error: err } = await supabase.from("stock_movements").delete().eq("id", id);
-    if (err) { window.alert("Silinemedi: " + err.message); return; }
+    if (err) { window.alert(t("Silinemedi: ", "Could not delete: ") + err.message); return; }
     await load();
   };
 
   if (loading) return <div className="flex justify-center py-12"><Spinner /></div>;
   if (error) return (
     <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-      Yüklenemedi: {error}
+      {t("Yüklenemedi: ", "Failed to load: ")}{error}
     </div>
   );
 
@@ -196,7 +211,7 @@ export function ForeignLoading({ role }: { role: Role }) {
       <EmptyState
         message={
           isAcente
-            ? "Henüz yurtdışı depo tanımlanmamış. Lütfen Sunar yetkilinize başvurun."
+            ? "No overseas warehouse has been set up yet. Please contact your Sunar representative."
             : "Yurtdışı depo yok. Stok → Depolar / Fabrikalar'dan tür olarak 'Yurtdışı Depo' seçerek ekleyin."
         }
       />
@@ -220,23 +235,23 @@ export function ForeignLoading({ role }: { role: Role }) {
                   </span>
                 </div>
                 <div className="text-sm">
-                  Depoda: <b>{formatNumber(totals.net)} ton</b>
+                  {t("Depoda", "In warehouse")}: <b>{formatNumber(totals.net)} {t("ton", "tons")}</b>
                 </div>
               </div>
               {rows.length === 0 ? (
                 <div className="rounded-lg border border-border px-3 py-2 text-sm text-gray-500">
-                  Bu depoda henüz hareket yok.
+                  {t("Bu depoda henüz hareket yok.", "No movement in this warehouse yet.")}
                 </div>
               ) : (
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="border-b border-border text-left text-xs uppercase text-gray-500">
-                        <th className="py-2 pr-3 font-medium">Bağlantı</th>
-                        <th className="py-2 pr-3 font-medium">Ürün</th>
-                        <th className="py-2 pr-3 text-right font-medium">Depoya Giren</th>
-                        <th className="py-2 pr-3 text-right font-medium">Gemiye Yüklenen</th>
-                        <th className="py-2 text-right font-medium">Depoda</th>
+                        <th className="py-2 pr-3 font-medium">{t("Bağlantı", "Contract")}</th>
+                        <th className="py-2 pr-3 font-medium">{t("Ürün", "Product")}</th>
+                        <th className="py-2 pr-3 text-right font-medium">{t("Depoya Giren", "Received at Warehouse")}</th>
+                        <th className="py-2 pr-3 text-right font-medium">{t("Gemiye Yüklenen", "Loaded to Ship")}</th>
+                        <th className="py-2 text-right font-medium">{t("Depoda", "In Warehouse")}</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -254,7 +269,7 @@ export function ForeignLoading({ role }: { role: Role }) {
                     </tbody>
                     <tfoot>
                       <tr className="border-t-2 border-border text-sm font-semibold">
-                        <td className="py-2 pr-3" colSpan={2}>TOPLAM</td>
+                        <td className="py-2 pr-3" colSpan={2}>{t("TOPLAM", "TOTAL")}</td>
                         <td className="py-2 pr-3 text-right">{formatNumber(totals.in)}</td>
                         <td className="py-2 pr-3 text-right">{formatNumber(totals.out)}</td>
                         <td className="py-2 text-right">{formatNumber(totals.net)}</td>
@@ -269,7 +284,7 @@ export function ForeignLoading({ role }: { role: Role }) {
           {/* Son hareketler */}
           {recent.length > 0 && (
             <Card className="p-4">
-              <div className="mb-2 text-sm font-semibold">Son Hareketler</div>
+              <div className="mb-2 text-sm font-semibold">{t("Son Hareketler", "Recent Movements")}</div>
               <div className="divide-y divide-border">
                 {recent.map((m) => {
                   const c = contractOf(m.contract_id);
@@ -279,7 +294,7 @@ export function ForeignLoading({ role }: { role: Role }) {
                       <div className="min-w-0">
                         <div className="flex items-center gap-2">
                           <Badge color={isIn ? "green" : "blue"}>
-                            {isIn ? "Depoya Giriş" : "Gemiye Yükleme"}
+                            {isIn ? t("Depoya Giriş", "Warehouse Entry") : t("Gemiye Yükleme", "Ship Loading")}
                           </Badge>
                           <span className="truncate font-medium">{c ? cLabel(c) : "—"}</span>
                         </div>
@@ -291,12 +306,12 @@ export function ForeignLoading({ role }: { role: Role }) {
                         </div>
                       </div>
                       <div className="flex shrink-0 items-center gap-2">
-                        <span className="font-semibold">{formatNumber(m.quantity)} ton</span>
+                        <span className="font-semibold">{formatNumber(m.quantity)} {t("ton", "tons")}</span>
                         {canWrite && (
                           <button
                             onClick={() => deleteMovement(m.id)}
                             className="rounded p-1 text-gray-400 hover:bg-red-50 hover:text-red-500"
-                            title="Sil"
+                            title={t("Sil", "Delete")}
                           >
                             <Trash2 className="h-3.5 w-3.5" />
                           </button>
@@ -314,10 +329,10 @@ export function ForeignLoading({ role }: { role: Role }) {
         <div className="order-1 lg:order-2">
           {canWrite ? (
             <Card className="space-y-3 p-4">
-              <div className="text-sm font-semibold">Hareket Girişi</div>
-              <Field label="Yurtdışı Depo" required>
+              <div className="text-sm font-semibold">{t("Hareket Girişi", "Enter Movement")}</div>
+              <Field label={t("Yurtdışı Depo", "Overseas Warehouse")} required>
                 <Select value={whId} onChange={(e) => setWhId(e.target.value)}>
-                  <option value="">Seçiniz...</option>
+                  <option value="">{t("Seçiniz...", "Select...")}</option>
                   {whs.map((w) => (
                     <option key={w.id} value={w.id}>
                       {w.name}{w.country ? ` (${w.country})` : ""}
@@ -325,9 +340,9 @@ export function ForeignLoading({ role }: { role: Role }) {
                   ))}
                 </Select>
               </Field>
-              <Field label="Bağlantı" required>
+              <Field label={t("Bağlantı", "Contract")} required>
                 <Select value={contractId} onChange={(e) => setContractId(e.target.value)}>
-                  <option value="">Seçiniz...</option>
+                  <option value="">{t("Seçiniz...", "Select...")}</option>
                   {contracts.map((c) => (
                     <option key={c.id} value={c.id}>
                       {cLabel(c)} · {pName(c.product_id)} ({formatNumber(c.quantity)} t)
@@ -336,29 +351,29 @@ export function ForeignLoading({ role }: { role: Role }) {
                 </Select>
                 {isAcente && contracts.length === 0 && (
                   <div className="mt-1 text-xs text-amber-600">
-                    Firmanıza atanmış bağlantı yok. Sunar yetkilinize başvurun.
+                    No contract has been assigned to your company. Please contact your Sunar representative.
                   </div>
                 )}
               </Field>
-              <Field label="İşlem" required>
+              <Field label={t("İşlem", "Action")} required>
                 <div className="inline-flex w-full overflow-hidden rounded-lg border border-border text-sm">
                   <button
                     type="button"
                     onClick={() => setDir("in")}
                     className={`flex-1 px-3 py-2 font-medium ${dir === "in" ? "bg-brand text-white" : "bg-white text-gray-600"}`}
                   >
-                    Depoya Giriş
+                    {t("Depoya Giriş", "Warehouse Entry")}
                   </button>
                   <button
                     type="button"
                     onClick={() => setDir("load")}
                     className={`flex-1 px-3 py-2 font-medium ${dir === "load" ? "bg-brand text-white" : "bg-white text-gray-600"}`}
                   >
-                    Gemiye Yükleme
+                    {t("Gemiye Yükleme", "Ship Loading")}
                   </button>
                 </div>
               </Field>
-              <Field label="Miktar (ton)" required>
+              <Field label={t("Miktar (ton)", "Quantity (tons)")} required>
                 <Input
                   type="text"
                   inputMode="decimal"
@@ -366,23 +381,23 @@ export function ForeignLoading({ role }: { role: Role }) {
                   onChange={(e) => setQty(e.target.value)}
                   placeholder={
                     dir === "load" && whId && contractId
-                      ? `Depoda: ${formatNumber(
+                      ? `${t("Depoda", "In warehouse")}: ${formatNumber(
                           (stockByWhContract.get(`${whId}|${contractId}`)?.in || 0) -
                             (stockByWhContract.get(`${whId}|${contractId}`)?.out || 0),
-                        )} ton`
-                      : "örn. 250"
+                        )} ${t("ton", "tons")}`
+                      : t("örn. 250", "e.g. 250")
                   }
                   onKeyDown={(e) => { if (e.key === "Enter") addMovement(); }}
                 />
               </Field>
-              <Field label="Araç / Vagon Plakası">
+              <Field label={t("Araç / Vagon Plakası", "Vehicle / Wagon Plate")}>
                 <Input
                   value={plate}
                   onChange={(e) => setPlate(e.target.value.toUpperCase())}
-                  placeholder="Opsiyonel"
+                  placeholder={t("Opsiyonel", "Optional")}
                 />
               </Field>
-              <Field label="Tarih">
+              <Field label={t("Tarih", "Date")}>
                 <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
               </Field>
               {formErr && (
@@ -396,7 +411,7 @@ export function ForeignLoading({ role }: { role: Role }) {
                 </div>
               )}
               <Button onClick={addMovement} disabled={saving} className="w-full">
-                {saving ? "Kaydediliyor..." : "Kaydet ↵"}
+                {saving ? t("Kaydediliyor...", "Saving...") : t("Kaydet ↵", "Save ↵")}
               </Button>
             </Card>
           ) : (

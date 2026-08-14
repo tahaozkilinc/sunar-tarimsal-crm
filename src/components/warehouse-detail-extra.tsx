@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { Badge, Card } from "./ui";
+import { Badge, Card, Select } from "./ui";
 import { PhotoGallery } from "./photo-gallery";
 import { formatDate, formatNumber } from "@/lib/format";
 import {
@@ -12,7 +12,7 @@ import {
   type AttributionMovement,
   type LedgerMovement,
 } from "@/lib/stock-attribution";
-import { MOVEMENT_TYPE_OPTIONS } from "@/lib/resources";
+import { MOVEMENT_TYPE_OPTIONS, STOCK_STATUS_OPTIONS } from "@/lib/resources";
 import { baseRole } from "@/lib/nav";
 import type { Role } from "@/lib/types";
 
@@ -78,6 +78,23 @@ export function WarehouseDetailExtra({ warehouseId, role }: { warehouseId: strin
       on = false;
     };
   }, [supabase, warehouseId]);
+
+  const updateStockStatus = async (movementId: string, status: string) => {
+    // .select() ile geri okunuyor: RLS (can_access_ship) satırı sessizce
+    // reddedebilir (0 satır günceller, hata DÖNMEZ) — ör. operasyon kullanıcısı
+    // kendisine atanmamış başka bir gemiye ait hareketi düzeltmeye çalışırsa.
+    // data null ise güncelleme aslında UYGULANMAMIŞTIR; iyimser UI güncellemesi
+    // YANLIŞ bilgi göstermesin diye burada ayırt edilir.
+    const { data, error } = await supabase
+      .from("stock_movements")
+      .update({ stock_status: status || null })
+      .eq("id", movementId)
+      .select("id")
+      .maybeSingle();
+    if (error) { window.alert("Güncellenemedi: " + error.message); return; }
+    if (!data) { window.alert("Bu hareketi güncelleme yetkiniz yok (başka bir gemiye atanmış olabilir)."); return; }
+    setMovements((prev) => prev.map((m) => (m.id === movementId ? { ...m, stock_status: status || null } : m)));
+  };
 
   const contractLabel = (id: string) =>
     contracts.find((c) => c.id === id)?.vessel || contracts.find((c) => c.id === id)?.contract_no || "—";
@@ -180,6 +197,7 @@ export function WarehouseDetailExtra({ warehouseId, role }: { warehouseId: strin
         <p className="mb-2 text-xs text-gray-400">
           Operasyon ve sevkiyat kayıtlarından otomatik — her giriş hangi gemiden geldiğini, her çıkış
           nereye gittiğini gösterir. Kalan, o hareketten SONRAKİ ürün bakiyesidir.
+          {canWrite && " Giriş satırlarındaki Milli/Yerli durumunu buradan düzeltebilirsiniz."}
         </p>
         {loading ? (
           <div className="text-xs text-gray-400">Yükleniyor...</div>
@@ -193,6 +211,7 @@ export function WarehouseDetailExtra({ warehouseId, role }: { warehouseId: strin
                   <th className="px-3 py-2 font-medium">Tarih</th>
                   <th className="px-3 py-2 font-medium">Yön</th>
                   <th className="px-3 py-2 font-medium">Ürün</th>
+                  <th className="px-3 py-2 font-medium">Milli / Yerli</th>
                   <th className="px-3 py-2 font-medium">Kaynak / Hedef</th>
                   <th className="px-3 py-2 text-right font-medium">Miktar</th>
                   <th className="px-3 py-2 text-right font-medium">Kalan</th>
@@ -221,6 +240,27 @@ export function WarehouseDetailExtra({ warehouseId, role }: { warehouseId: strin
                         </Badge>
                       </td>
                       <td className="px-3 py-2">{productName(r.product_id)}</td>
+                      <td className="px-3 py-2">
+                        {r.direction !== "in" ? (
+                          <span className="text-gray-400">—</span>
+                        ) : canWrite ? (
+                          <Select
+                            value={r.stock_status || ""}
+                            onChange={(e) => updateStockStatus(r.id, e.target.value)}
+                          >
+                            <option value="">Belirtilmemiş</option>
+                            {STOCK_STATUS_OPTIONS.map((o) => (
+                              <option key={o.value} value={o.value}>{o.label}</option>
+                            ))}
+                          </Select>
+                        ) : r.stock_status ? (
+                          <Badge color={r.stock_status === "MİLLİ" ? "blue" : r.stock_status === "YERLİ" ? "green" : "gray"}>
+                            {r.stock_status}
+                          </Badge>
+                        ) : (
+                          <span className="text-gray-400">—</span>
+                        )}
+                      </td>
                       <td className="px-3 py-2 truncate">{source}</td>
                       <td className={`px-3 py-2 text-right font-medium ${r.direction === "in" ? "text-emerald-700" : "text-red-600"}`}>
                         {r.direction === "in" ? "+" : ""}

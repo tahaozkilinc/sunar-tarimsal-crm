@@ -33,7 +33,7 @@ export function InventoryTabs({ role }: { role: Role }) {
       <h1 className="text-xl font-bold">Stok</h1>
       <Tabs value={tab} onChange={setTab} tabs={tabs} />
 
-      {tab === "stock" && <InventoryView hideTitle />}
+      {tab === "stock" && <InventoryView hideTitle role={role} />}
 
       {tab === "map" && <StockMap />}
 
