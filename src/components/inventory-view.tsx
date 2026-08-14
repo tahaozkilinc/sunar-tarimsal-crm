@@ -7,8 +7,8 @@ import { formatNumber } from "@/lib/format";
 import { ChevronDown, ChevronRight, Search } from "lucide-react";
 import { WarehouseShipSummary } from "./warehouse-ship-summary";
 
-// Depo bazlı stok görünümü: her depo tek satır (toplam kullanılabilir tonaj +
-// ürün sayısı), tıklanınca hemen altında açılır (ör. pending-arrivals.tsx'teki
+// Depo bazlı stok görünümü: her depo tek satır (SATILABİLİR tonaj + ürün
+// sayısı), tıklanınca hemen altında açılır (ör. pending-arrivals.tsx'teki
 // aynı akordeon deseni) — açılan kısım BİLEREK SADE: yalnızca gemi/hammadde/
 // depoya ilk giriş tarihi/miktar (WarehouseShipSummary). Depo yönetiminin
 // tamamı (fotoğraf, yetkililer, milli/yerli, tam geçmiş, tedarikçi dağılımı)
@@ -16,11 +16,21 @@ import { WarehouseShipSummary } from "./warehouse-ship-summary";
 // tekrarlanmıyor.
 //
 // Üstte AYRICA ürün bazlı "Rezerve Stok" özeti var: henüz fiilen sevk
-// edilmemiş (taslak/onaylı, dispatch tamamlanmamış) satışların tonajı —
-// inventory view'ı (0043) yalnızca FİİLİ sevkiyatı düştüğünden bu tonaj
-// "kullanılabilir" görünür ama aslında bir müşteriye söz verilmiştir. Bu
-// depo-bazlı DEĞİL ürün-bazlıdır (satış hangi depodan çıkacağı henüz belli
-// olmayabilir — bkz. sale_warehouses), bu yüzden ayrı bir bölümde gösterilir.
+// edilmemiş (taslak+fiyatlı veya onaylı/teslim/fatura, dispatch tamamlanmamış
+// — bkz. 0065 sales_reservations WHERE koşulu) satışların tonajı — inventory
+// view'ı (0043) yalnızca FİİLİ sevkiyatı düştüğünden bu tonaj "kullanılabilir"
+// görünür ama aslında bir müşteriye söz verilmiştir. Satış gerçekleşirse zaten
+// fiili sevkiyatla (outbound_sale) doğrudan düşülür; gerçekleşmezse zaten hiç
+// fiziki hareket olmadığından stok orada görünmeye devam eder — burada
+// yalnızca "rezerve" bilgisi ayrıca gösteriliyor.
+//
+// Depo satırındaki büyük rakam artık SATILABİLİR (mevcut - rezerve): bir
+// satışın hangi depo(lar)dan çıkabileceği sale_warehouses beyaz listesinden
+// gelir; liste tek depoysa rezervasyon doğrudan ona, birden fazlaysa o
+// üründen depodaki mevcut miktarla ORANTILI dağıtılır (attributeByWarehouse'
+// daki ile aynı "elde veriyle en iyi tahmin" yaklaşımı) — kesin değil ama
+// depo seçilene kadar elde başka veri yok. Depo hiç seçilmemişse o kısım
+// hiçbir depoya yazılmaz, yalnızca üstteki ürün bazlı özette görünür.
 
 type InventoryRow = {
   warehouse_id: string;
@@ -34,6 +44,7 @@ type InventoryRow = {
 };
 type Reservation = { id: string; product_id: string | null; quantity: number | null; status: string };
 type DispatchRow = { sale_id: string | null; quantity: number | null };
+type SaleWarehouseRow = { sale_id: string; warehouse_id: string };
 
 const LOC_BADGE: Record<string, { color: "blue" | "purple" | "yellow"; label: string }> = {
   warehouse: { color: "blue", label: "Depo" },
@@ -46,6 +57,7 @@ export function InventoryView({ hideTitle = false }: { hideTitle?: boolean }) {
   const [rows, setRows] = useState<InventoryRow[]>([]);
   const [reservations, setReservations] = useState<Reservation[]>([]);
   const [dispatched, setDispatched] = useState<Record<string, number>>({});
+  const [allowedByS, setAllowedByS] = useState<Record<string, string[]>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
@@ -67,13 +79,28 @@ export function InventoryView({ hideTitle = false }: { hideTitle?: boolean }) {
       ]);
       if (inv.error) setError(inv.error.message);
       setRows((inv.data as InventoryRow[]) || []);
-      setReservations((res.data as Reservation[]) || []);
+      const resRows = (res.data as Reservation[]) || [];
+      setReservations(resRows);
       const d: Record<string, number> = {};
       ((disp.data as DispatchRow[] | null) || []).forEach((m) => {
         if (!m.sale_id) return;
         d[m.sale_id] = (d[m.sale_id] || 0) + (Number(m.quantity) || 0);
       });
       setDispatched(d);
+
+      // Rezervasyonların hangi depo(lar)a düşebileceği (beyaz liste) —
+      // depo bazlı satılabilir tonaj hesabı için gerekli (bkz. üst not).
+      if (resRows.length > 0) {
+        const { data: swData } = await supabase
+          .from("sale_warehouses")
+          .select("sale_id,warehouse_id")
+          .in("sale_id", resRows.map((r) => r.id));
+        const am: Record<string, string[]> = {};
+        ((swData as SaleWarehouseRow[] | null) || []).forEach((r) => {
+          (am[r.sale_id] ||= []).push(r.warehouse_id);
+        });
+        setAllowedByS(am);
+      }
       setLoading(false);
     })();
   }, [supabase]);
@@ -88,32 +115,19 @@ export function InventoryView({ hideTitle = false }: { hideTitle?: boolean }) {
     );
   }, [rows, search]);
 
-  // Depo bazlı gruplama — panelin ilk bakışta gösterdiği "hangi depoda ne kadar var".
-  const warehouses = useMemo(() => {
-    const map = new Map<
-      string,
-      { id: string; name: string; type: string; total: number; products: InventoryRow[] }
-    >();
-    filtered.forEach((r) => {
-      const e = map.get(r.warehouse_id) || {
-        id: r.warehouse_id,
-        name: r.warehouse_name,
-        type: r.location_type,
-        total: 0,
-        products: [] as InventoryRow[],
-      };
-      e.total += Number(r.available_qty) || 0;
-      e.products.push(r);
-      map.set(r.warehouse_id, e);
-    });
-    return Array.from(map.values());
-  }, [filtered]);
-
   // Ürün bazlı toplam kullanılabilir (TÜM depolar, arama kutusundan bağımsız —
   // rezerve özeti her zaman tüm resmi gösterir).
   const totalAvailableByProduct = useMemo(() => {
     const map = new Map<string, number>();
     rows.forEach((r) => map.set(r.product_id, (map.get(r.product_id) || 0) + (Number(r.available_qty) || 0)));
+    return map;
+  }, [rows]);
+
+  // Depo×ürün mevcut miktar — rezervasyonu birden fazla izinli depo arasında
+  // orantılı dağıtırken kullanılır (bkz. reservedByWarehouse).
+  const availableByWhProduct = useMemo(() => {
+    const map = new Map<string, number>();
+    rows.forEach((r) => map.set(`${r.warehouse_id}|${r.product_id}`, Number(r.available_qty) || 0));
     return map;
   }, [rows]);
 
@@ -148,6 +162,59 @@ export function InventoryView({ hideTitle = false }: { hideTitle?: boolean }) {
       }))
       .sort((a, b) => b.reserved - a.reserved);
   }, [reservations, dispatched, productNames, totalAvailableByProduct]);
+
+  // Rezervasyonu depo(lar)a dağıt: satışın izinli deposu (sale_warehouses)
+  // tekse doğrudan ona, birden fazlaysa o üründen depodaki mevcut miktarla
+  // ORANTILI (hepsi 0'sa eşit) — depo hiç seçilmemişse "unassigned"da kalır,
+  // hiçbir depo satırına yazılmaz.
+  const { reservedByWarehouse, unassignedReserved } = useMemo(() => {
+    const byWh = new Map<string, number>();
+    let unassigned = 0;
+    reservations.forEach((s) => {
+      if (!s.product_id) return;
+      const qty = Number(s.quantity) || 0;
+      const disp = dispatched[s.id] || 0;
+      const remaining = Math.round((qty - disp) * 100) / 100;
+      if (remaining <= 0.01) return;
+      const allowed = allowedByS[s.id] || [];
+      if (allowed.length === 0) {
+        unassigned += remaining;
+        return;
+      }
+      const avails = allowed.map((whId) => Math.max(0, availableByWhProduct.get(`${whId}|${s.product_id}`) || 0));
+      const totalAvail = avails.reduce((a, b) => a + b, 0);
+      allowed.forEach((whId, i) => {
+        const share = totalAvail > 0 ? avails[i] / totalAvail : 1 / allowed.length;
+        byWh.set(whId, (byWh.get(whId) || 0) + remaining * share);
+      });
+    });
+    return { reservedByWarehouse: byWh, unassignedReserved: unassigned };
+  }, [reservations, dispatched, allowedByS, availableByWhProduct]);
+
+  // Depo bazlı gruplama — panelin ilk bakışta gösterdiği "hangi depoda ne kadar
+  // satılabilir". sellable = fiziki mevcut - depoya düşen rezerve payı.
+  const warehouses = useMemo(() => {
+    const map = new Map<
+      string,
+      { id: string; name: string; type: string; total: number; products: InventoryRow[] }
+    >();
+    filtered.forEach((r) => {
+      const e = map.get(r.warehouse_id) || {
+        id: r.warehouse_id,
+        name: r.warehouse_name,
+        type: r.location_type,
+        total: 0,
+        products: [] as InventoryRow[],
+      };
+      e.total += Number(r.available_qty) || 0;
+      e.products.push(r);
+      map.set(r.warehouse_id, e);
+    });
+    return Array.from(map.values()).map((w) => {
+      const reserved = Math.round((reservedByWarehouse.get(w.id) || 0) * 100) / 100;
+      return { ...w, reserved, sellable: Math.round((w.total - reserved) * 100) / 100 };
+    });
+  }, [filtered, reservedByWarehouse]);
 
   const toggle = (id: string) => setExpandedWh((cur) => (cur === id ? null : id));
 
@@ -216,6 +283,12 @@ export function InventoryView({ hideTitle = false }: { hideTitle?: boolean }) {
                   <span className="h-2 w-2 rounded-full bg-amber-400" /> Rezerve (bekleyen satış)
                 </span>
               </div>
+              {unassignedReserved > 0.01 && (
+                <p className="mt-3 border-t border-border pt-2 text-[11px] text-gray-400">
+                  Bunun {formatNumber(unassignedReserved)} tonu için satışta henüz depo seçilmemiş — depo
+                  seçilince aşağıdaki depo satırlarına yansır.
+                </p>
+              )}
             </Card>
           )}
 
@@ -244,9 +317,16 @@ export function InventoryView({ hideTitle = false }: { hideTitle?: boolean }) {
                         <span className="shrink-0 text-xs text-gray-400">{w.products.length} ürün</span>
                       </div>
                       <div className="text-right">
-                        <div className={`text-lg font-bold ${w.total < 0 ? "text-red-600" : ""}`}>
-                          {formatNumber(w.total)} <span className="text-xs font-normal text-gray-400">ton</span>
+                        <div className="text-[11px] uppercase tracking-wide text-gray-400">Satılabilir</div>
+                        <div className={`text-lg font-bold ${w.sellable < 0 ? "text-red-600" : ""}`}>
+                          {formatNumber(w.sellable)} <span className="text-xs font-normal text-gray-400">ton</span>
                         </div>
+                        {w.reserved > 0.01 && (
+                          <div className="text-xs text-gray-400">
+                            {formatNumber(w.total)} mevcut ·{" "}
+                            <span className="font-medium text-amber-600">{formatNumber(w.reserved)} rezerve</span>
+                          </div>
+                        )}
                       </div>
                     </button>
                     {isOpen && (
