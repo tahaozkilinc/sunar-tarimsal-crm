@@ -192,7 +192,11 @@ export function InventoryView({ hideTitle = false }: { hideTitle?: boolean }) {
   }, [reservations, dispatched, allowedByS, availableByWhProduct]);
 
   // Depo bazlı gruplama — panelin ilk bakışta gösterdiği "hangi depoda ne kadar
-  // satılabilir". sellable = fiziki mevcut - depoya düşen rezerve payı.
+  // satılabilir". sellable = fiziki mevcut - depoya düşen rezerve payı; ekranda
+  // hiçbir zaman negatif GÖSTERİLMEZ (0'da sabitlenir) — aşım varsa ayrı, açık
+  // bir uyarı satırı olarak (overReserved) belirtilir. Eskiden büyük eksi
+  // rakam ("-1.033,55 ton") satırın dar sabit genişliğiyle birleşince görüntü
+  // bozuluyordu; hem rakam hem genişlik kısıtı buna göre düzeltildi.
   const warehouses = useMemo(() => {
     const map = new Map<
       string,
@@ -212,7 +216,13 @@ export function InventoryView({ hideTitle = false }: { hideTitle?: boolean }) {
     });
     return Array.from(map.values()).map((w) => {
       const reserved = Math.round((reservedByWarehouse.get(w.id) || 0) * 100) / 100;
-      return { ...w, reserved, sellable: Math.round((w.total - reserved) * 100) / 100 };
+      const rawSellable = Math.round((w.total - reserved) * 100) / 100;
+      return {
+        ...w,
+        reserved,
+        sellable: Math.max(0, rawSellable),
+        overReserved: rawSellable < 0 ? Math.round(-rawSellable * 100) / 100 : 0,
+      };
     });
   }, [filtered, reservedByWarehouse]);
 
@@ -305,9 +315,9 @@ export function InventoryView({ hideTitle = false }: { hideTitle?: boolean }) {
                         <Badge color={loc.color}>{loc.label}</Badge>
                         <span className="shrink-0 text-xs text-gray-400">{w.products.length} ürün</span>
                       </div>
-                      <div className="w-36 shrink-0 text-right">
+                      <div className="shrink-0 text-right">
                         <div className="text-[11px] uppercase tracking-wide text-gray-400">Satılabilir</div>
-                        <div className={`text-lg font-bold ${w.sellable < 0 ? "text-red-600" : ""}`}>
+                        <div className={`text-lg font-bold ${w.overReserved > 0 ? "text-red-600" : ""}`}>
                           {formatNumber(w.sellable)} <span className="text-xs font-normal text-gray-400">ton</span>
                         </div>
                         {w.reserved > 0.01 && w.total > 0 && (
@@ -316,7 +326,7 @@ export function InventoryView({ hideTitle = false }: { hideTitle?: boolean }) {
                               {formatNumber(w.total)} mevcut ·{" "}
                               <span className="font-medium text-amber-600">{formatNumber(w.reserved)} rezerve</span>
                             </div>
-                            <div className="mt-1 ml-auto flex h-1.5 w-full overflow-hidden rounded-full bg-gray-100">
+                            <div className="ml-auto mt-1 flex h-1.5 w-32 overflow-hidden rounded-full bg-gray-100">
                               <div
                                 className="h-full bg-emerald-500"
                                 style={{ width: `${Math.max(0, Math.min(100, (w.sellable / w.total) * 100))}%` }}
@@ -327,6 +337,11 @@ export function InventoryView({ hideTitle = false }: { hideTitle?: boolean }) {
                               />
                             </div>
                           </>
+                        )}
+                        {w.overReserved > 0 && (
+                          <div className="mt-1 whitespace-nowrap text-xs font-semibold text-red-600">
+                            ⚠ {formatNumber(w.overReserved)} ton aşım
+                          </div>
                         )}
                       </div>
                     </button>
