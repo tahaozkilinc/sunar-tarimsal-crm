@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { Badge, Card, Spinner } from "./ui";
 import { formatDate, formatNumber } from "@/lib/format";
 import { CONTRACT_STATUS_OPTIONS } from "@/lib/resources";
+import { DateProductFilter, EMPTY_DATE_PRODUCT_FILTER, type DateProductFilterValue } from "./date-product-filter";
 
 // Operasyon iş ortakları (gözetim/liman/nakliyeci) için gemi/tonaj verisi.
 // Veri ayrıca SAKLANMAZ; her zaman gemi atamalarından (purchase_contracts'taki
@@ -71,6 +72,7 @@ export function CompanyShipStats({
   const [ships, setShips] = useState<Ship[]>([]);
   const [products, setProducts] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState<DateProductFilterValue>(EMPTY_DATE_PRODUCT_FILTER);
   const field = PARTY_FIELD[companyType];
 
   useEffect(() => {
@@ -104,24 +106,36 @@ export function CompanyShipStats({
       </div>
     );
 
-  const totalTon = ships.reduce((a, s) => a + (Number(s.quantity) || 0), 0);
-  const activeShips = ships.filter((s) => ACTIVE.has(s.status));
+  const availableProducts = Array.from(new Set(ships.map((s) => s.product_id).filter((x): x is string => !!x)))
+    .map((id) => ({ id, name: products[id] || "—" }))
+    .sort((a, b) => a.name.localeCompare(b.name, "tr"));
+
+  const filtered = ships.filter((s) => {
+    if (filter.productId && s.product_id !== filter.productId) return false;
+    if (filter.from && (!s.eta || s.eta < filter.from)) return false;
+    if (filter.to && (!s.eta || s.eta > filter.to)) return false;
+    return true;
+  });
+
+  const totalTon = filtered.reduce((a, s) => a + (Number(s.quantity) || 0), 0);
+  const activeShips = filtered.filter((s) => ACTIVE.has(s.status));
   const activeTon = activeShips.reduce((a, s) => a + (Number(s.quantity) || 0), 0);
   const pn = (id: string | null) => (id && products[id]) || "Ürünsüz";
-  const sorted = [...ships].sort((a, b) => (a.eta || "9999").localeCompare(b.eta || "9999"));
+  const sorted = [...filtered].sort((a, b) => (a.eta || "9999").localeCompare(b.eta || "9999"));
 
   return (
     <div className="space-y-3">
       <h3 className="text-sm font-semibold">Atanan Gemiler · {TYPE_LABEL[companyType]}</h3>
+      <DateProductFilter value={filter} onChange={setFilter} products={availableProducts} />
       <div className="grid grid-cols-3 gap-3">
-        <Tile label="Gemi" value={String(ships.length)} sub={`${activeShips.length} aktif/yolda`} />
+        <Tile label="Gemi" value={String(filtered.length)} sub={`${activeShips.length} aktif/yolda`} />
         <Tile label="Toplam Ton" value={formatNumber(totalTon)} />
         <Tile label="Aktif/Yolda Ton" value={formatNumber(activeTon)} />
       </div>
 
-      {ships.length === 0 ? (
+      {filtered.length === 0 ? (
         <div className="rounded-lg border border-border p-3 text-sm text-gray-500">
-          Bu firmaya atanmış gemi yok.
+          {ships.length === 0 ? "Bu firmaya atanmış gemi yok." : "Filtreye uyan gemi yok."}
         </div>
       ) : (
         <div className="overflow-x-auto rounded-lg border border-border">

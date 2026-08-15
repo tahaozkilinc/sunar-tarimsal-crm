@@ -8,10 +8,13 @@ import { createClient } from "@/lib/supabase/client";
 import { ResourceManager } from "./resource-manager";
 import { CompanyReport } from "./company-report";
 import { CompanyShipStats } from "./company-ship-stats";
-import { Badge, Card } from "./ui";
+import { Badge, Card, Tabs } from "./ui";
 import { COMPANY_TYPE_OPTIONS, activitiesResource, contactsResource } from "@/lib/resources";
 import type { Company, Role } from "@/lib/types";
 import { baseRole } from "@/lib/nav";
+
+const OPS_PARTNER_TYPES = new Set(["surveyor", "port", "carrier", "agent", "broker"]);
+type DetailTab = "contacts" | "activities" | "summary";
 
 // Bir firmanın aktiviteleri artık CRM'in ortak/havuz sekmesinde değil, doğrudan
 // bu sayfada (bkz. crm-tabs.tsx — aktivite sekmesi kaldırıldı). crm_activities
@@ -64,6 +67,7 @@ function Info({ label, value }: { label: string; value: string | null }) {
 
 export function CompanyDetailView({ company, role }: { company: Company; role: Role }) {
   const typeOpt = COMPANY_TYPE_OPTIONS.find((o) => o.value === company.type);
+  const [tab, setTab] = useState<DetailTab>("contacts");
 
   // Bu sayfada firma sabit -> kişi formunda firma alanı gizli, otomatik atanır.
   const contactsConfig = {
@@ -116,8 +120,17 @@ export function CompanyDetailView({ company, role }: { company: Company; role: R
         </div>
       </Card>
 
-      <div>
-        <h2 className="mb-2 text-sm font-semibold">Kişiler / Yetkililer</h2>
+      <Tabs
+        value={tab}
+        onChange={(k) => setTab(k as DetailTab)}
+        tabs={[
+          { key: "contacts", label: "Kişiler" },
+          { key: "activities", label: "Aktiviteler" },
+          { key: "summary", label: "Operasyonel Özet" },
+        ]}
+      />
+
+      {tab === "contacts" && (
         <ResourceManager
           config={contactsConfig}
           role={role}
@@ -125,10 +138,9 @@ export function CompanyDetailView({ company, role }: { company: Company; role: R
           defaultValues={{ company_id: company.id }}
           hideTitle
         />
-      </div>
+      )}
 
-      <div>
-        <h2 className="mb-2 text-sm font-semibold">Aktiviteler</h2>
+      {tab === "activities" && (
         <ResourceManager
           config={activitiesConfig}
           role={role}
@@ -136,13 +148,14 @@ export function CompanyDetailView({ company, role }: { company: Company; role: R
           defaultValues={{ company_id: company.id, module: activityModule }}
           hideTitle
         />
-      </div>
-
-      {company.type === "surveyor" || company.type === "port" || company.type === "carrier" || company.type === "agent" || company.type === "broker" ? (
-        <CompanyShipStats companyId={company.id} companyType={company.type} />
-      ) : (
-        <CompanyReport companyId={company.id} />
       )}
+
+      {tab === "summary" &&
+        (OPS_PARTNER_TYPES.has(company.type) ? (
+          <CompanyShipStats companyId={company.id} companyType={company.type as "surveyor" | "port" | "carrier" | "agent" | "broker"} />
+        ) : (
+          <CompanyReport companyId={company.id} />
+        ))}
     </div>
   );
 }
