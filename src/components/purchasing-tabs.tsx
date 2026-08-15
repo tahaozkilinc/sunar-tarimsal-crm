@@ -5,6 +5,7 @@ import { Tabs } from "./ui";
 import { ResourceManager } from "./resource-manager";
 import { ShipmentSchedule } from "./shipment-schedule";
 import { BaglantiSummary } from "./function-summary";
+import { ContractDocuments } from "./contract-documents";
 import { purchaseContractsResource } from "@/lib/resources";
 import type { Role } from "@/lib/types";
 
@@ -24,7 +25,12 @@ export function PurchasingTabs({ role }: { role: Role }) {
       />
       {tab === "ozet" && <BaglantiSummary />}
       {tab === "contracts" && (
-        <ResourceManager config={purchaseContractsResource} role={role} hideTitle />
+        <ResourceManager
+          config={purchaseContractsResource}
+          role={role}
+          hideTitle
+          detailExtra={(row) => <ContractDocuments contractId={String(row.id)} role={role} />}
+        />
       )}
       {tab === "schedule" && <ShipmentSchedule />}
     </div>
