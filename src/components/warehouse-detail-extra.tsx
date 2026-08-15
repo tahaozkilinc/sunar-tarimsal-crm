@@ -4,8 +4,6 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { Badge, Card, Select } from "./ui";
-import { PhotoGallery } from "./photo-gallery";
-import { ResourceManager } from "./resource-manager";
 import { formatDate, formatNumber } from "@/lib/format";
 import {
   attributeByWarehouse,
@@ -14,27 +12,30 @@ import {
   type AttributionMovement,
   type LedgerMovement,
 } from "@/lib/stock-attribution";
-import { MOVEMENT_TYPE_OPTIONS, STOCK_STATUS_OPTIONS, warehouseContactsResource } from "@/lib/resources";
+import { MOVEMENT_TYPE_OPTIONS, STOCK_STATUS_OPTIONS } from "@/lib/resources";
 import { baseRole } from "@/lib/nav";
 import type { Role } from "@/lib/types";
 
-// Depo Detayı görünümüne (ResourceManager detailExtra) enjekte edilir — Stok'ta
-// (InventoryView) ve CRM'de ("Depolar" modülü) AYNI bileşen kullanılır, tek
-// veri kaynağı, ikisi birbirinden kopuk değil:
-//   1) Depo fotoğrafları (PhotoGallery, warehouse_photos)
-//   2) Depo Yetkilileri — bu depodaki kişiler (warehouse_contacts, bkz. 0064;
-//      contacts'a company_id NOT NULL olduğundan eklenemedi, ayrı tablo).
-//   3) "Hangi Gemiden Geldi" kırılımı — depoya giren malın hangi bağlantı
+// Depo Detayı sayfasının (warehouse-detail-view.tsx) "Stok Özeti" ve "Hareket
+// Geçmişi" sekmelerine karşılık gelir — Stok'ta (InventoryView) ve CRM'de
+// ("Depolar" modülü) AYNI bileşen kullanılır, tek veri kaynağı, ikisi
+// birbirinden kopuk değil. Depo fotoğrafları/yetkilileri ve alt depolar
+// (kendi başına, bu ortak movements verisine ihtiyaç duymayan bölümler)
+// warehouse-detail-view.tsx'te doğrudan render edilir, burada değil.
+//
+// section="stock":
+//   1) "Hangi Gemiden Geldi" kırılımı — depoya giren malın hangi bağlantı
 //      (gemi/parti) hangi oranda kaynaklık ettiği (bkz. attributeByWarehouse:
 //      çıkış hareketleri belirli bir gemiye ait değildir, giren payına
 //      ORANTILI düşülür — kesin değil, tahminidir).
-//   4) "Tedarikçi Bazlı Dağılım" — AYNI teknik, gemi yerine sözleşmenin
+//   2) "Tedarikçi Bazlı Dağılım" — AYNI teknik, gemi yerine sözleşmenin
 //      tedarikçi firmasına göre ("depo bazlı kiminle ne kadar çalıştık").
-//   5) "Milli / Yerli" kırılımı — AYNI teknik, stock_status'e göre.
-//   6) Giriş / Çıkış Geçmişi — HER hareketi kendi tarihiyle, ürün bazında
-//      koşan bakiyeyle listeler (buildLedger; tahmini değil, gerçek veri).
-//      Bu bilgi operasyondan (gemi boşaltma / sevkiyat) OTOMATİK gelir —
-//      elle ayrıca bir şey girilmez.
+//   3) "Milli / Yerli" kırılımı — AYNI teknik, stock_status'e göre.
+// section="ledger":
+//   Giriş / Çıkış Geçmişi — HER hareketi kendi tarihiyle, ürün bazında koşan
+//   bakiyeyle listeler (buildLedger; tahmini değil, gerçek veri). Bu bilgi
+//   operasyondan (gemi boşaltma / sevkiyat) OTOMATİK gelir — elle ayrıca bir
+//   şey girilmez.
 
 type Movement = AttributionMovement &
   LedgerMovement & { contract_id: string | null; stock_status: string | null; sale_id: string | null };
@@ -43,7 +44,15 @@ type ProductRef = { id: string; name: string };
 type SaleRef = { id: string; order_no: string | null };
 type CompanyRef = { id: string; name: string };
 
-export function WarehouseDetailExtra({ warehouseId, role }: { warehouseId: string; role: Role }) {
+export function WarehouseDetailExtra({
+  warehouseId,
+  role,
+  section,
+}: {
+  warehouseId: string;
+  role: Role;
+  section: "stock" | "ledger";
+}) {
   const supabase = useMemo(() => createClient(), []);
   const canWrite = ["admin", "operations"].includes(baseRole(role));
 
@@ -160,36 +169,8 @@ export function WarehouseDetailExtra({ warehouseId, role }: { warehouseId: strin
 
   return (
     <div className="space-y-4">
-      <div>
-        <div className="mb-2 text-sm font-medium">Depo Fotoğrafları</div>
-        <PhotoGallery
-          bucket="warehouse-photos"
-          table="warehouse_photos"
-          fkColumn="warehouse_id"
-          fkValue={warehouseId}
-          canWrite={canWrite}
-          labels={["Depo", "Belge"]}
-          emptyText="Bu depoya ait görsel / dosya yok."
-        />
-      </div>
-
-      <div>
-        <div className="mb-2 text-sm font-medium">Depo Yetkilileri</div>
-        <ResourceManager
-          config={{
-            ...warehouseContactsResource,
-            listFields: ["full_name", "title", "phone", "email"],
-            fields: warehouseContactsResource.fields.map((f) =>
-              f.name === "warehouse_id" ? { ...f, formHidden: true } : f,
-            ),
-          }}
-          role={role}
-          filter={{ warehouse_id: warehouseId }}
-          defaultValues={{ warehouse_id: warehouseId }}
-          hideTitle
-        />
-      </div>
-
+      {section === "stock" && (
+        <>
       <div>
         <div className="mb-1 text-sm font-medium">Hangi Gemiden Geldi (mevcut stok, tahmini)</div>
         <p className="mb-2 text-xs text-gray-400">
@@ -272,7 +253,10 @@ export function WarehouseDetailExtra({ warehouseId, role }: { warehouseId: strin
           </Card>
         )}
       </div>
+        </>
+      )}
 
+      {section === "ledger" && (
       <div>
         <div className="mb-1 text-sm font-medium">Giriş / Çıkış Geçmişi</div>
         <p className="mb-2 text-xs text-gray-400">
@@ -356,6 +340,7 @@ export function WarehouseDetailExtra({ warehouseId, role }: { warehouseId: strin
           </div>
         )}
       </div>
+      )}
     </div>
   );
 }

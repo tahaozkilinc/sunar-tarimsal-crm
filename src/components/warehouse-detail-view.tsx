@@ -1,23 +1,29 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { WarehouseDetailExtra } from "./warehouse-detail-extra";
 import { ResourceManager } from "./resource-manager";
-import { Badge, Card } from "./ui";
-import { LOCATION_TYPE_OPTIONS, warehousesResource } from "@/lib/resources";
+import { PhotoGallery } from "./photo-gallery";
+import { Badge, Card, Tabs } from "./ui";
+import { LOCATION_TYPE_OPTIONS, warehouseContactsResource, warehousesResource } from "@/lib/resources";
 import { formatNumber } from "@/lib/format";
+import { baseRole } from "@/lib/nav";
 import type { Warehouse, Role } from "@/lib/types";
 
 // company-detail-view.tsx ile AYNI desen — CRM'deki her modül (Tedarikçi,
-// Acente, Broker...) tıklanınca ayrı bir SAYFAYA gider; Depolar da artık
-// (satır-içi açılır panel yerine) aynı şekilde çalışır.
-//
-// "Alt Depolar": tek antrepoda birden fazla bölüm/depo olabilir (parent_id,
-// bkz. 0053) — burada bu depoya bağlı alt depolar listelenir/eklenir, "Ekle"
-// formunda üst depo otomatik atanır. Alt depo da normal bir warehouses satırı
-// olduğundan Stok -> Stok Durumu'nda KENDİ hareketleriyle otomatik görünür;
-// ayrı bir bağlantı gerekmez.
+// Acente, Broker...) tıklanınca ayrı bir SAYFAYA gider ve içerik tek uzun
+// sayfada üst üste değil, küçük sekmeler halinde durur (üstteki bilgi kartı
+// hariç, o sabit kalır):
+//   Detaylar        -> depo fotoğrafları + yetkilileri
+//   Alt Depolar     -> tek antrepoda birden fazla bölüm/depo olabilir
+//                      (parent_id, bkz. 0053); "Ekle" formunda üst depo
+//                      otomatik atanır. Alt depo da normal bir warehouses
+//                      satırı olduğundan Stok -> Stok Durumu'nda KENDİ
+//                      hareketleriyle otomatik görünür, ayrı bağlantı gerekmez.
+//   Stok Özeti      -> gemi/tedarikçi/milli-yerli kırılımı (WarehouseDetailExtra)
+//   Hareket Geçmişi -> giriş/çıkış geçmişi (WarehouseDetailExtra)
 
 function Info({ label, value }: { label: string; value: string | null }) {
   return (
@@ -27,6 +33,8 @@ function Info({ label, value }: { label: string; value: string | null }) {
     </div>
   );
 }
+
+type Tab = "details" | "subwarehouses" | "stock" | "ledger";
 
 export function WarehouseDetailView({
   warehouse,
@@ -38,6 +46,8 @@ export function WarehouseDetailView({
   role: Role;
 }) {
   const typeOpt = LOCATION_TYPE_OPTIONS.find((o) => o.value === warehouse.type);
+  const [tab, setTab] = useState<Tab>("details");
+  const canWrite = ["admin", "operations"].includes(baseRole(role));
 
   return (
     <div className="space-y-5">
@@ -64,8 +74,51 @@ export function WarehouseDetailView({
         </div>
       </Card>
 
-      <div>
-        <h2 className="mb-2 text-sm font-semibold">Alt Depolar</h2>
+      <Tabs
+        value={tab}
+        onChange={(k) => setTab(k as Tab)}
+        tabs={[
+          { key: "details", label: "Detaylar" },
+          { key: "subwarehouses", label: "Alt Depolar" },
+          { key: "stock", label: "Stok Özeti" },
+          { key: "ledger", label: "Hareket Geçmişi" },
+        ]}
+      />
+
+      {tab === "details" && (
+        <div className="space-y-4">
+          <div>
+            <div className="mb-2 text-sm font-medium">Depo Fotoğrafları</div>
+            <PhotoGallery
+              bucket="warehouse-photos"
+              table="warehouse_photos"
+              fkColumn="warehouse_id"
+              fkValue={warehouse.id}
+              canWrite={canWrite}
+              labels={["Depo", "Belge"]}
+              emptyText="Bu depoya ait görsel / dosya yok."
+            />
+          </div>
+          <div>
+            <div className="mb-2 text-sm font-medium">Depo Yetkilileri</div>
+            <ResourceManager
+              config={{
+                ...warehouseContactsResource,
+                listFields: ["full_name", "title", "phone", "email"],
+                fields: warehouseContactsResource.fields.map((f) =>
+                  f.name === "warehouse_id" ? { ...f, formHidden: true } : f,
+                ),
+              }}
+              role={role}
+              filter={{ warehouse_id: warehouse.id }}
+              defaultValues={{ warehouse_id: warehouse.id }}
+              hideTitle
+            />
+          </div>
+        </div>
+      )}
+
+      {tab === "subwarehouses" && (
         <ResourceManager
           config={{
             ...warehousesResource,
@@ -80,9 +133,11 @@ export function WarehouseDetailView({
           hideTitle
           rowHref={(row) => `/crm/warehouses/${row.id}`}
         />
-      </div>
+      )}
 
-      <WarehouseDetailExtra warehouseId={warehouse.id} role={role} />
+      {(tab === "stock" || tab === "ledger") && (
+        <WarehouseDetailExtra warehouseId={warehouse.id} role={role} section={tab} />
+      )}
     </div>
   );
 }
