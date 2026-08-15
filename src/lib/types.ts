@@ -79,11 +79,13 @@ export interface Warehouse {
 export interface PurchaseContract {
   id: string;
   contract_no: string | null;
+  contract_date: string | null; // sözleşmenin kendi tarihi (created_at -> sisteme girildiği an, ayrı)
   supplier_id: string | null;
   product_id: string | null;
   quantity: number;
   unit: string;
   price: number | null;
+  contract_amount: number | null; // = quantity × price, yeni kayıtta otomatik hesaplanır, elle revize edilebilir
   currency: string;
   incoterm: string | null;
   origin_country: string | null;
@@ -94,7 +96,7 @@ export interface PurchaseContract {
   laycan_end: string | null;
   status: string;
   payment_due_date: string | null;
-  buyer: string | null;
+  buyer_id: string | null;
   principal_id: string | null;
   contract_file_url: string | null;
   assigned_to: string | null;
@@ -105,6 +107,12 @@ export interface PurchaseContract {
   broker_id: string | null;
   created_at: string;
   notes: string | null;
+}
+
+export interface Buyer {
+  id: string;
+  name: string;
+  is_active: boolean;
 }
 
 export interface StockMovement {

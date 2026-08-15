@@ -676,6 +676,29 @@ export function ResourceManager({
     };
   }, [modalOpen, editing, config.fxCapture]);
 
+  // multiplyOf taşıyan alanları (ör. Miktar × Birim Fiyat -> Sözleşme Tutarı)
+  // canlı hesapla — yalnızca YENİ kayıtta (fxCapture ile aynı "sadece yeni
+  // kayıt" koruması, editing doluysa mevcut kayda dokunulmaz). multiplyKey
+  // yalnızca KAYNAK alanlardan (form nesnesinin tamamından değil) türetildiği
+  // için hedef alana kullanıcının elle yazdığı bir değer, kaynaklar değişmeden
+  // bu efektle geri ÜZERİNE YAZILMAZ.
+  const multiplyKey = config.fields
+    .filter((f) => f.multiplyOf)
+    .map((f) => `${form[f.multiplyOf![0]] ?? ""}|${form[f.multiplyOf![1]] ?? ""}`)
+    .join(";");
+  useEffect(() => {
+    if (!modalOpen || editing) return;
+    config.fields.forEach((f) => {
+      if (!f.multiplyOf) return;
+      const a = parseFloat(String(form[f.multiplyOf[0]] ?? "").replace(",", "."));
+      const b = parseFloat(String(form[f.multiplyOf[1]] ?? "").replace(",", "."));
+      if (!Number.isNaN(a) && !Number.isNaN(b) && a > 0 && b > 0) {
+        setForm((prev) => ({ ...prev, [f.name]: Math.round(a * b * 100) / 100 }));
+      }
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [modalOpen, editing, multiplyKey]);
+
   // Kota alanı (ör. satışta "Kaynak Bağlantı") değişince seçili kaynağın
   // toplam / kullanılan / kalan miktarını getir; formda gösterilir ve fazla
   // girişi canlı uyarır (kesin engel save() içindeki kota kontrolündedir).

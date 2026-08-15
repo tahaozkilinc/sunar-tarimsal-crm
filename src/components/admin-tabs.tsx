@@ -5,7 +5,7 @@ import { Tabs } from "./ui";
 import { ResourceManager } from "./resource-manager";
 import { UsersManager } from "./users-manager";
 import { AuditLog } from "./audit-log";
-import { principalsResource, productsResource, warehousesResource } from "@/lib/resources";
+import { buyersResource, principalsResource, productsResource, warehousesResource } from "@/lib/resources";
 import type { Role } from "@/lib/types";
 
 export function AdminTabs({ role }: { role: Role }) {
@@ -21,6 +21,7 @@ export function AdminTabs({ role }: { role: Role }) {
           { key: "products", label: "Ürünler" },
           { key: "warehouses", label: "Depolar / Fabrikalar" },
           { key: "principals", label: "Adına Alınanlar" },
+          { key: "buyers", label: "Alıcılar" },
           { key: "audit", label: "İşlem Geçmişi" },
         ]}
       />
@@ -31,6 +32,9 @@ export function AdminTabs({ role }: { role: Role }) {
       )}
       {tab === "principals" && (
         <ResourceManager config={principalsResource} role={role} />
+      )}
+      {tab === "buyers" && (
+        <ResourceManager config={buyersResource} role={role} />
       )}
       {tab === "audit" && <AuditLog />}
     </div>
