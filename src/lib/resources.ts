@@ -61,6 +61,12 @@ export interface FieldDef {
   // (ilk boş olmayan kullanılır; ör. gemi adı yoksa sözleşme no).
   ref?: { table: string; labelField: string; labelFields?: string[]; filter?: Record<string, string[]> };
   autofill?: Record<string, string>;
+  // Bu alanın değeri iki başka alanın çarpımı olarak CANLI hesaplanır (ör.
+  // Miktar × Birim Fiyat -> Sözleşme Tutarı) — yalnızca YENİ kayıt açılırken
+  // (mevcut kaydı düzenlerken dokunulmaz, bkz. resource-manager.tsx fxCapture
+  // ile aynı "sadece yeni kayıt" koruması). Alan yine de normal düzenlenebilir
+  // bir input olarak kalır; kullanıcı hesaplanan değeri elle üzerine yazabilir.
+  multiplyOf?: [string, string];
   formHidden?: boolean;
   readOnly?: boolean;
   placeholder?: string;
@@ -147,15 +153,6 @@ export const LOCATION_TYPE_OPTIONS: SelectOption[] = [
 export const UNIT_OPTIONS: SelectOption[] = [
   { value: "ton", label: "TON" },
   { value: "kg", label: "KG" },
-];
-
-// Sözleşme "Alıcı"sı: sabit 3 seçenek + "Diğer" (serbest metin, select_other
-// widget'ı ekler). Değerler zaten büyük harf — "Diğer" ile serbest yazılan
-// metin de forceUppercase ile büyütüldüğü için veri tek kasada kalır.
-export const BUYER_OPTIONS: SelectOption[] = [
-  { value: "SUNAR", label: "Sunar" },
-  { value: "MISIR", label: "Mısır" },
-  { value: "ELİTA TİCARET", label: "Elita Ticaret" },
 ];
 
 export const EXPENSE_TYPE_OPTIONS: SelectOption[] = [
@@ -326,6 +323,7 @@ export const purchaseContractsResource: ResourceConfig = {
     // NOT NULL değil; uq_pc_contract_no yalnızca DOLU değerlerde benzersizlik
     // ister — 0035_data_integrity.sql — yani boş bırakmak hâlâ güvenli).
     { name: "contract_no", label: "Sözleşme No", type: "text", unique: true },
+    { name: "contract_date", label: "Sözleşme Tarihi", type: "date", required: true },
     { name: "supplier_id", label: "Tedarikçi", type: "reference", ref: { table: "companies", labelField: "name", filter: { type: ["supplier", "both"] } }, required: true },
     { name: "broker_id", label: "Broker", type: "reference", ref: { table: "companies", labelField: "name", filter: { type: ["broker"] } } },
     { name: "product_id", label: "Ürün (Yağlı Tohum)", type: "reference", ref: { table: "products", labelField: "name", filter: { is_active: ["true"] } } },
@@ -333,6 +331,9 @@ export const purchaseContractsResource: ResourceConfig = {
     { name: "unit", label: "Birim", type: "select", options: UNIT_OPTIONS, required: true, inlineAfter: true },
     { name: "price", label: "Birim Fiyat", type: "money", required: true, positive: true },
     { name: "currency", label: "Para Birimi", type: "select", options: CURRENCY_OPTIONS },
+    // Miktar × Birim Fiyat — yeni kayıtta canlı otomatik hesaplanır (bkz.
+    // FieldDef.multiplyOf, resource-manager.tsx), gerekirse elle revize edilir.
+    { name: "contract_amount", label: "Sözleşme Tutarı", type: "money", multiplyOf: ["quantity", "price"] },
     { name: "incoterm", label: "Teslim Şekli", type: "select", options: INCOTERM_OPTIONS },
     { name: "origin_country", label: "Menşe Ülke", type: "text" },
     { name: "loading_port", label: "Yükleme Limanı", type: "text" },
@@ -348,9 +349,11 @@ export const purchaseContractsResource: ResourceConfig = {
     { name: "assigned_to", label: "Operasyon Sorumlusu", type: "reference", ref: { table: "profiles", labelField: "full_name", filter: { role: ["operations"] } }, formHidden: true },
     { name: "agent_id", label: "Acente (Yükleme Takibi)", type: "reference", ref: { table: "companies", labelField: "name", filter: { type: ["agent"] } }, formHidden: true },
     { name: "payment_due_date", label: "Öngörülen Ödeme Tarihi", type: "date" },
-    { name: "buyer", label: "Alıcı", type: "select_other", options: BUYER_OPTIONS },
+    // Alıcı artık sabit dizi değil, Yönetim -> Alıcılar'dan düzenlenebilir liste
+    // (principals -- "Kimin Adına" -- ile AYNI desen, bkz. buyersResource).
+    { name: "buyer_id", label: "Alıcı", type: "reference", ref: { table: "buyers", labelField: "name" } },
     { name: "principal_id", label: "Kimin Adına", type: "reference", ref: { table: "principals", labelField: "name" } },
-    { name: "created_at", label: "Sözleşme Tarihi", type: "date", readOnly: true },
+    { name: "created_at", label: "Sisteme Giriş Tarihi", type: "date", readOnly: true },
     // profiles yerine profile_names (geniş okunabilir, yalnızca ad) — bkz.
     // ship-ops-page.tsx'teki "Giren" kolonuyla aynı desen.
     { name: "created_by", label: "Ekleyen", type: "reference", ref: { table: "profile_names", labelField: "full_name" }, readOnly: true },
@@ -540,6 +543,21 @@ export const principalsResource: ResourceConfig = {
   listFields: ["name", "is_active"],
   fields: [
     { name: "name", label: "Firma Adı", type: "text", required: true, unique: true },
+    { name: "is_active", label: "Aktif", type: "boolean" },
+  ],
+};
+
+// Sözleşmedeki "Alıcı" alanı artık sabit bir dizi değil, bu yönetilebilir
+// listeden seçiliyor — principalsResource ile birebir aynı desen (0068).
+export const buyersResource: ResourceConfig = {
+  table: "buyers",
+  title: "Alıcılar",
+  singular: "Alıcı",
+  writeRoles: ["admin"],
+  orderBy: { column: "name", ascending: true },
+  listFields: ["name", "is_active"],
+  fields: [
+    { name: "name", label: "Alıcı Adı", type: "text", required: true, unique: true },
     { name: "is_active", label: "Aktif", type: "boolean" },
   ],
 };
