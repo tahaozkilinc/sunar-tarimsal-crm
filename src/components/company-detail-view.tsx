@@ -9,8 +9,26 @@ import { ResourceManager } from "./resource-manager";
 import { CompanyReport } from "./company-report";
 import { CompanyShipStats } from "./company-ship-stats";
 import { Badge, Card } from "./ui";
-import { COMPANY_TYPE_OPTIONS, contactsResource } from "@/lib/resources";
+import { COMPANY_TYPE_OPTIONS, activitiesResource, contactsResource } from "@/lib/resources";
 import type { Company, Role } from "@/lib/types";
+import { baseRole } from "@/lib/nav";
+
+// Bir firmanın aktiviteleri artık CRM'in ortak/havuz sekmesinde değil, doğrudan
+// bu sayfada (bkz. crm-tabs.tsx — aktivite sekmesi kaldırıldı). crm_activities
+// hâlâ 'module' bazlı RLS ile korunuyor (purchasing/sales/operations/broker) —
+// yeni kayıt oluştururken hangi modülün kullanılacağını, mevcut rolün YAZMA
+// yetkisi kesin geçsin diye önce görüntüleyen rolden, o mümkün değilse
+// (admin/viewer) firma türünden çıkarıyoruz.
+function activityModuleFor(type: Company["type"], role: Role): "purchasing" | "sales" | "operations" | "broker" {
+  const base = baseRole(role);
+  if (base === "sales") return "sales";
+  if (base === "operations") return "operations";
+  if (base === "purchasing") return type === "broker" ? "broker" : "purchasing";
+  if (type === "broker") return "broker";
+  if (type === "customer") return "sales";
+  if (type === "surveyor" || type === "port" || type === "carrier" || type === "agent") return "operations";
+  return "purchasing"; // supplier / both
+}
 
 // Firma logosu: private kovadan imzalı URL ile gösterilir; yoksa baş harf.
 function CompanyLogo({ path, name }: { path: string | null; name: string }) {
@@ -56,6 +74,17 @@ export function CompanyDetailView({ company, role }: { company: Company; role: R
     ),
   };
 
+  // Aynı desen: firma sabit -> aktivite formunda firma alanı gizli. Liste de
+  // company_id'yi göstermez (her satır zaten bu firmaya ait).
+  const activitiesConfig = {
+    ...activitiesResource,
+    listFields: ["subject", "activity_type", "due_date", "status", "created_at"],
+    fields: activitiesResource.fields.map((f) =>
+      f.name === "company_id" ? { ...f, formHidden: true } : f,
+    ),
+  };
+  const activityModule = activityModuleFor(company.type, role);
+
   return (
     <div className="space-y-5">
       <div>
@@ -94,6 +123,17 @@ export function CompanyDetailView({ company, role }: { company: Company; role: R
           role={role}
           filter={{ company_id: company.id }}
           defaultValues={{ company_id: company.id }}
+          hideTitle
+        />
+      </div>
+
+      <div>
+        <h2 className="mb-2 text-sm font-semibold">Aktiviteler</h2>
+        <ResourceManager
+          config={activitiesConfig}
+          role={role}
+          filter={{ company_id: company.id }}
+          defaultValues={{ company_id: company.id, module: activityModule }}
           hideTitle
         />
       </div>
