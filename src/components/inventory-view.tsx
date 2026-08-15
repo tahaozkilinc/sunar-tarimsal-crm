@@ -316,31 +316,27 @@ export function InventoryView({ hideTitle = false }: { hideTitle?: boolean }) {
                         <span className="shrink-0 text-xs text-gray-400">{w.products.length} ürün</span>
                       </div>
                       <div className="shrink-0 text-right">
-                        <div className="text-[11px] uppercase tracking-wide text-gray-400">Satılabilir</div>
-                        <div className={`text-lg font-bold ${w.overReserved > 0 ? "text-red-600" : ""}`}>
-                          {formatNumber(w.sellable)} <span className="text-xs font-normal text-gray-400">ton</span>
+                        <div className="flex items-baseline justify-end gap-1.5 whitespace-nowrap">
+                          <span className="text-[11px] uppercase tracking-wide text-gray-400">Satılabilir</span>
+                          <span className={`text-lg font-bold ${w.overReserved > 0 ? "text-red-600" : ""}`}>
+                            {formatNumber(w.sellable)} <span className="text-xs font-normal text-gray-400">ton</span>
+                          </span>
                         </div>
-                        {w.reserved > 0.01 && w.total > 0 && (
-                          <>
-                            <div className="text-xs text-gray-400">
-                              {formatNumber(w.total)} mevcut ·{" "}
-                              <span className="font-medium text-amber-600">{formatNumber(w.reserved)} rezerve</span>
-                            </div>
-                            <div className="ml-auto mt-1 flex h-1.5 w-32 overflow-hidden rounded-full bg-gray-100">
-                              <div
-                                className="h-full bg-emerald-500"
-                                style={{ width: `${Math.max(0, Math.min(100, (w.sellable / w.total) * 100))}%` }}
-                              />
-                              <div
-                                className="h-full bg-amber-400"
-                                style={{ width: `${Math.max(0, Math.min(100, (w.reserved / w.total) * 100))}%` }}
-                              />
-                            </div>
-                          </>
-                        )}
-                        {w.overReserved > 0 && (
-                          <div className="mt-1 whitespace-nowrap text-xs font-semibold text-red-600">
-                            ⚠ {formatNumber(w.overReserved)} ton aşım
+                        {(w.reserved > 0.01 || w.overReserved > 0) && (
+                          <div className="mt-0.5 flex flex-wrap items-center justify-end gap-x-2 gap-y-0.5 text-xs text-gray-400">
+                            {w.reserved > 0.01 && w.total > 0 && (
+                              <>
+                                <span className="whitespace-nowrap">{formatNumber(w.total)} mevcut</span>
+                                <span className="whitespace-nowrap font-medium text-amber-600">
+                                  {formatNumber(w.reserved)} rezerve
+                                </span>
+                              </>
+                            )}
+                            {w.overReserved > 0 && (
+                              <span className="whitespace-nowrap font-semibold text-red-600">
+                                ⚠ {formatNumber(w.overReserved)} ton aşım
+                              </span>
+                            )}
                           </div>
                         )}
                       </div>
