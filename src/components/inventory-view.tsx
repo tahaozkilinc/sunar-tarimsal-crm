@@ -245,7 +245,9 @@ export function InventoryView({ hideTitle = false }: { hideTitle?: boolean }) {
         </div>
       ) : (
         <>
-          {/* Rezerve stok özeti — henüz fiilen sevk edilmemiş satışlar */}
+          {/* Rezerve stok özeti — henüz fiilen sevk edilmemiş satışlar. Bar YOK
+              (toplam ürün tonajı bazlı görsel kaldırıldı) — görsel kırılım artık
+              aşağıdaki depo satırlarında (depo + gemi bazlı). */}
           {reservedByProduct.length > 0 && (
             <Card className="p-4">
               <div className="mb-1 text-sm font-semibold">Rezerve Stok (bekleyen satışlar)</div>
@@ -253,35 +255,22 @@ export function InventoryView({ hideTitle = false }: { hideTitle?: boolean }) {
                 Bu ürünlerden bir kısmı satış kaydı açılmış ama henüz araç fiilen çıkmamış — fiziksel
                 stokta &quot;kullanılabilir&quot; görünse de bir müşteriye söz verilmiştir.
               </p>
-              <div className="space-y-2.5">
+              <div className="space-y-1.5">
                 {reservedByProduct.map((r) => {
                   const free = Math.max(0, r.available - r.reserved);
-                  const total = r.available > 0 ? r.available : r.reserved;
-                  const reservedPct = total > 0 ? Math.min(100, (r.reserved / total) * 100) : 0;
                   return (
-                    <div key={r.productId}>
-                      <div className="mb-1 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 text-sm">
-                        <span className="font-medium">{r.name}</span>
-                        <span className="text-xs text-gray-500">
-                          <span className="font-semibold text-amber-600">{formatNumber(r.reserved)} ton rezerve</span>
-                          {" "}({r.count} satış) · {formatNumber(free)} ton serbest / {formatNumber(r.available)} ton mevcut
-                        </span>
-                      </div>
-                      <div className="flex h-2.5 overflow-hidden rounded-full bg-gray-100">
-                        <div className="h-full bg-emerald-500" style={{ width: `${100 - reservedPct}%` }} />
-                        <div className="h-full bg-amber-400" style={{ width: `${reservedPct}%` }} />
-                      </div>
+                    <div
+                      key={r.productId}
+                      className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 text-sm"
+                    >
+                      <span className="font-medium">{r.name}</span>
+                      <span className="text-xs text-gray-500">
+                        <span className="font-semibold text-amber-600">{formatNumber(r.reserved)} ton rezerve</span>
+                        {" "}({r.count} satış) · {formatNumber(free)} ton serbest / {formatNumber(r.available)} ton mevcut
+                      </span>
                     </div>
                   );
                 })}
-              </div>
-              <div className="mt-3 flex items-center gap-4 text-[11px] text-gray-500">
-                <span className="inline-flex items-center gap-1.5">
-                  <span className="h-2 w-2 rounded-full bg-emerald-500" /> Serbest
-                </span>
-                <span className="inline-flex items-center gap-1.5">
-                  <span className="h-2 w-2 rounded-full bg-amber-400" /> Rezerve (bekleyen satış)
-                </span>
               </div>
               {unassignedReserved > 0.01 && (
                 <p className="mt-3 border-t border-border pt-2 text-[11px] text-gray-400">
@@ -316,16 +305,28 @@ export function InventoryView({ hideTitle = false }: { hideTitle?: boolean }) {
                         <Badge color={loc.color}>{loc.label}</Badge>
                         <span className="shrink-0 text-xs text-gray-400">{w.products.length} ürün</span>
                       </div>
-                      <div className="text-right">
+                      <div className="w-36 shrink-0 text-right">
                         <div className="text-[11px] uppercase tracking-wide text-gray-400">Satılabilir</div>
                         <div className={`text-lg font-bold ${w.sellable < 0 ? "text-red-600" : ""}`}>
                           {formatNumber(w.sellable)} <span className="text-xs font-normal text-gray-400">ton</span>
                         </div>
-                        {w.reserved > 0.01 && (
-                          <div className="text-xs text-gray-400">
-                            {formatNumber(w.total)} mevcut ·{" "}
-                            <span className="font-medium text-amber-600">{formatNumber(w.reserved)} rezerve</span>
-                          </div>
+                        {w.reserved > 0.01 && w.total > 0 && (
+                          <>
+                            <div className="text-xs text-gray-400">
+                              {formatNumber(w.total)} mevcut ·{" "}
+                              <span className="font-medium text-amber-600">{formatNumber(w.reserved)} rezerve</span>
+                            </div>
+                            <div className="mt-1 ml-auto flex h-1.5 w-full overflow-hidden rounded-full bg-gray-100">
+                              <div
+                                className="h-full bg-emerald-500"
+                                style={{ width: `${Math.max(0, Math.min(100, (w.sellable / w.total) * 100))}%` }}
+                              />
+                              <div
+                                className="h-full bg-amber-400"
+                                style={{ width: `${Math.max(0, Math.min(100, (w.reserved / w.total) * 100))}%` }}
+                              />
+                            </div>
+                          </>
                         )}
                       </div>
                     </button>
