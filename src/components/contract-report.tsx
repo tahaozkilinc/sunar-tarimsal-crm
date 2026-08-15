@@ -7,6 +7,7 @@ import { Badge, EmptyState, Spinner } from "./ui";
 import { formatDate, formatMoney, formatNumber } from "@/lib/format";
 import { formatUsd, toUsd } from "@/lib/fx";
 import { CONTRACT_STATUS_OPTIONS, EXPENSE_TYPE_OPTIONS } from "@/lib/resources";
+import { isInboundType } from "@/lib/stock-attribution";
 import { ArrowLeft, Leaf, Printer } from "lucide-react";
 
 type PC = {
@@ -43,6 +44,9 @@ type SM = {
   id: string;
   quantity: number | null;
   movement_type: string | null;
+  movement_date: string | null;
+  warehouse_id: string | null;
+  sale_id: string | null;
 };
 type WE = {
   id: string;
@@ -63,6 +67,7 @@ type CustomerLine = {
   lastDate: string | null;
   satisUsd: number | null;
   karUsd: number | null;
+  dwellDays: number | null;
 };
 
 export function ContractReport({ contractId }: { contractId: string }) {
@@ -83,16 +88,15 @@ export function ContractReport({ contractId }: { contractId: string }) {
     let on = true;
     (async () => {
       setLoading(true);
+      const smCols = "id,quantity,movement_type,movement_date,warehouse_id,sale_id";
       const [c, so, sm, we, pr, co, pri, wh] = await Promise.all([
         supabase.from("purchase_contracts").select("*").eq("id", contractId).maybeSingle(),
         supabase
           .from("sales_orders")
           .select("id,customer_id,quantity,price,currency,delivery_date,status,usd_try,eur_try")
           .eq("contract_id", contractId),
-        supabase
-          .from("stock_movements")
-          .select("id,quantity,movement_type")
-          .eq("contract_id", contractId),
+        // Giriş hareketleri + "Gemiden Direkt" satış çıkışları (contract_id dolu).
+        supabase.from("stock_movements").select(smCols).eq("contract_id", contractId),
         supabase
           .from("warehouse_expenses")
           .select("id,warehouse_id,expense_type,amount,currency,usd_try,eur_try,expense_date,notes")
@@ -105,9 +109,25 @@ export function ContractReport({ contractId }: { contractId: string }) {
       ]);
       if (!on) return;
       setPc((c.data as PC | null) ?? null);
-      setSales((so.data as SO[] | null) || []);
-      setMoves((sm.data as SM[] | null) || []);
+      const soRows = (so.data as SO[] | null) || [];
+      setSales(soRows);
       setExpenses((we.data as WE[] | null) || []);
+
+      // "Depodan" satış çıkışları contract_id TAŞIMAZ (bkz. sales-dispatch.tsx —
+      // depoya girince mal karışır); yalnızca sale_id ile bağlanır. Depoda kalma
+      // süresi için bu çıkışlar da gerektiğinden sale_id üzerinden ayrıca çekilip
+      // yukarıdaki (contract_id bazlı) sonuçla birleştirilir.
+      const saleIds = soRows.map((s) => s.id);
+      const bySaleRes =
+        saleIds.length > 0
+          ? await supabase.from("stock_movements").select(smCols).in("sale_id", saleIds)
+          : { data: [] as SM[] };
+      if (!on) return;
+      const merged = new Map<string, SM>();
+      [...((sm.data as SM[] | null) || []), ...((bySaleRes.data as SM[] | null) || [])].forEach((m) =>
+        merged.set(m.id, m),
+      );
+      setMoves(Array.from(merged.values()));
       const toMap = (rows: { id: string; name: string }[] | null) => {
         const m: Record<string, string> = {};
         (rows || []).forEach((r) => (m[r.id] = r.name));
@@ -137,6 +157,31 @@ export function ContractReport({ contractId }: { contractId: string }) {
 
     const active = sales.filter((s) => s.status !== "cancelled");
     const satisTon = active.reduce((a, s) => a + (Number(s.quantity) || 0), 0);
+
+    // Depoda kalma süresi: bu geminin kargosunun bir depoya İLK girdiği tarih
+    // (en erken Giriş hareketi) ile depodan satışla ÇIKTIĞI tarih arasındaki
+    // fark, tonaj ağırlıklı ortalama. "Gemiden Direkt" satılan (warehouse_id
+    // boş) kısım hiç depoya girmediğinden hesaba katılmaz.
+    const firstEntryDate = moves
+      .filter((m) => isInboundType(m.movement_type || "") && m.movement_date)
+      .map((m) => m.movement_date as string)
+      .sort()[0];
+    const entryMs = firstEntryDate ? new Date(firstEntryDate + "T00:00:00").getTime() : null;
+    const dwellDaysOf = (saleIdSet: Set<string>): number | null => {
+      if (entryMs === null) return null;
+      let qtySum = 0;
+      let weighted = 0;
+      moves.forEach((m) => {
+        if (m.movement_type !== "outbound_sale" || !m.warehouse_id || !m.movement_date) return;
+        if (!m.sale_id || !saleIdSet.has(m.sale_id)) return;
+        const q = Number(m.quantity) || 0;
+        const exitMs = new Date(m.movement_date + "T00:00:00").getTime();
+        const days = Math.max(0, Math.round((exitMs - entryMs) / 86400000));
+        qtySum += q;
+        weighted += q * days;
+      });
+      return qtySum > 0 ? Math.round(weighted / qtySum) : null;
+    };
 
     let satisUsd: number | null = 0;
     const byCustomer = new Map<string, SO[]>();
@@ -172,9 +217,12 @@ export function ContractReport({ contractId }: { contractId: string }) {
           lastDate,
           satisUsd: cUsd,
           karUsd,
+          dwellDays: dwellDaysOf(new Set(sos.map((s) => s.id))),
         };
       })
       .sort((a, b) => b.ton - a.ton);
+
+    const dwellDays = dwellDaysOf(new Set(active.map((s) => s.id)));
 
     // Depo masrafları (bu bağlantıya bağlı): USD toplamı; kârdan tam düşülür.
     let masrafUsd = 0;
@@ -210,6 +258,7 @@ export function ContractReport({ contractId }: { contractId: string }) {
       bosaltilan,
       kalanSatilabilir: alisTon - satisTon,
       customers,
+      dwellDays,
       fxMissing:
         (alisBirim > 0 && alisUsd === null) || satisUsd === null || masrafFxMissing,
     };
@@ -389,6 +438,12 @@ export function ContractReport({ contractId }: { contractId: string }) {
                 </div>
               </div>
             )}
+            {calc.dwellDays !== null && (
+              <div className="mt-3 flex items-center justify-between rounded-lg bg-gray-50 px-3 py-2 text-xs">
+                <span className="text-gray-500">Ort. Depoda Kalma Süresi</span>
+                <span className="font-semibold">{calc.dwellDays} gün</span>
+              </div>
+            )}
           </div>
         </div>
 
@@ -450,6 +505,7 @@ export function ContractReport({ contractId }: { contractId: string }) {
                 <tr className="border-b border-border text-left text-[11px] uppercase text-gray-400">
                   <th className="py-1.5 font-medium">Müşteri</th>
                   <th className="py-1.5 font-medium">Son Teslim</th>
+                  <th className="py-1.5 font-medium">Depoda Kalma</th>
                   <th className="py-1.5 text-right font-medium">Ton</th>
                   <th className="py-1.5 text-right font-medium">Gelir (USD)</th>
                   <th className="py-1.5 text-right font-medium">Kâr (USD)</th>
@@ -460,6 +516,7 @@ export function ContractReport({ contractId }: { contractId: string }) {
                   <tr key={cu.id} className="border-b border-border/60 last:border-0">
                     <td className="py-2 font-medium">{cu.name}</td>
                     <td className="py-2 text-gray-500">{formatDate(cu.lastDate)}</td>
+                    <td className="py-2 text-gray-500">{cu.dwellDays !== null ? `${cu.dwellDays} gün` : "—"}</td>
                     <td className="py-2 text-right">{formatNumber(cu.ton)}</td>
                     <td className="py-2 text-right">{formatUsd(cu.satisUsd, 0)}</td>
                     <td
@@ -478,8 +535,8 @@ export function ContractReport({ contractId }: { contractId: string }) {
               </tbody>
               <tfoot>
                 <tr className="border-t-2 border-border text-sm font-semibold">
-                  <td className="py-2">TOPLAM</td>
-                  <td className="py-2" />
+                  <td className="py-2" colSpan={2}>TOPLAM</td>
+                  <td className="py-2">{calc.dwellDays !== null ? `Ort. ${calc.dwellDays} gün` : ""}</td>
                   <td className="py-2 text-right">{formatNumber(calc.satisTon)}</td>
                   <td className="py-2 text-right">{formatUsd(calc.satisUsd, 0)}</td>
                   <td
