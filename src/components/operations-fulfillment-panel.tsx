@@ -6,12 +6,11 @@ import { Card, Spinner } from "./ui";
 import { formatNumber } from "@/lib/format";
 
 // "Bekleyen Gelişler" sekmesinin üstünde, operasyonun tam üzerinde görünen
-// panel: her geminin ne kadarı FİİLEN boşaltıldığını % olarak gösterir —
-// Satışlar sekmesindeki sevkiyat panelinin (sales-fulfillment-panel.tsx) alım
-// tarafındaki simetriği. Sözleşme tonajı ile fiilen çekilen (stock_movements
-// 'inbound') FARKLI şeydir; bu panel o farkı aynı görsel dilde (yüzde + çubuk)
-// gösterir. İlk araç girilmeden bir gemi burada GÖZÜKMEZ (drawn=0 hariç
-// tutulur) — "boşaltma durumu" henüz başlamamış bir gemi için anlamsız.
+// panel: her geminin ne kadarı FİİLEN boşaltıldığını % olarak gösterir.
+// Sözleşme tonajı ile fiilen çekilen (stock_movements 'inbound') FARKLI
+// şeydir; bu panel o farkı aynı görsel dilde (yüzde + çubuk) gösterir. İlk
+// araç girilmeden bir gemi burada GÖZÜKMEZ (drawn=0 hariç tutulur) —
+// "boşaltma durumu" henüz başlamamış bir gemi için anlamsız.
 // Aracı ShipOpsPage'den başka bir kullanıcı da eklemiş olabileceğinden
 // periyodik olarak (20sn) sessizce yeniden çekilir; % kendiliğinden artar.
 

@@ -138,7 +138,7 @@ export function InventoryView({ hideTitle = false }: { hideTitle?: boolean }) {
   }, [rows]);
 
   // Rezerve: her satışın SÖZ VERİLEN tonajından fiilen sevk edileni düş; kalan
-  // (varsa) o ürün için hâlâ "rezerve" — SalesFulfillmentPanel'deki aynı mantık.
+  // (varsa) o ürün için hâlâ "rezerve".
   const reservedByProduct = useMemo(() => {
     const map = new Map<string, { reserved: number; count: number }>();
     reservations.forEach((s) => {

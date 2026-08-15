@@ -5,7 +5,6 @@ import { Tabs } from "./ui";
 import { ResourceManager } from "./resource-manager";
 import { SatisSummary } from "./function-summary";
 import { SalesDispatch } from "./sales-dispatch";
-import { SalesFulfillmentPanel } from "./sales-fulfillment-panel";
 import { SaleWarehousesManager } from "./sale-warehouses-manager";
 import { salesOrdersResource, sellableContractsResource } from "@/lib/resources";
 import { baseRole } from "@/lib/nav";
@@ -43,17 +42,14 @@ export function SalesTabs({ role }: { role: Role }) {
         <ResourceManager config={sellableContractsResource} role={role} hideTitle />
       )}
       {tab === "orders" && (
-        <div className="grid gap-4 lg:grid-cols-[1fr_300px]">
-          <ResourceManager
-            config={salesOrdersResource}
-            role={role}
-            hideTitle
-            detailExtra={(row) => (
-              <SaleWarehousesManager saleId={String(row.id)} role={role} />
-            )}
-          />
-          <SalesFulfillmentPanel />
-        </div>
+        <ResourceManager
+          config={salesOrdersResource}
+          role={role}
+          hideTitle
+          detailExtra={(row) => (
+            <SaleWarehousesManager saleId={String(row.id)} role={role} />
+          )}
+        />
       )}
       {tab === "dispatch" && (
         <div className="space-y-3">

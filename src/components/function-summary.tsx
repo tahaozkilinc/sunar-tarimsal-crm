@@ -297,7 +297,7 @@ type Sale = {
   order_no: string | null;
   product_id: string | null;
 };
-type InvRow = { warehouse_name: string; product_name: string; available_qty: number | null };
+type InvRow = { available_qty: number | null };
 type Sellable = {
   id: string;
   contract_no: string | null;
@@ -336,7 +336,7 @@ export function SatisSummary() {
     (async () => {
       const [s, i, sc, pr, cs, om, wh] = await Promise.all([
         supabase.from("sales_orders").select("id,status,quantity,order_no,product_id"),
-        supabase.from("inventory").select("warehouse_name,product_name,available_qty"),
+        supabase.from("inventory").select("available_qty"),
         supabase
           .from("sellable_contracts")
           .select("id,contract_no,vessel,product_id,quantity,eta,status,principal_id"),
@@ -380,17 +380,6 @@ export function SatisSummary() {
     rows.filter((s) => s.status === "delivered" || s.status === "invoiced"),
     (s) => s.quantity,
   );
-
-  const byWarehouse = (() => {
-    const m = new Map<string, number>();
-    inv.forEach((r) =>
-      m.set(r.warehouse_name, (m.get(r.warehouse_name) || 0) + (Number(r.available_qty) || 0)),
-    );
-    return Array.from(m.entries())
-      .map(([name, ton]) => ({ name, ton }))
-      .sort((a, b) => b.ton - a.ton);
-  })();
-  const maxWh = Math.max(1, ...byWarehouse.map((w) => w.ton));
 
   const sellableSorted = [...sellable].sort((a, b) =>
     (a.eta || "9999").localeCompare(b.eta || "9999"),
@@ -448,30 +437,6 @@ export function SatisSummary() {
         <Stat label="Satış" value={String(rows.length)} unit="adet" />
         <Stat label="Toplam Fire (Kapanan Satışlar)" value={formatNumber(totalFire)} unit="ton" />
       </div>
-
-      <Card className="p-4">
-        <div className="mb-2 text-sm font-medium">Depo Bazında Kalan Stok</div>
-        {byWarehouse.length === 0 ? (
-          <div className="py-2 text-sm text-gray-500">Stok kaydı yok.</div>
-        ) : (
-          <div className="space-y-2">
-            {byWarehouse.map((w) => (
-              <div key={w.name} className="flex items-center gap-3">
-                <div className="w-36 shrink-0 truncate text-sm">{w.name}</div>
-                <div className="h-4 flex-1 overflow-hidden rounded bg-gray-100">
-                  <div
-                    className="h-full rounded bg-brand"
-                    style={{ width: `${(w.ton / maxWh) * 100}%` }}
-                  />
-                </div>
-                <div className="w-24 shrink-0 text-right text-sm font-semibold">
-                  {formatNumber(w.ton)} ton
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </Card>
 
       <Card className="p-4">
         <div className="mb-1 text-sm font-medium">Depo Bazında Fire</div>
