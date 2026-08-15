@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { formatMoney, formatNumber } from "@/lib/format";
 import { Spinner } from "./ui";
+import { DateProductFilter, EMPTY_DATE_PRODUCT_FILTER, type DateProductFilterValue } from "./date-product-filter";
 
 // Bir firmaya ait operasyonel özet: o firmadan/ona yapılan alım ve satışların
 // ürün bazında toplamları, ortalama fiyatları ve aylık (sezonsallık) dağılımı.
@@ -70,6 +71,13 @@ function aggregateByProduct(deals: Deal[], productMap: Record<string, string>): 
     m.set(key, e);
   });
   return Array.from(m.values()).sort((a, b) => b.tons - a.tons);
+}
+
+function matchesFilter(d: Deal, f: DateProductFilterValue): boolean {
+  if (f.productId && d.product_id !== f.productId) return false;
+  if (f.from && (!d.dateStr || d.dateStr < f.from)) return false;
+  if (f.to && (!d.dateStr || d.dateStr > f.to)) return false;
+  return true;
 }
 
 function aggregateByMonth(deals: Deal[]): { k: string; tons: number }[] {
@@ -165,6 +173,7 @@ export function CompanyReport({ companyId }: { companyId: string }) {
   const [purchases, setPurchases] = useState<Deal[]>([]);
   const [sales, setSales] = useState<Deal[]>([]);
   const [productMap, setProductMap] = useState<Record<string, string>>({});
+  const [filter, setFilter] = useState<DateProductFilterValue>(EMPTY_DATE_PRODUCT_FILTER);
 
   useEffect(() => {
     let active = true;
@@ -210,10 +219,23 @@ export function CompanyReport({ companyId }: { companyId: string }) {
     };
   }, [companyId, supabase]);
 
-  const pByProduct = useMemo(() => aggregateByProduct(purchases, productMap), [purchases, productMap]);
-  const sByProduct = useMemo(() => aggregateByProduct(sales, productMap), [sales, productMap]);
-  const pByMonth = useMemo(() => aggregateByMonth(purchases), [purchases]);
-  const sByMonth = useMemo(() => aggregateByMonth(sales), [sales]);
+  // Filtre seçeneklerindeki ürünler: yalnızca bu firmada fiilen geçenler
+  // (tüm ürün kataloğu değil) — liste gereksiz uzamasın.
+  const availableProducts = useMemo(() => {
+    const ids = new Set<string>();
+    [...purchases, ...sales].forEach((d) => d.product_id && ids.add(d.product_id));
+    return Array.from(ids)
+      .map((id) => ({ id, name: productMap[id] || "—" }))
+      .sort((a, b) => a.name.localeCompare(b.name, "tr"));
+  }, [purchases, sales, productMap]);
+
+  const filteredPurchases = useMemo(() => purchases.filter((d) => matchesFilter(d, filter)), [purchases, filter]);
+  const filteredSales = useMemo(() => sales.filter((d) => matchesFilter(d, filter)), [sales, filter]);
+
+  const pByProduct = useMemo(() => aggregateByProduct(filteredPurchases, productMap), [filteredPurchases, productMap]);
+  const sByProduct = useMemo(() => aggregateByProduct(filteredSales, productMap), [filteredSales, productMap]);
+  const pByMonth = useMemo(() => aggregateByMonth(filteredPurchases), [filteredPurchases]);
+  const sByMonth = useMemo(() => aggregateByMonth(filteredSales), [filteredSales]);
 
   if (loading)
     return (
@@ -231,9 +253,17 @@ export function CompanyReport({ companyId }: { companyId: string }) {
 
   return (
     <div className="space-y-3">
-      <h3 className="text-sm font-semibold">Operasyonel Özet</h3>
-      <Section title="Alımlar (Bağlantı)" byProduct={pByProduct} byMonth={pByMonth} accent="bg-brand" />
-      <Section title="Satışlar" byProduct={sByProduct} byMonth={sByMonth} accent="bg-amber-500" />
+      <DateProductFilter value={filter} onChange={setFilter} products={availableProducts} />
+      {pByProduct.length === 0 && sByProduct.length === 0 ? (
+        <div className="rounded-lg border border-border p-3 text-sm text-gray-500">
+          Filtreye uyan kayıt yok.
+        </div>
+      ) : (
+        <>
+          <Section title="Alımlar (Bağlantı)" byProduct={pByProduct} byMonth={pByMonth} accent="bg-brand" />
+          <Section title="Satışlar" byProduct={sByProduct} byMonth={sByMonth} accent="bg-amber-500" />
+        </>
+      )}
     </div>
   );
 }
