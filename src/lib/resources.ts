@@ -297,7 +297,7 @@ export const activitiesResource: ResourceConfig = {
   singular: "Aktivite",
   writeRoles: ["admin", "purchasing", "sales", "operations"],
   orderBy: { column: "created_at", ascending: false },
-  listFields: ["subject", "activity_type", "company_id", "due_date", "status"],
+  listFields: ["subject", "activity_type", "company_id", "due_date", "status", "created_at"],
   fields: [
     { name: "subject", label: "Konu", type: "text", required: true },
     { name: "activity_type", label: "Tür", type: "select", options: ACTIVITY_TYPE_OPTIONS, required: true },
@@ -305,6 +305,9 @@ export const activitiesResource: ResourceConfig = {
     { name: "due_date", label: "Tarih", type: "date" },
     { name: "status", label: "Durum", type: "select", options: ACTIVITY_STATUS_OPTIONS, required: true },
     { name: "description", label: "Açıklama", type: "textarea" },
+    // Notu/aktiviteyi oluşturduğum GÜN kenara not düşülsün istendi — due_date
+    // (aktivitenin kendi tarihi) ile karışmasın diye ayrı etiket.
+    { name: "created_at", label: "Oluşturulma Tarihi", type: "date", readOnly: true },
   ],
 };
 

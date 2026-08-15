@@ -162,10 +162,11 @@ export interface CrmActivity {
   id: string;
   company_id: string | null;
   contact_id: string | null;
-  module: "purchasing" | "sales" | "operations";
+  module: "purchasing" | "sales" | "operations" | "broker";
   activity_type: string;
   subject: string;
   description: string | null;
   due_date: string | null;
   status: string;
+  created_at: string;
 }
