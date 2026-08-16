@@ -1151,21 +1151,34 @@ export function ResourceManager({
 
   const listFieldDefs = config.listFields.map((n) => fieldByName[n]).filter(Boolean);
 
+  // Bir alan, çağıran taraftan gelen `filter` prop'uyla zaten TEK bir değere
+  // kilitlenmişse (ör. bir firmanın kendi sayfasında company_id sabittir)
+  // ayrıca bir filtre kontrolü göstermenin anlamı yok — seçilebilecek tek
+  // değer zaten uygulanmış durumda. `filter` değeri BİRDEN FAZLA seçenekli
+  // bir dizi ise (ör. tip=["supplier","both"]) o küme İÇİNDE daraltma hâlâ
+  // anlamlı olduğundan böyle alanlar filtre panelinde kalır.
+  const isLockedToSingleValue = (name: string) => {
+    if (!filter || !(name in filter)) return false;
+    const v = filter[name];
+    return !Array.isArray(v) || v.length <= 1;
+  };
+
   // Filtre paneli: her alan tipine göre otomatik gruplanır (bkz. resources.ts).
   const dropdownFilterFields = config.fields.filter(
-    (f) => f.type === "reference" || f.type === "select" || f.type === "boolean",
+    (f) => (f.type === "reference" || f.type === "select" || f.type === "boolean") && !isLockedToSingleValue(f.name),
   );
   const rangeFilterFields = config.fields.filter(
-    (f) => f.type === "date" || f.type === "number" || f.type === "money",
+    (f) => (f.type === "date" || f.type === "number" || f.type === "money") && !isLockedToSingleValue(f.name),
   );
   const textFilterFields = config.fields.filter(
     (f) =>
-      f.type === "text" ||
-      f.type === "textarea" ||
-      f.type === "select_other" ||
-      f.type === "email" ||
-      f.type === "tel" ||
-      f.type === "url",
+      (f.type === "text" ||
+        f.type === "textarea" ||
+        f.type === "select_other" ||
+        f.type === "email" ||
+        f.type === "tel" ||
+        f.type === "url") &&
+      !isLockedToSingleValue(f.name),
   );
   const hasFilterUI =
     !hideFilters &&
