@@ -31,7 +31,6 @@ export interface Profile {
 export interface Company {
   id: string;
   name: string;
-  symbol: string | null; // kısa, serbest bir sembol/kod (opsiyonel)
   type: "supplier" | "customer" | "both" | "surveyor" | "port" | "carrier" | "agent" | "broker";
   city: string | null;
   country: string | null;
