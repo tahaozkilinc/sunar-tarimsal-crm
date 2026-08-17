@@ -13,7 +13,7 @@ import { COMPANY_TYPE_OPTIONS, activitiesResource, contactsResource } from "@/li
 import type { Company, Role } from "@/lib/types";
 import { baseRole } from "@/lib/nav";
 
-const OPS_PARTNER_TYPES = new Set(["surveyor", "port", "carrier", "agent", "broker"]);
+const OPS_PARTNER_TYPES = new Set(["surveyor", "port", "carrier", "agent", "broker", "ship_broker"]);
 type DetailTab = "contacts" | "activities" | "summary";
 
 // Bir firmanın aktiviteleri artık CRM'in ortak/havuz sekmesinde değil, doğrudan
@@ -21,7 +21,9 @@ type DetailTab = "contacts" | "activities" | "summary";
 // hâlâ 'module' bazlı RLS ile korunuyor (purchasing/sales/operations/broker) —
 // yeni kayıt oluştururken hangi modülün kullanılacağını, mevcut rolün YAZMA
 // yetkisi kesin geçsin diye önce görüntüleyen rolden, o mümkün değilse
-// (admin/viewer) firma türünden çıkarıyoruz.
+// (admin/viewer) firma türünden çıkarıyoruz. ship_broker (Gemi Brokeri)
+// operasyona ait olduğundan module='operations' kovasını paylaşır; module='broker'
+// kovası yalnızca broker (Hammadde Brokeri) içindir.
 function activityModuleFor(type: Company["type"], role: Role): "purchasing" | "sales" | "operations" | "broker" {
   const base = baseRole(role);
   if (base === "sales") return "sales";
@@ -29,7 +31,7 @@ function activityModuleFor(type: Company["type"], role: Role): "purchasing" | "s
   if (base === "purchasing") return type === "broker" ? "broker" : "purchasing";
   if (type === "broker") return "broker";
   if (type === "customer") return "sales";
-  if (type === "surveyor" || type === "port" || type === "carrier" || type === "agent") return "operations";
+  if (type === "surveyor" || type === "port" || type === "carrier" || type === "agent" || type === "ship_broker") return "operations";
   return "purchasing"; // supplier / both
 }
 
@@ -152,7 +154,7 @@ export function CompanyDetailView({ company, role }: { company: Company; role: R
 
       {tab === "summary" &&
         (OPS_PARTNER_TYPES.has(company.type) ? (
-          <CompanyShipStats companyId={company.id} companyType={company.type as "surveyor" | "port" | "carrier" | "agent" | "broker"} />
+          <CompanyShipStats companyId={company.id} companyType={company.type as "surveyor" | "port" | "carrier" | "agent" | "broker" | "ship_broker"} />
         ) : (
           <CompanyReport companyId={company.id} />
         ))}

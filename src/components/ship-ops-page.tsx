@@ -25,6 +25,7 @@ type Contract = {
   carrier_id: string | null;
   agent_id: string | null;
   assigned_to: string | null;
+  ship_broker_id: string | null;
 };
 type Movement = {
   id: string;
@@ -134,6 +135,7 @@ export function ShipOpsPage({
   const [carrierId,  setCarrierId]  = useState("");
   const [agentId,    setAgentId]    = useState("");
   const [assignedToId, setAssignedToId] = useState("");
+  const [shipBrokerId, setShipBrokerId] = useState("");
   const [assignSaving, setAssignSaving] = useState(false);
   const [assignErr, setAssignErr] = useState<string | null>(null);
   const [assignFlash, setAssignFlash] = useState<string | null>(null);
@@ -173,7 +175,7 @@ export function ShipOpsPage({
   useEffect(() => {
     (async () => {
       const CONTRACT_COLS =
-        "id,contract_no,vessel,product_id,supplier_id,quantity,unit,eta,status,surveyor_id,port_id,carrier_id,agent_id,assigned_to";
+        "id,contract_no,vessel,product_id,supplier_id,quantity,unit,eta,status,surveyor_id,port_id,carrier_id,agent_id,assigned_to,ship_broker_id";
       const [c0, w, p, co, pn, { data: au }] = await Promise.all([
         supabase
           .from("purchase_contracts")
@@ -209,6 +211,7 @@ export function ShipOpsPage({
       setCarrierId(cd?.carrier_id ?? "");
       setAgentId(cd?.agent_id ?? "");
       setAssignedToId(cd?.assigned_to ?? "");
+      setShipBrokerId(cd?.ship_broker_id ?? "");
       const pnRows = (pn.data as { id: string; full_name: string | null; role: string | null }[] | null) || [];
       const names: Record<string, string> = {};
       pnRows.forEach((x) => { names[x.id] = x.full_name || "—"; });
@@ -245,16 +248,18 @@ export function ShipOpsPage({
   const cName = (id: string | null) => companies.find(c => c.id === id)?.name || "—";
   const creatorName = (id: string | null) => (id && creatorNames[id]) || "—";
 
-  const surveyors = useMemo(() => companies.filter(c => c.type === "surveyor"), [companies]);
-  const ports     = useMemo(() => companies.filter(c => c.type === "port"), [companies]);
-  const carriers  = useMemo(() => companies.filter(c => c.type === "carrier"), [companies]);
-  const agents    = useMemo(() => companies.filter(c => c.type === "agent"), [companies]);
+  const surveyors   = useMemo(() => companies.filter(c => c.type === "surveyor"), [companies]);
+  const ports       = useMemo(() => companies.filter(c => c.type === "port"), [companies]);
+  const carriers    = useMemo(() => companies.filter(c => c.type === "carrier"), [companies]);
+  const agents      = useMemo(() => companies.filter(c => c.type === "agent"), [companies]);
+  const shipBrokers = useMemo(() => companies.filter(c => c.type === "ship_broker"), [companies]);
   const partiesDirty =
     surveyorId !== (contract?.surveyor_id ?? "") ||
     portId     !== (contract?.port_id ?? "") ||
     carrierId  !== (contract?.carrier_id ?? "") ||
     agentId    !== (contract?.agent_id ?? "") ||
-    assignedToId !== (contract?.assigned_to ?? "");
+    assignedToId !== (contract?.assigned_to ?? "") ||
+    shipBrokerId !== (contract?.ship_broker_id ?? "");
 
   const totalDrawn = useMemo(
     () => movements.reduce((a, m) => a + (Number(m.quantity) || 0), 0),
@@ -378,6 +383,7 @@ export function ShipOpsPage({
       p_carrier_id:  carrierId || null,
       p_agent_id:    agentId || null,
       p_assigned_to: assignedToId || null,
+      p_ship_broker_id: shipBrokerId || null,
     });
     if (rpcResult.error) { setAssignSaving(false); setAssignErr(rpcResult.error.message); return; }
     const parties = {
@@ -386,6 +392,7 @@ export function ShipOpsPage({
       carrier_id:  carrierId || null,
       agent_id:    agentId || null,
       assigned_to: assignedToId || null,
+      ship_broker_id: shipBrokerId || null,
     };
     setContract(prev => prev ? { ...prev, ...parties } : prev);
     setAssignSaving(false);
@@ -490,7 +497,7 @@ export function ShipOpsPage({
         <div className="mb-3 flex items-center justify-between">
           <span className="text-sm font-semibold">Operasyon Tarafları</span>
         </div>
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <Field label="Gözetim Şirketi">
             {canWrite && contract.status !== "completed" ? (
               <Select value={surveyorId} onChange={e => setSurveyorId(e.target.value)}>
@@ -529,6 +536,16 @@ export function ShipOpsPage({
               </Select>
             ) : (
               <div className="rounded-lg border border-border bg-gray-50 px-3 py-2 text-sm">{cName(contract.agent_id)}</div>
+            )}
+          </Field>
+          <Field label="Gemi Brokeri">
+            {canWrite && contract.status !== "completed" ? (
+              <Select value={shipBrokerId} onChange={e => setShipBrokerId(e.target.value)}>
+                <option value="">Seçiniz...</option>
+                {shipBrokers.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+              </Select>
+            ) : (
+              <div className="rounded-lg border border-border bg-gray-50 px-3 py-2 text-sm">{cName(contract.ship_broker_id)}</div>
             )}
           </Field>
           <Field label="Operasyon Sorumlusu">

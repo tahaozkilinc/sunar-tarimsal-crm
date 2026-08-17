@@ -8,13 +8,13 @@ import { companiesResource, warehousesResource } from "@/lib/resources";
 import type { Role } from "@/lib/types";
 import { baseRole } from "@/lib/nav";
 
-type CrmModule = "purchasing" | "sales" | "surveyor" | "port" | "carrier" | "agent" | "broker" | "warehouses";
+type CrmModule = "purchasing" | "sales" | "surveyor" | "port" | "carrier" | "agent" | "ship_broker" | "broker" | "warehouses";
 
-// Operasyon iş ortakları artık tek modül değil; gözetim/liman/nakliyeci/acente
-// ayrı. Aktiviteler artık burada değil, doğrudan her firmanın kendi detay
-// sayfasında (bkz. company-detail-view.tsx) — bu yüzden burada modül bazlı bir
-// aktivite kovası ayrımına gerek kalmadı.
-const OPERATIONS_MODULES: CrmModule[] = ["surveyor", "port", "carrier", "agent"];
+// Operasyon iş ortakları artık tek modül değil; gözetim/liman/nakliyeci/acente/
+// Gemi Brokeri ayrı. Aktiviteler artık burada değil, doğrudan her firmanın
+// kendi detay sayfasında (bkz. company-detail-view.tsx) — bu yüzden burada
+// modül bazlı bir aktivite kovası ayrımına gerek kalmadı.
+const OPERATIONS_MODULES: CrmModule[] = ["surveyor", "port", "carrier", "agent", "ship_broker"];
 
 const MODULE_META: Record<
   CrmModule,
@@ -61,11 +61,20 @@ const MODULE_META: Record<
     companyType: "agent",
     typeFilter: ["agent"],
   },
+  // Hammadde Brokeri: satın alma tarafı, sözleşme açılışında seçilir.
   broker: {
-    toggleLabel: "Broker",
-    companyLabel: "Brokerlar",
+    toggleLabel: "Hammadde Brokeri",
+    companyLabel: "Hammadde Brokerleri",
     companyType: "broker",
     typeFilter: ["broker"],
+  },
+  // Gemi Brokeri: operasyon tarafı, gözetim/liman/nakliyeci/acente gibi
+  // ship-ops'tan atanır — bkz. ship-ops-page.tsx "Operasyon Tarafları".
+  ship_broker: {
+    toggleLabel: "Gemi Brokeri",
+    companyLabel: "Gemi Brokerleri",
+    companyType: "ship_broker",
+    typeFilter: ["ship_broker"],
   },
   // Depolar companies değil warehouses tablosu üzerinde çalışır — companies
   // deseni buraya uymaz, kendi ayrı dalı var (aşağıda, effModule ===
@@ -80,16 +89,16 @@ const MODULE_META: Record<
 };
 
 // Rol başına görünür CRM modülleri. admin/viewer hepsini; satış kendi modülünü;
-// operasyon dört iş ortağı türünü (gözetim/liman/nakliyeci/acente) + Depolar'ı
-// ayrı ayrı görür (depo yönetimi zaten operasyonun işi, bkz. warehouses_write);
-// satın alma kendi modülüne ek olarak broker'ı görür (bağlantı açılırken
-// broker seçildiği için satın almaya ait, operasyona değil).
+// operasyon beş iş ortağı türünü (gözetim/liman/nakliyeci/acente/Gemi Brokeri)
+// + Depolar'ı ayrı ayrı görür (depo yönetimi zaten operasyonun işi, bkz.
+// warehouses_write); satın alma kendi modülüne ek olarak Hammadde Brokeri'ni
+// görür (bağlantı açılırken seçildiği için satın almaya ait, operasyona değil).
 function modulesForRole(role: Role): CrmModule[] {
   const base = baseRole(role);
   if (base === "admin" || base === "viewer")
-    return ["purchasing", "sales", "surveyor", "port", "carrier", "agent", "broker", "warehouses"];
+    return ["purchasing", "sales", "surveyor", "port", "carrier", "agent", "ship_broker", "broker", "warehouses"];
   if (base === "sales") return ["sales"];
-  if (base === "operations") return ["surveyor", "port", "carrier", "agent", "warehouses"];
+  if (base === "operations") return ["surveyor", "port", "carrier", "agent", "ship_broker", "warehouses"];
   if (base === "purchasing") return ["purchasing", "broker"];
   return ["purchasing"];
 }
@@ -143,7 +152,7 @@ export function CrmTabs({ role }: { role: Role }) {
       {(isOps || effModule === "broker") && (
         <OperationPartnerStats
           key={`ps-${effModule}`}
-          companyType={effModule as "surveyor" | "port" | "carrier" | "agent" | "broker"}
+          companyType={effModule as "surveyor" | "port" | "carrier" | "agent" | "broker" | "ship_broker"}
         />
       )}
       <ResourceManager

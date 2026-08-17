@@ -32,7 +32,9 @@ export interface Company {
   id: string;
   name: string;
   symbol: string | null; // kısa, serbest bir sembol/kod (opsiyonel)
-  type: "supplier" | "customer" | "both" | "surveyor" | "port" | "carrier" | "agent" | "broker";
+  // broker = Hammadde Brokeri (satın alma, sözleşme aracısı), ship_broker =
+  // Gemi Brokeri (operasyon, navlun/gemi aracısı) — ikisi ayrı roller.
+  type: "supplier" | "customer" | "both" | "surveyor" | "port" | "carrier" | "agent" | "broker" | "ship_broker";
   city: string | null;
   country: string | null;
   phone: string | null;
@@ -104,7 +106,8 @@ export interface PurchaseContract {
   port_id: string | null;
   carrier_id: string | null;
   agent_id: string | null; // yurtdışı yükleme takip acentesi
-  broker_id: string | null;
+  broker_id: string | null; // Hammadde Brokeri — sözleşme açılışında seçilir
+  ship_broker_id: string | null; // Gemi Brokeri — ship-ops'tan sonradan atanır
   created_at: string;
   notes: string | null;
 }
