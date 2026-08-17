@@ -14,14 +14,15 @@ import { DateProductFilter, EMPTY_DATE_PRODUCT_FILTER, type DateProductFilterVal
 // Bir gemiye taraf ataması ship-ops-page'deki "Operasyon Tarafları" kartından
 // (assign_ship_parties) yapılır.
 
-type OpsType = "surveyor" | "port" | "carrier" | "agent" | "broker";
+type OpsType = "surveyor" | "port" | "carrier" | "agent" | "broker" | "ship_broker";
 
-const PARTY_FIELD: Record<OpsType, "surveyor_id" | "port_id" | "carrier_id" | "agent_id" | "broker_id"> = {
+const PARTY_FIELD: Record<OpsType, "surveyor_id" | "port_id" | "carrier_id" | "agent_id" | "broker_id" | "ship_broker_id"> = {
   surveyor: "surveyor_id",
   port: "port_id",
   carrier: "carrier_id",
   agent: "agent_id",
   broker: "broker_id",
+  ship_broker: "ship_broker_id",
 };
 
 const TYPE_LABEL: Record<OpsType, string> = {
@@ -29,7 +30,8 @@ const TYPE_LABEL: Record<OpsType, string> = {
   port: "Liman",
   carrier: "Nakliyeci",
   agent: "Acente",
-  broker: "Broker",
+  broker: "Hammadde Brokeri",
+  ship_broker: "Gemi Brokeri",
 };
 
 // Gemi sayılırken/tonaj toplanırken iptal edilmiş bağlantılar hariç tutulur.

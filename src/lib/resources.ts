@@ -140,7 +140,11 @@ export const COMPANY_TYPE_OPTIONS: SelectOption[] = [
   { value: "port", label: "Liman", color: "gray" },
   { value: "carrier", label: "Nakliyeci", color: "red" },
   { value: "agent", label: "Acente", color: "purple" },
-  { value: "broker", label: "Broker", color: "green" },
+  // Broker ikiye ayrılır: Hammadde Brokeri (satın alma, sözleşme aracısı —
+  // sözleşme açılışında seçilir) ve Gemi Brokeri (operasyon, navlun/gemi
+  // aracısı — gözetim/liman/nakliyeci/acente gibi ship-ops'tan atanır).
+  { value: "broker", label: "Hammadde Brokeri", color: "green" },
+  { value: "ship_broker", label: "Gemi Brokeri", color: "blue" },
 ];
 
 export const LOCATION_TYPE_OPTIONS: SelectOption[] = [
@@ -325,7 +329,9 @@ export const purchaseContractsResource: ResourceConfig = {
     { name: "contract_no", label: "Sözleşme No", type: "text", unique: true },
     { name: "contract_date", label: "Sözleşme Tarihi", type: "date", required: true },
     { name: "supplier_id", label: "Tedarikçi", type: "reference", ref: { table: "companies", labelField: "name", filter: { type: ["supplier", "both"] } }, required: true },
-    { name: "broker_id", label: "Broker", type: "reference", ref: { table: "companies", labelField: "name", filter: { type: ["broker"] } } },
+    // Hammadde Brokeri: sözleşme açılışında seçilir. Gemi Brokeri (ship_broker_id)
+    // BUNUN AYRISI — aşağıda, agent_id ile birlikte formHidden (ship-ops'tan atanır).
+    { name: "broker_id", label: "Hammadde Brokeri", type: "reference", ref: { table: "companies", labelField: "name", filter: { type: ["broker"] } } },
     { name: "product_id", label: "Ürün (Yağlı Tohum)", type: "reference", ref: { table: "products", labelField: "name", filter: { is_active: ["true"] } } },
     { name: "quantity", label: "Miktar", type: "number", required: true, positive: true },
     { name: "unit", label: "Birim", type: "select", options: UNIT_OPTIONS, required: true, inlineAfter: true },
@@ -348,6 +354,9 @@ export const purchaseContractsResource: ResourceConfig = {
     // ama Detay görünümünde ve DB'de kalır (bkz. resource-manager.tsx).
     { name: "assigned_to", label: "Operasyon Sorumlusu", type: "reference", ref: { table: "profiles", labelField: "full_name", filter: { role: ["operations"] } }, formHidden: true },
     { name: "agent_id", label: "Acente (Yükleme Takibi)", type: "reference", ref: { table: "companies", labelField: "name", filter: { type: ["agent"] } }, formHidden: true },
+    // Gemi Brokeri: gözetim/liman/nakliyeci/acente gibi sözleşme açılışında
+    // DEĞİL, gemi netleştikçe ship-ops'taki "Operasyon Tarafları" kartından atanır.
+    { name: "ship_broker_id", label: "Gemi Brokeri", type: "reference", ref: { table: "companies", labelField: "name", filter: { type: ["ship_broker"] } }, formHidden: true },
     { name: "payment_due_date", label: "Öngörülen Ödeme Tarihi", type: "date" },
     // Alıcı artık sabit dizi değil, Yönetim -> Alıcılar'dan düzenlenebilir liste
     // (principals -- "Kimin Adına" -- ile AYNI desen, bkz. buyersResource).
