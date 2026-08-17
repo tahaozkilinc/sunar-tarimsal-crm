@@ -5,9 +5,14 @@ import { Tabs } from "./ui";
 import { ResourceManager } from "./resource-manager";
 import { UsersManager } from "./users-manager";
 import { AuditLog } from "./audit-log";
-import { buyersResource, principalsResource, productsResource, warehousesResource } from "@/lib/resources";
+import { buyersResource, principalsResource, productsResource } from "@/lib/resources";
 import type { Role } from "@/lib/types";
 
+// Depolar burada YOK — depo yönetimi yalnızca CRM'den yapılır (bkz.
+// crm-tabs.tsx "Depolar" modülü, WarehouseDetailView). Burada AYNI
+// warehousesResource'u ikinci bir sade ekran olarak açmak, CRM'deki asıl
+// deneyimi (Alt Depolar, Yetkililer, Stok Özeti sekmeleri) atlayan, kafa
+// karıştırıcı bir kısayoldu — kullanıcı isteğiyle kaldırıldı.
 export function AdminTabs({ role }: { role: Role }) {
   const [tab, setTab] = useState("users");
   return (
@@ -19,7 +24,6 @@ export function AdminTabs({ role }: { role: Role }) {
         tabs={[
           { key: "users", label: "Kullanıcılar" },
           { key: "products", label: "Ürünler" },
-          { key: "warehouses", label: "Depolar / Fabrikalar" },
           { key: "principals", label: "Adına Alınanlar" },
           { key: "buyers", label: "Alıcılar" },
           { key: "audit", label: "İşlem Geçmişi" },
@@ -27,9 +31,6 @@ export function AdminTabs({ role }: { role: Role }) {
       />
       {tab === "users" && <UsersManager />}
       {tab === "products" && <ResourceManager config={productsResource} role={role} />}
-      {tab === "warehouses" && (
-        <ResourceManager config={warehousesResource} role={role} />
-      )}
       {tab === "principals" && (
         <ResourceManager config={principalsResource} role={role} />
       )}

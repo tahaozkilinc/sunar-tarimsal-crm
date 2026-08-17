@@ -91,7 +91,7 @@ function SelectOtherInput({
         <Input
           type="text"
           value={strVal}
-          onChange={(e) => onChange(uppercase ? e.target.value.toLocaleUpperCase("tr") : e.target.value)}
+          onChange={(e) => onChange(uppercase ? e.target.value.toUpperCase() : e.target.value)}
           placeholder="Yazın..."
           disabled={disabled}
         />
@@ -586,7 +586,7 @@ export function ResourceManager({
             ((data as Row[] | null) || [])
               .map((r) => String(r[column] ?? "").trim())
               .filter(Boolean)
-              .map((v) => v.toLocaleUpperCase("tr")),
+              .map((v) => v.toUpperCase()),
           ),
         ).sort((a, b) => a.localeCompare(b, "tr"));
         result[f.name] = values.map((v) => ({ value: v, label: v }));
@@ -1871,7 +1871,10 @@ export function ResourceManager({
         value={value as string}
         onChange={(e) => {
           const raw = e.target.value;
-          setField(f.name, forceUpper ? raw.toLocaleUpperCase("tr") : raw);
+          // Kasıtlı olarak yerel ayarsız (Türkçe değil) toUpperCase: "i" -> "I"
+          // (İngilizce/ASCII), Türkçe "İ" değil — uluslararası evrak/referanslarla
+          // karışmasın diye kullanıcı isteğiyle böyle.
+          setField(f.name, forceUpper ? raw.toUpperCase() : raw);
         }}
         placeholder={f.placeholder}
         disabled={!canWrite}
