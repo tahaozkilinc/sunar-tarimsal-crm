@@ -31,7 +31,6 @@ export interface Profile {
 export interface Company {
   id: string;
   name: string;
-  symbol: string | null; // kısa, serbest bir sembol/kod (opsiyonel)
   // broker = Hammadde Brokeri (satın alma, sözleşme aracısı), ship_broker =
   // Gemi Brokeri (operasyon, navlun/gemi aracısı) — ikisi ayrı roller.
   type: "supplier" | "customer" | "both" | "surveyor" | "port" | "carrier" | "agent" | "broker" | "ship_broker";
