@@ -26,8 +26,8 @@ function activityModuleFor(type: Company["type"], role: Role): "purchasing" | "s
   const base = baseRole(role);
   if (base === "sales") return "sales";
   if (base === "operations") return "operations";
-  if (base === "purchasing") return type === "broker" ? "broker" : "purchasing";
-  if (type === "broker") return "broker";
+  if (base === "purchasing") return type === "broker" || type === "broker_sea" ? "broker" : "purchasing";
+  if (type === "broker" || type === "broker_sea") return "broker";
   if (type === "customer") return "sales";
   if (type === "surveyor" || type === "port" || type === "carrier" || type === "agent") return "operations";
   return "purchasing"; // supplier / both

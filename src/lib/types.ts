@@ -31,7 +31,7 @@ export interface Profile {
 export interface Company {
   id: string;
   name: string;
-  type: "supplier" | "customer" | "both" | "surveyor" | "port" | "carrier" | "agent" | "broker";
+  type: "supplier" | "customer" | "both" | "surveyor" | "port" | "carrier" | "agent" | "broker" | "broker_sea";
   city: string | null;
   country: string | null;
   phone: string | null;

@@ -8,7 +8,7 @@ import { companiesResource, warehousesResource } from "@/lib/resources";
 import type { Role } from "@/lib/types";
 import { baseRole } from "@/lib/nav";
 
-type CrmModule = "purchasing" | "sales" | "surveyor" | "port" | "carrier" | "agent" | "broker" | "warehouses";
+type CrmModule = "purchasing" | "sales" | "surveyor" | "port" | "carrier" | "agent" | "broker" | "broker_sea" | "warehouses";
 
 // Operasyon iş ortakları artık tek modül değil; gözetim/liman/nakliyeci/acente
 // ayrı. Aktiviteler artık burada değil, doğrudan her firmanın kendi detay
@@ -62,10 +62,16 @@ const MODULE_META: Record<
     typeFilter: ["agent"],
   },
   broker: {
-    toggleLabel: "Broker",
-    companyLabel: "Brokerlar",
+    toggleLabel: "Hammadde Broker",
+    companyLabel: "Hammadde Brokerlar",
     companyType: "broker",
     typeFilter: ["broker"],
+  },
+  broker_sea: {
+    toggleLabel: "Deniz Broker",
+    companyLabel: "Deniz Brokerlar",
+    companyType: "broker_sea",
+    typeFilter: ["broker_sea"],
   },
   // Depolar companies değil warehouses tablosu üzerinde çalışır — companies
   // deseni buraya uymaz, kendi ayrı dalı var (aşağıda, effModule ===
@@ -82,15 +88,16 @@ const MODULE_META: Record<
 // Rol başına görünür CRM modülleri. admin/viewer hepsini; satış kendi modülünü;
 // operasyon dört iş ortağı türünü (gözetim/liman/nakliyeci/acente) + Depolar'ı
 // ayrı ayrı görür (depo yönetimi zaten operasyonun işi, bkz. warehouses_write);
-// satın alma kendi modülüne ek olarak broker'ı görür (bağlantı açılırken
-// broker seçildiği için satın almaya ait, operasyona değil).
+// satın alma kendi modülüne ek olarak iki broker türünü görür (Hammadde Broker
+// + Deniz Broker) -- bağlantı açılırken sadece Hammadde Broker seçildiği için
+// bu ikisi de satın almaya ait, operasyona değil.
 function modulesForRole(role: Role): CrmModule[] {
   const base = baseRole(role);
   if (base === "admin" || base === "viewer")
-    return ["purchasing", "sales", "surveyor", "port", "carrier", "agent", "broker", "warehouses"];
+    return ["purchasing", "sales", "surveyor", "port", "carrier", "agent", "broker", "broker_sea", "warehouses"];
   if (base === "sales") return ["sales"];
   if (base === "operations") return ["surveyor", "port", "carrier", "agent", "warehouses"];
-  if (base === "purchasing") return ["purchasing", "broker"];
+  if (base === "purchasing") return ["purchasing", "broker", "broker_sea"];
   return ["purchasing"];
 }
 

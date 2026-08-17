@@ -140,7 +140,8 @@ export const COMPANY_TYPE_OPTIONS: SelectOption[] = [
   { value: "port", label: "Liman", color: "gray" },
   { value: "carrier", label: "Nakliyeci", color: "red" },
   { value: "agent", label: "Acente", color: "purple" },
-  { value: "broker", label: "Broker", color: "green" },
+  { value: "broker", label: "Hammadde Broker", color: "green" },
+  { value: "broker_sea", label: "Deniz Broker", color: "blue" },
 ];
 
 export const LOCATION_TYPE_OPTIONS: SelectOption[] = [
@@ -324,7 +325,7 @@ export const purchaseContractsResource: ResourceConfig = {
     { name: "contract_no", label: "Sözleşme No", type: "text", unique: true },
     { name: "contract_date", label: "Sözleşme Tarihi", type: "date", required: true },
     { name: "supplier_id", label: "Tedarikçi", type: "reference", ref: { table: "companies", labelField: "name", filter: { type: ["supplier", "both"] } }, required: true },
-    { name: "broker_id", label: "Broker", type: "reference", ref: { table: "companies", labelField: "name", filter: { type: ["broker"] } } },
+    { name: "broker_id", label: "Broker (Hammadde)", type: "reference", ref: { table: "companies", labelField: "name", filter: { type: ["broker"] } } },
     { name: "product_id", label: "Ürün (Yağlı Tohum)", type: "reference", ref: { table: "products", labelField: "name", filter: { is_active: ["true"] } } },
     { name: "quantity", label: "Miktar", type: "number", required: true, positive: true },
     { name: "unit", label: "Birim", type: "select", options: UNIT_OPTIONS, required: true, inlineAfter: true },
