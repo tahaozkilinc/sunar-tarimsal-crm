@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { navForRole, ROLE_LABELS, type NavItem } from "@/lib/nav";
+import { navForRole, ROLE_LABELS, ROLE_LABELS_EN, type NavItem } from "@/lib/nav";
 import { L } from "@/lib/i18n";
 import type { Profile } from "@/lib/types";
 import {
@@ -36,11 +36,18 @@ const ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
   Calculator,
 };
 
-// Acente rolü yabancı uyruklu olabileceğinden kabuk (nav/kullanıcı kutusu)
-// onun için İngilizce gösterilir (bkz. src/lib/i18n.ts — hedefli, tek tek).
+// Kullanıcı Profilim sayfasından İngilizce seçtiyse kabuk (nav/kullanıcı
+// kutusu) İngilizce gösterilir (bkz. src/lib/i18n.ts — hedefli, tek tek).
 const NAV_LABEL_EN: Record<string, string> = {
   Panel: "Dashboard",
+  CRM: "CRM",
+  Bağlantı: "Contracts",
   Operasyon: "Operations",
+  Stok: "Inventory",
+  Satış: "Sales",
+  Finans: "Finance",
+  Maliyet: "Cost",
+  Yönetim: "Admin",
 };
 
 function Brand({ isEn }: { isEn: boolean }) {
@@ -115,7 +122,9 @@ function UserBox({
         <div className="truncate text-sm font-medium">
           {profile.full_name || profile.email}
         </div>
-        <div className="text-xs text-gray-500">{isEn ? "Agent" : ROLE_LABELS[profile.role]}</div>
+        <div className="text-xs text-gray-500">
+          {isEn ? ROLE_LABELS_EN[profile.role] : ROLE_LABELS[profile.role]}
+        </div>
       </Link>
       <button
         onClick={onLogout}
@@ -138,7 +147,7 @@ export function AppShell({
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const items = navForRole(profile.role);
-  const isEn = profile.role === "acente";
+  const isEn = profile.language === "en";
 
   const logout = async () => {
     await createClient().auth.signOut();

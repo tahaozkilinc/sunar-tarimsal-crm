@@ -13,9 +13,10 @@ import { baseRole } from "@/lib/nav";
 import { L } from "@/lib/i18n";
 import type { Role } from "@/lib/types";
 
-export function OperationsTabs({ role }: { role: Role }) {
+export function OperationsTabs({ role, language }: { role: Role; language: "tr" | "en" }) {
   const [tab, setTab] = useState("arrivals");
   const base = baseRole(role);
+  const isEn = language === "en";
 
   // Nakliyeci / Gözetim yalnızca atandığı gemilerde tonaj girer: sadece "Bekleyen Gelişler".
   if (base === "nakliyeci" || base === "gozetim") {
@@ -28,12 +29,11 @@ export function OperationsTabs({ role }: { role: Role }) {
   }
 
   // Acente: yalnızca yurtdışı yükleme ekranı (kendi bağlantıları, RLS).
-  // Acente yabancı uyruklu olabileceğinden bu ekran İngilizce (bkz. src/lib/i18n.ts).
   if (base === "acente") {
     return (
       <div className="space-y-4">
-        <h1 className="text-xl font-bold">{L(true, "Yurtdışı Yükleme", "Overseas Loading")}</h1>
-        <ForeignLoading role={role} />
+        <h1 className="text-xl font-bold">{L(isEn, "Yurtdışı Yükleme", "Overseas Loading")}</h1>
+        <ForeignLoading role={role} language={language} />
       </div>
     );
   }
@@ -58,7 +58,7 @@ export function OperationsTabs({ role }: { role: Role }) {
           <PendingArrivals role={role} />
         </div>
       )}
-      {tab === "foreign" && <ForeignLoading role={role} />}
+      {tab === "foreign" && <ForeignLoading role={role} language={language} />}
       {tab === "ozet" && <OperasyonSummary />}
       {tab === "movements" && (
         <ResourceManager config={stockMovementsResource} role={role} hideTitle />
