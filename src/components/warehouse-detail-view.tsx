@@ -39,10 +39,12 @@ type Tab = "details" | "subwarehouses" | "stock" | "ledger";
 export function WarehouseDetailView({
   warehouse,
   parentName,
+  portName,
   role,
 }: {
   warehouse: Warehouse;
   parentName: string | null;
+  portName: string | null;
   role: Role;
 }) {
   const typeOpt = LOCATION_TYPE_OPTIONS.find((o) => o.value === warehouse.type);
@@ -71,6 +73,7 @@ export function WarehouseDetailView({
           <Info label="Ülke" value={warehouse.country} />
           <Info label="Kapasite" value={warehouse.capacity != null ? `${formatNumber(warehouse.capacity)} ton` : null} />
           <Info label="Bağlı Olduğu Ana Depo (Antrepo)" value={parentName} />
+          <Info label="Bulunduğu Liman (Gümrüklü Saha)" value={portName} />
         </div>
       </Card>
 
