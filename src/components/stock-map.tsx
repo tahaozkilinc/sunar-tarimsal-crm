@@ -9,18 +9,28 @@ import { Badge, Card, EmptyState, Spinner } from "./ui";
 import { formatNumber } from "@/lib/format";
 import { TURKEY_CENTER, geocodeLocation } from "@/lib/turkey-cities";
 
-// Stok haritası: her depo/fabrika konumunda toplam tonaj + ürün kırılımı.
-// Konum önceliği: 1) depoya Stok → Depolar'dan haritadan seçilmiş TAM
-// koordinat (lat/lng) varsa birebir onu kullanır; 2) yoksa city+country'den
-// TAHMİNİ türetir (geocodeLocation: TR illeri, yurtdışı liman/şehirler, olmazsa
-// ülke merkezi). Eşleşmeyenler listede kalır. Kapsam filtresi: Tümü/Yurtiçi/Yurtdışı.
+// Stok haritası: TÜM depo/fabrikalar noktayla gösterilir (stoksuz olanlar da
+// dahil — "bu liman/depo nerede" bilgisi tek başına değerlidir). Stoku olanlar
+// tonaja göre büyüyen dolu baloncukla, stoksuz olanlar sabit küçük içi boş bir
+// halka ile ayrılır. Konum önceliği: 1) depoya CRM → Depolar'dan haritadan
+// seçilmiş TAM koordinat (lat/lng) varsa birebir onu kullanır; 2) yoksa
+// city+country'den TAHMİNİ türetir (geocodeLocation: TR illeri, yurtdışı
+// liman/şehirler, olmazsa ülke merkezi). Eşleşmeyenler listede kalır.
+// Kapsam filtresi: Tümü/Yurtiçi/Yurtdışı.
 
 type InvRow = {
   warehouse_id: string;
-  warehouse_name: string;
-  location_type: "warehouse" | "factory" | "foreign";
   product_name: string;
   available_qty: number | null;
+};
+
+type WhMeta = {
+  name: string;
+  type: "warehouse" | "factory" | "foreign";
+  city: string | null;
+  country: string | null;
+  lat: number | null;
+  lng: number | null;
 };
 
 type ProductQty = { name: string; ton: number };
@@ -32,7 +42,7 @@ type WhAgg = {
   country: string | null;
   coords: [number, number] | null;
   exact: boolean; // true = haritadan seçilmiş tam koordinat, false = city/country tahmini
-  total: number;
+  total: number; // 0 ise "stok yok" olarak gösterilir
   products: ProductQty[];
 };
 
@@ -43,9 +53,7 @@ const FOREIGN = "#ca8a04"; // yurtdışı depo (sarı)
 export function StockMap() {
   const supabase = useMemo(() => createClient(), []);
   const [rows, setRows] = useState<InvRow[]>([]);
-  const [locByWh, setLocByWh] = useState<
-    Record<string, { city: string | null; country: string | null; lat: number | null; lng: number | null }>
-  >({});
+  const [whById, setWhById] = useState<Record<string, WhMeta>>({});
   const [scope, setScope] = useState<"all" | "domestic" | "foreign">("all");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -58,56 +66,50 @@ export function StockMap() {
   useEffect(() => {
     (async () => {
       const [inv, wh] = await Promise.all([
-        supabase
-          .from("inventory")
-          .select("warehouse_id,warehouse_name,location_type,product_name,available_qty"),
-        supabase.from("warehouses").select("id,city,country,lat,lng"),
+        supabase.from("inventory").select("warehouse_id,product_name,available_qty"),
+        supabase.from("warehouses").select("id,name,type,city,country,lat,lng"),
       ]);
       if (inv.error) { setError(inv.error.message); setLoading(false); return; }
       setRows((inv.data as InvRow[]) || []);
-      const cmap: Record<string, { city: string | null; country: string | null; lat: number | null; lng: number | null }> = {};
-      (
-        (wh.data as { id: string; city: string | null; country: string | null; lat: number | null; lng: number | null }[] | null) ||
-        []
-      ).forEach((w) => {
-        cmap[w.id] = { city: w.city, country: w.country, lat: w.lat, lng: w.lng };
+      const wmap: Record<string, WhMeta> = {};
+      ((wh.data as (WhMeta & { id: string })[] | null) || []).forEach((w) => {
+        wmap[w.id] = { name: w.name, type: w.type, city: w.city, country: w.country, lat: w.lat, lng: w.lng };
       });
-      setLocByWh(cmap);
+      setWhById(wmap);
       setLoading(false);
     })();
   }, [supabase]);
 
-  // Depo bazlı toplama: toplam mevcut tonaj + ürün kırılımı (yalnızca stok > 0).
+  // Önce TÜM depolar (stoksuz dahil) noktaya dönüşür, sonra stok varsa üzerine eklenir.
   const warehouses = useMemo<WhAgg[]>(() => {
     const map = new Map<string, WhAgg>();
+    Object.entries(whById).forEach(([id, w]) => {
+      const exactCoords: [number, number] | null =
+        w.lat !== null && w.lng !== null ? [w.lat, w.lng] : null;
+      map.set(id, {
+        id,
+        name: w.name,
+        type: w.type,
+        city: w.city,
+        country: w.country,
+        coords: exactCoords ?? geocodeLocation(w.city, w.country),
+        exact: exactCoords !== null,
+        total: 0,
+        products: [],
+      });
+    });
     for (const r of rows) {
       const av = Number(r.available_qty) || 0;
       if (av <= 0) continue;
-      let e = map.get(r.warehouse_id);
-      if (!e) {
-        const loc = locByWh[r.warehouse_id] ?? { city: null, country: null, lat: null, lng: null };
-        const exactCoords: [number, number] | null =
-          loc.lat !== null && loc.lng !== null ? [loc.lat, loc.lng] : null;
-        e = {
-          id: r.warehouse_id,
-          name: r.warehouse_name,
-          type: r.location_type,
-          city: loc.city,
-          country: loc.country,
-          coords: exactCoords ?? geocodeLocation(loc.city, loc.country),
-          exact: exactCoords !== null,
-          total: 0,
-          products: [],
-        };
-        map.set(r.warehouse_id, e);
-      }
+      const e = map.get(r.warehouse_id);
+      if (!e) continue;
       e.total += av;
       e.products.push({ name: r.product_name, ton: av });
     }
     const list = Array.from(map.values());
     list.forEach((w) => w.products.sort((a, b) => b.ton - a.ton));
     return list.sort((a, b) => b.total - a.total);
-  }, [rows, locByWh]);
+  }, [rows, whById]);
 
   const scoped = useMemo(
     () =>
@@ -151,19 +153,32 @@ export function StockMap() {
       const bounds: [number, number][] = [];
       for (const w of onMap) {
         if (!w.coords) continue;
-        const r = 8 + 26 * Math.sqrt(w.total / maxTon);
-        const d = r * 2;
+        const hasStock = w.total > 0;
         const color = w.type === "factory" ? FACTORY : w.type === "foreign" ? FOREIGN : BRAND;
         // circleMarker (Path) DEĞİL: markercluster kümeleme/spiderfy sırasında
         // çocuk katmanlarda setOpacity(n) çağırıyor — bu yalnızca L.Marker'da
         // var, Path/CircleMarker'da yok (yalnızca setStyle var). Aynı "tonaja
         // göre büyüklük" görünümünü divIcon'lu bir L.marker ile koruyoruz.
-        const icon = L.divIcon({
-          className: "wh-marker",
-          html: `<div style="width:${d}px;height:${d}px;border-radius:50%;background:${color};opacity:0.75;border:2px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.15)"></div>`,
-          iconSize: [d, d],
-          iconAnchor: [r, r],
-        });
+        // Stoku olan yerler tonaja göre büyüyen DOLU baloncuk; stoksuz yerler
+        // (ör. henüz malı gelmemiş bir liman deposu) sabit küçük İÇİ BOŞ bir
+        // halka — konumu göstermeye devam eder ama tonajla karışmaz.
+        const icon = hasStock
+          ? (() => {
+              const r = 8 + 26 * Math.sqrt(w.total / maxTon);
+              const d = r * 2;
+              return L.divIcon({
+                className: "wh-marker",
+                html: `<div style="width:${d}px;height:${d}px;border-radius:50%;background:${color};opacity:0.75;border:2px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.15)"></div>`,
+                iconSize: [d, d],
+                iconAnchor: [r, r],
+              });
+            })()
+          : L.divIcon({
+              className: "wh-marker-empty",
+              html: `<div style="width:12px;height:12px;border-radius:50%;background:#fff;border:2.5px solid ${color};opacity:0.9"></div>`,
+              iconSize: [12, 12],
+              iconAnchor: [6, 6],
+            });
         const marker = L.marker(w.coords, { icon });
         clusterGroup.addLayer(marker);
 
@@ -178,13 +193,20 @@ export function StockMap() {
                ${w.type === "factory" ? "Fabrika" : w.type === "foreign" ? "Yurtdışı Depo" : "Depo"}${[w.city, w.country].filter(Boolean).length ? " · " + escapeHtml([w.city, w.country].filter(Boolean).join(", ")) : ""}
                ${w.exact ? '<br/><span style="color:#15803d;font-weight:600">✓ Tam konum</span>' : '<br/><span style="color:#b45309">≈ Tahmini konum (şehirden)</span>'}
              </div>
-             ${list}
+             ${
+               hasStock
+                 ? `${list}
              <div style="border-top:1px solid #e5e7eb;margin-top:6px;padding-top:4px;display:flex;justify-content:space-between">
                <b>Toplam</b><b>${formatNumber(w.total)} ton</b>
-             </div>
+             </div>`
+                 : '<div style="color:#9ca3af">Stok yok</div>'
+             }
            </div>`,
         );
-        marker.bindTooltip(`${escapeHtml(w.name)} — ${formatNumber(w.total)} ton`, { direction: "top" });
+        marker.bindTooltip(
+          hasStock ? `${escapeHtml(w.name)} — ${formatNumber(w.total)} ton` : escapeHtml(w.name),
+          { direction: "top" },
+        );
         bounds.push(w.coords);
       }
       clusterGroup.addTo(map);
@@ -207,7 +229,7 @@ export function StockMap() {
     </div>
   );
   if (warehouses.length === 0)
-    return <EmptyState message="Stoklu depo/fabrika yok. Operasyon veya stok hareketleri girildikçe burada görünür." />;
+    return <EmptyState message="Henüz depo/fabrika eklenmemiş. CRM → Depolar'dan ekleyin." />;
 
   return (
     <div className="space-y-4">
@@ -234,9 +256,12 @@ export function StockMap() {
           <span className="inline-flex items-center gap-1.5">
             <span className="h-3 w-3 rounded-full border-2 border-white" style={{ background: FOREIGN }} /> Yurtdışı
           </span>
+          <span className="inline-flex items-center gap-1.5">
+            <span className="h-3 w-3 rounded-full border-2 border-gray-400 bg-white" /> Stok yok
+          </span>
           <span className="text-gray-400">
-            Daire büyüklüğü ≈ tonaj · üstüne gelince / tıklayınca ürün kırılımı · yakın depolar sayı
-            rozetiyle gruplanır, tıklayınca ayrışır
+            Dolu daire = stoklu (büyüklük ≈ tonaj), içi boş halka = şu an stok yok · üstüne gelince /
+            tıklayınca detay · yakın depolar sayı rozetiyle gruplanır, tıklayınca ayrışır
           </span>
         </div>
       </div>
@@ -244,8 +269,8 @@ export function StockMap() {
       {scoped.length === 0 ? (
         <div className="rounded-lg border border-border bg-gray-50 px-3 py-2 text-sm text-gray-500">
           {scope === "foreign"
-            ? "Stoklu yurtdışı depo yok. Stok → Depolar / Fabrikalar'dan tür 'Yurtdışı Depo' olan bir depo ekleyin; Operasyon → Yurtdışı Yükleme ile stok girildiğinde burada görünür."
-            : "Bu kapsamda stoklu depo yok."}
+            ? "Yurtdışı depo yok. CRM → Depolar'dan tür 'Yurtdışı Depo' olan bir depo ekleyin."
+            : "Bu kapsamda depo yok."}
         </div>
       ) : onMap.length > 0 ? (
         <div className="overflow-hidden rounded-xl border border-border">
@@ -253,7 +278,7 @@ export function StockMap() {
         </div>
       ) : (
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
-          Bu kapsamdaki depoların konumu eşleşmedi. Depolara Stok → Depolar&apos;dan şehir/ülke ekleyin
+          Bu kapsamdaki depoların konumu eşleşmedi. CRM → Depolar&apos;dan şehir/ülke ekleyin
           (yurtdışı için liman şehri veya ülke adı yeterli).
         </div>
       )}
@@ -286,7 +311,9 @@ export function StockMap() {
                   )}
                   {!w.coords && <span className="text-xs text-amber-600">(harita dışı — şehir/ülke eşleşmedi)</span>}
                 </div>
-                <span className="font-semibold">{formatNumber(w.total)} ton</span>
+                <span className={w.total > 0 ? "font-semibold" : "text-sm text-gray-400"}>
+                  {w.total > 0 ? `${formatNumber(w.total)} ton` : "Stok yok"}
+                </span>
               </div>
               <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1 text-sm text-gray-600">
                 {w.products.map((p, i) => (
