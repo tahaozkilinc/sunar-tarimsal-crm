@@ -2,7 +2,7 @@ import Link from "next/link";
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { Card } from "@/components/ui";
-import { baseRole, ROLE_LABELS } from "@/lib/nav";
+import { baseRole, ROLE_LABELS, ROLE_LABELS_EN } from "@/lib/nav";
 import { formatDate, formatNumber } from "@/lib/format";
 import { L } from "@/lib/i18n";
 import { AlertTriangle, Calculator, Send, ShoppingCart, TrendingUp, Truck, Users, Wallet } from "lucide-react";
@@ -28,8 +28,8 @@ export default async function DashboardPage() {
   // Hepsi salt-okunur; kartlar yalnızca özet/yönlendirme amaçlıdır.
   const v = role === "viewer";
   const base = baseRole(role);
-  // Acente yabancı uyruklu olabileceğinden paneli İngilizce görür (bkz. src/lib/i18n.ts).
-  const isEn = role === "acente";
+  // Profilim'den İngilizce seçen kullanıcı paneli İngilizce görür (bkz. src/lib/i18n.ts).
+  const isEn = profile.language === "en";
   const canB = v || ["admin", "purchasing"].includes(base);
   const canS = v || ["admin", "sales"].includes(base);
   const canO = v || ["admin", "operations", "nakliyeci", "gozetim", "acente"].includes(base);
@@ -297,7 +297,7 @@ export default async function DashboardPage() {
           {L(isEn, "Merhaba", "Hello")}, {profile.full_name || profile.email}
         </h1>
         <p className="text-sm text-gray-500">
-          {isEn ? "Agent" : ROLE_LABELS[role]} {L(isEn, "paneli", "panel")}
+          {isEn ? ROLE_LABELS_EN[role] : ROLE_LABELS[role]} {L(isEn, "paneli", "panel")}
         </p>
       </div>
 

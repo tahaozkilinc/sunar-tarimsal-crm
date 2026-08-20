@@ -4,25 +4,43 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Button, Card, Field, Input } from "./ui";
-import { ROLE_LABELS } from "@/lib/nav";
+import { ROLE_LABELS, ROLE_LABELS_EN } from "@/lib/nav";
 import { L } from "@/lib/i18n";
 import type { Role } from "@/lib/types";
-import { KeyRound, UserCog } from "lucide-react";
+import { Globe, KeyRound, UserCog } from "lucide-react";
 
 export function ProfileForm({
   email,
   fullName,
   role,
+  language,
 }: {
   email: string | null;
   fullName: string | null;
   role: Role;
+  language: "tr" | "en";
 }) {
   const supabase = createClient();
   const router = useRouter();
-  // Acente yabancı uyruklu olabileceğinden profil sayfası İngilizce (bkz. src/lib/i18n.ts).
-  const isEn = role === "acente";
+  // Kullanıcının kendi seçtiği dil (bkz. src/lib/i18n.ts + migration 0072).
+  // Kaydedilene kadar iyimser (optimistic) yerel state ile anında yansır.
+  const [lang, setLang] = useState<"tr" | "en">(language);
+  const isEn = lang === "en";
   const t = (tr: string, en: string) => L(isEn, tr, en);
+
+  const [savingLang, setSavingLang] = useState(false);
+  const changeLang = async (next: "tr" | "en") => {
+    if (next === lang || savingLang) return;
+    setLang(next);
+    setSavingLang(true);
+    const { error } = await supabase.rpc("update_my_language", { p_language: next });
+    setSavingLang(false);
+    if (error) {
+      setLang(lang); // hata olursa eski dile geri dön
+      return;
+    }
+    router.refresh();
+  };
 
   // --- İsim ---
   const [name, setName] = useState(fullName || "");
@@ -84,6 +102,31 @@ export function ProfileForm({
 
       <Card className="space-y-4 p-5">
         <div className="flex items-center gap-2 border-b border-border pb-3">
+          <Globe className="h-5 w-5 text-brand" />
+          <h2 className="font-semibold">{t("Dil", "Language")}</h2>
+        </div>
+        <div className="flex gap-2">
+          <Button
+            type="button"
+            variant={lang === "tr" ? "primary" : "secondary"}
+            disabled={savingLang}
+            onClick={() => changeLang("tr")}
+          >
+            Türkçe
+          </Button>
+          <Button
+            type="button"
+            variant={lang === "en" ? "primary" : "secondary"}
+            disabled={savingLang}
+            onClick={() => changeLang("en")}
+          >
+            English
+          </Button>
+        </div>
+      </Card>
+
+      <Card className="space-y-4 p-5">
+        <div className="flex items-center gap-2 border-b border-border pb-3">
           <UserCog className="h-5 w-5 text-brand" />
           <h2 className="font-semibold">{t("Hesap Bilgileri", "Account Information")}</h2>
         </div>
@@ -91,7 +134,7 @@ export function ProfileForm({
           <Input value={email || ""} disabled />
         </Field>
         <Field label={t("Rol", "Role")}>
-          <Input value={isEn ? "Agent" : ROLE_LABELS[role]} disabled />
+          <Input value={isEn ? ROLE_LABELS_EN[role] : ROLE_LABELS[role]} disabled />
         </Field>
         <Field label={t("Ad Soyad", "Full Name")}>
           <Input

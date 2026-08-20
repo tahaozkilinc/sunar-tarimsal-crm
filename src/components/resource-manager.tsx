@@ -29,6 +29,22 @@ type Row = Record<string, unknown>;
 // edilir (performans); "Daha Fazla Göster" ile kullanıcı isterse tümünü açar.
 const ROW_LIMIT = 20;
 
+// uppercaseText alanlarında Türkçe karaktere izin verilmez — İngilizce/ASCII
+// harfe çevrilir (ör. uluslararası evrak/referanslarla karışmasın diye).
+// Düz .toUpperCase() bunu TEK BAŞINA çözmez: "ç/ğ/ı/İ/ö/ş/ü" zaten "büyük"
+// kabul edildiğinden değişmeden kalır — bu yüzden önce açık eşleme yapılır.
+const TR_TO_ASCII: Record<string, string> = {
+  ç: "C", Ç: "C",
+  ğ: "G", Ğ: "G",
+  ı: "I", İ: "I",
+  ö: "O", Ö: "O",
+  ş: "S", Ş: "S",
+  ü: "U", Ü: "U",
+};
+function toAsciiUpper(text: string): string {
+  return Array.from(text, (ch) => TR_TO_ASCII[ch] ?? ch).join("").toUpperCase();
+}
+
 // Formda ardışık alanları satırlara gruplar: inlineAfter=true olan bir alan,
 // kendinden önceki alanla AYNI satırda (dar sütun) gösterilir — ör. "Miktar"
 // yanında "Birim". Sırası config.fields dizisindeki sırayla birebir aynıdır.
@@ -91,7 +107,7 @@ function SelectOtherInput({
         <Input
           type="text"
           value={strVal}
-          onChange={(e) => onChange(uppercase ? e.target.value.toUpperCase() : e.target.value)}
+          onChange={(e) => onChange(uppercase ? toAsciiUpper(e.target.value) : e.target.value)}
           placeholder="Yazın..."
           disabled={disabled}
         />
@@ -586,7 +602,7 @@ export function ResourceManager({
             ((data as Row[] | null) || [])
               .map((r) => String(r[column] ?? "").trim())
               .filter(Boolean)
-              .map((v) => v.toUpperCase()),
+              .map((v) => toAsciiUpper(v)),
           ),
         ).sort((a, b) => a.localeCompare(b, "tr"));
         result[f.name] = values.map((v) => ({ value: v, label: v }));
@@ -1871,10 +1887,9 @@ export function ResourceManager({
         value={value as string}
         onChange={(e) => {
           const raw = e.target.value;
-          // Kasıtlı olarak yerel ayarsız (Türkçe değil) toUpperCase: "i" -> "I"
-          // (İngilizce/ASCII), Türkçe "İ" değil — uluslararası evrak/referanslarla
-          // karışmasın diye kullanıcı isteğiyle böyle.
-          setField(f.name, forceUpper ? raw.toUpperCase() : raw);
+          // Türkçe karakterler (ç/ğ/ı/İ/ö/ş/ü) ASCII karşılığına çevrilir, kalanı
+          // yerel ayarsız (Türkçe değil) büyük harfe — bkz. toAsciiUpper() yukarıda.
+          setField(f.name, forceUpper ? toAsciiUpper(raw) : raw);
         }}
         placeholder={f.placeholder}
         disabled={!canWrite}

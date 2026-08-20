@@ -85,6 +85,25 @@ export const ROLE_LABELS: Record<Role, string> = {
   pending: "Onay Bekliyor",
 };
 
+// Kullanıcı Profilim'den İngilizce seçtiğinde rol adının karşılığı (bkz. src/lib/i18n.ts).
+export const ROLE_LABELS_EN: Record<Role, string> = {
+  admin: "Admin",
+  purchasing: "Purchasing",
+  operations: "Operations",
+  sales: "Sales",
+  finans: "Finance",
+  maliyet: "Cost",
+  viewer: "Viewer (All)",
+  nakliyeci: "Carrier",
+  gozetim: "Surveyor",
+  acente: "Agent",
+  sales_ops: "Sales Operations",
+  purchasing_view: "Purchasing (View)",
+  operations_view: "Operations (View)",
+  sales_view: "Sales (View)",
+  pending: "Pending Approval",
+};
+
 // "_view" salt-okunur roller, taban rolüyle aynı menüleri/erişimi alır
 // (yetki farkı yazma tarafındadır: RLS ve writeRoles _view'i içermez).
 export function baseRole(role: Role): Role {

@@ -6,6 +6,11 @@ import { ProfileForm } from "@/components/profile-form";
 export default async function ProfilePage() {
   const profile = await requireProfile();
   return (
-    <ProfileForm email={profile.email} fullName={profile.full_name} role={profile.role} />
+    <ProfileForm
+      email={profile.email}
+      fullName={profile.full_name}
+      role={profile.role}
+      language={profile.language}
+    />
   );
 }

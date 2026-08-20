@@ -16,7 +16,7 @@ import type { Role } from "@/lib/types";
 //   Gemiye Yükleme -> stock_movements 'transfer'  (−)
 // Türkiye'deki boşaltma mevcut gemi operasyonudur (bu ekrana dahil değil).
 // Acente rolü yalnızca agent_id'si kendi firması olan bağlantıları görür (RLS).
-// Acente yabancı uyruklu olabileceğinden bu ekran onun için İNGİLİZCE gösterilir
+// Dil, kullanıcının Profilim'den seçtiği tercihe göre belirlenir (language prop)
 // (bkz. src/lib/i18n.ts — L() ile tek tek, genel bir dil çerçevesi değil).
 
 type Wh = { id: string; name: string; city: string | null; country: string | null };
@@ -42,12 +42,12 @@ type Movement = {
   created_at: string;
 };
 
-export function ForeignLoading({ role }: { role: Role }) {
+export function ForeignLoading({ role, language }: { role: Role; language: "tr" | "en" }) {
   const supabase = useMemo(() => createClient(), []);
   // Ham rol kontrolü: _view rolleri otomatik dışarıda kalır (salt-okunur).
   const canWrite = ["admin", "operations", "acente"].includes(role);
   const isAcente = role === "acente";
-  const isEn = isAcente;
+  const isEn = language === "en";
   const t = (tr: string, en: string) => L(isEn, tr, en);
 
   const [whs, setWhs] = useState<Wh[]>([]);

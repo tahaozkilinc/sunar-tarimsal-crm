@@ -25,6 +25,7 @@ export interface Profile {
   phone: string | null;
   is_active: boolean;
   company_id: string | null; // nakliyeci/gozetim -> bağlı olduğu 'carrier'/'surveyor' firma
+  language: "tr" | "en"; // arayüz dili — Profilim sayfasından kullanıcı kendi seçer
   created_at: string;
 }
 
