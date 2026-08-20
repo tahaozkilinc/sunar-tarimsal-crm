@@ -106,7 +106,8 @@ export interface ResourceConfig {
   // Silme işlemini soft-delete'e çevirir (DELETE yerine column=false yapar).
   softDelete?: { column: string };
   // true ise bu kaynağın "text" tipi alanları (textarea/notlar hariç) yazarken
-  // otomatik BÜYÜK HARFE çevrilir (Türkçe locale) — veri girişini standartlaştırır.
+  // otomatik BÜYÜK HARFE çevrilir — veri girişini standartlaştırır. Kasıtlı
+  // olarak yerel ayarsız (Türkçe değil): "i" -> "I" (İngilizce/ASCII), "İ" değil.
   uppercaseText?: boolean;
   // true ise sayfa açılışında yalnızca en son (orderBy'a göre) 20 kayıt
   // çekilir/render edilir; "Daha Fazla Göster" ile tümü açılır. Yalnızca
@@ -237,6 +238,7 @@ export const companiesResource: ResourceConfig = {
   singular: "Firma",
   writeRoles: ["admin", "purchasing", "sales", "operations"],
   orderBy: { column: "name", ascending: true },
+  uppercaseText: true,
   listFields: ["name", "type", "city", "phone"],
   fields: [
     { name: "name", label: "Firma Adı", type: "text", required: true, unique: true },
@@ -260,6 +262,7 @@ export const contactsResource: ResourceConfig = {
   // burada UI'daki "Ekle" düğmesi de açılır. (_view rolleri ham rolle hariç kalır.)
   writeRoles: ["admin", "purchasing", "sales", "operations"],
   orderBy: { column: "full_name", ascending: true },
+  uppercaseText: true,
   listFields: ["full_name", "title", "company_id", "phone"],
   fields: [
     { name: "company_id", label: "Firma", type: "reference", ref: { table: "companies", labelField: "name" }, required: true },
@@ -280,6 +283,7 @@ export const warehouseContactsResource: ResourceConfig = {
   singular: "Yetkili",
   writeRoles: ["admin", "operations"],
   orderBy: { column: "full_name", ascending: true },
+  uppercaseText: true,
   listFields: ["full_name", "title", "phone", "email"],
   fields: [
     { name: "warehouse_id", label: "Depo", type: "reference", ref: { table: "warehouses", labelField: "name" }, required: true },
@@ -498,6 +502,7 @@ export const warehousesResource: ResourceConfig = {
   singular: "Depo",
   writeRoles: ["admin", "operations"],
   orderBy: { column: "name", ascending: true },
+  uppercaseText: true,
   listFields: ["name", "type", "city", "lat", "capacity", "is_active"],
   fields: [
     { name: "name", label: "Ad", type: "text", required: true, unique: true },
