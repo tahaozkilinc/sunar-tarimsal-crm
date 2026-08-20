@@ -2,10 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import "leaflet/dist/leaflet.css";
-import "leaflet.markercluster/dist/MarkerCluster.css";
-import "leaflet.markercluster/dist/MarkerCluster.Default.css";
 import { createClient } from "@/lib/supabase/client";
-import { Badge, Card, EmptyState, Spinner } from "./ui";
+import { EmptyState, SearchableSelect, Spinner } from "./ui";
 import { formatNumber } from "@/lib/format";
 import { TURKEY_CENTER, geocodeLocation } from "@/lib/turkey-cities";
 
@@ -17,10 +15,13 @@ import { TURKEY_CENTER, geocodeLocation } from "@/lib/turkey-cities";
 // toplamında görünür — stok hâlâ yalnızca depoda tutulur, bu yalnızca görünüm
 // toplamasıdır). Stoku olanlar tonaja göre büyüyen dolu şekille, stoksuz
 // olanlar sabit küçük içi boş bir şekille ayrılır (daire = depo/fabrika/
-// yurtdışı, kare = liman). Konum önceliği: 1) CRM'den haritadan seçilmiş TAM
-// koordinat (lat/lng) varsa birebir onu kullanır; 2) yoksa city+country'den
-// TAHMİNİ türetir (geocodeLocation). Eşleşmeyenler listede kalır. Kapsam
-// filtresi: Tümü/Yurtiçi/Yurtdışı/Liman.
+// yurtdışı, kare = liman). Ürün kırılımı yalnızca popup'ta (Stok Durumu
+// sekmesiyle mükerrer bir liste haritanın altında tutulmuyor). Konum önceliği:
+// 1) CRM'den haritadan seçilmiş TAM koordinat (lat/lng) varsa birebir onu
+// kullanır; 2) yoksa city+country'den TAHMİNİ türetir (geocodeLocation).
+// Arama + kapsam filtresi (Tümü/Yurtiçi/Yurtdışı/Liman) haritanın üzerinde,
+// sabit bir kontrol kutusunda durur. Kümeleme (yakın noktaları "N" rozetiyle
+// gruplama) kasıtlı olarak KULLANILMIYOR — her nokta her zaman ayrı görünür.
 
 type InvRow = {
   warehouse_id: string;
@@ -67,13 +68,24 @@ const FACTORY = "#7c3aed";
 const FOREIGN = "#ca8a04"; // yurtdışı depo (sarı)
 const PORT = "#0891b2"; // liman (camgöbeği) — depo renklerinden ayrı
 
-// Ürün adına göre sabit bir renk türetir (segment barı + etiket noktası aynı
-// rengi kullansın diye) — ürünler açık uçlu (kullanıcı ekliyor), önceden
-// tanımlı bir renk paleti yok, bu yüzden isimden deterministik üretilir.
+// Ürün adına göre sabit bir renk türetir (popup'taki segment barı + nokta
+// etiketi aynı rengi kullansın diye) — ürünler açık uçlu (kullanıcı ekliyor),
+// önceden tanımlı bir renk paleti yok, bu yüzden isimden deterministik üretilir.
 function productColor(name: string): string {
   let hash = 0;
   for (let i = 0; i < name.length; i++) hash = (hash * 31 + name.charCodeAt(i)) | 0;
   return `hsl(${Math.abs(hash) % 360}, 60%, 45%)`;
+}
+
+const TYPE_LABEL = (w: Pick<MapPoint, "kind" | "type">) =>
+  w.kind === "port" ? "Liman" : w.type === "factory" ? "Fabrika" : w.type === "foreign" ? "Yurtdışı" : "Depo";
+
+type Scope = "all" | "domestic" | "foreign" | "port";
+function inScope(w: MapPoint, s: Scope): boolean {
+  if (s === "all") return true;
+  if (s === "port") return w.kind === "port";
+  if (w.kind === "port") return false;
+  return s === "foreign" ? w.type === "foreign" : w.type !== "foreign";
 }
 
 export function StockMap() {
@@ -81,7 +93,8 @@ export function StockMap() {
   const [rows, setRows] = useState<InvRow[]>([]);
   const [whById, setWhById] = useState<Record<string, WhMeta>>({});
   const [portById, setPortById] = useState<Record<string, PortMeta>>({});
-  const [scope, setScope] = useState<"all" | "domestic" | "foreign" | "port">("all");
+  const [scope, setScope] = useState<Scope>("all");
+  const [searchId, setSearchId] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [tilesFailed, setTilesFailed] = useState(false);
@@ -89,6 +102,9 @@ export function StockMap() {
   const mapDivRef = useRef<HTMLDivElement | null>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const mapRef = useRef<any>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const markersById = useRef<Record<string, any>>({});
+  const appliedSearchId = useRef<string>("");
 
   useEffect(() => {
     (async () => {
@@ -187,18 +203,27 @@ export function StockMap() {
     return list.sort((a, b) => b.total - a.total);
   }, [rows, whById, portById]);
 
-  const scoped = useMemo(
-    () =>
-      points.filter((w) => {
-        if (scope === "all") return true;
-        if (scope === "port") return w.kind === "port";
-        if (w.kind === "port") return false;
-        return scope === "foreign" ? w.type === "foreign" : w.type !== "foreign";
-      }),
-    [points, scope],
-  );
+  const scoped = useMemo(() => points.filter((w) => inScope(w, scope)), [points, scope]);
   const onMap = useMemo(() => scoped.filter((w) => w.coords), [scoped]);
   const maxTon = useMemo(() => Math.max(1, ...onMap.map((w) => w.total)), [onMap]);
+
+  // Arama: bir nokta seçilince, o an filtrelenmiş kapsamda görünmüyorsa
+  // kapsam otomatik "Tümü"ne genişler (aksi halde nokta haritada yok demektir).
+  const searchOptions = useMemo(
+    () =>
+      points
+        .filter((p) => p.coords)
+        .slice()
+        .sort((a, b) => a.name.localeCompare(b.name, "tr"))
+        .map((p) => ({ value: p.id, label: `${p.name} — ${TYPE_LABEL(p)}` })),
+    [points],
+  );
+  const handleSearchChange = (id: string) => {
+    setSearchId(id);
+    if (!id) return;
+    const pt = points.find((p) => p.id === id);
+    if (pt && !inScope(pt, scope)) setScope("all");
+  };
 
   // Leaflet haritasını kur (yalnızca tarayıcıda, dinamik import ile).
   useEffect(() => {
@@ -208,11 +233,6 @@ export function StockMap() {
     let map: any;
     (async () => {
       const L = (await import("leaflet")).default;
-      // leaflet.markercluster kendi paketini import etmez; global L'ye "yapışır"
-      // (klasik <script> sırası varsayımı) — bundler'da bunu garanti etmek için
-      // içe aktarmadan önce elle set ediyoruz.
-      (window as unknown as { L: typeof L }).L = L;
-      await import("leaflet.markercluster");
       if (cancelled || !mapDivRef.current) return;
       map = L.map(mapDivRef.current, { scrollWheelZoom: true }).setView(TURKEY_CENTER, 6);
       mapRef.current = map;
@@ -224,22 +244,13 @@ export function StockMap() {
       tiles.on("tileerror", () => setTilesFailed(true));
       tiles.addTo(map);
 
-      // Yakın noktalar aynı yerde/çok yakında üst üste binen baloncuklar
-      // yerine tek bir "N nokta" kümesi olarak gösterilir; tıklanınca/
-      // yakınlaşınca ayrışır (aynı noktadaysa "spiderfy" ile daireye dizilir).
-      const clusterGroup = L.markerClusterGroup({ maxClusterRadius: 50 });
-
+      markersById.current = {};
       const bounds: [number, number][] = [];
       for (const w of onMap) {
         if (!w.coords) continue;
         const hasStock = w.total > 0;
         const color = w.kind === "port" ? PORT : w.type === "factory" ? FACTORY : w.type === "foreign" ? FOREIGN : BRAND;
-        // Şekil = tür (kare -> liman, daire -> depo/fabrika/yurtdışı), dolu/boş
-        // = stok durumu. circleMarker (Path) DEĞİL: markercluster kümeleme/
-        // spiderfy sırasında çocuk katmanlarda setOpacity(n) çağırıyor — bu
-        // yalnızca L.Marker'da var, Path/CircleMarker'da yok (yalnızca
-        // setStyle var). Aynı "tonaja göre büyüklük" görünümünü divIcon'lu
-        // bir L.marker ile koruyoruz.
+        // Şekil = tür (kare -> liman, daire -> depo/fabrika/yurtdışı), dolu/boş = stok durumu.
         const radius = w.kind === "port" ? "6px" : "50%";
         const icon = hasStock
           ? (() => {
@@ -258,27 +269,31 @@ export function StockMap() {
               iconSize: [12, 12],
               iconAnchor: [6, 6],
             });
-        const marker = L.marker(w.coords, { icon });
-        clusterGroup.addLayer(marker);
+        const marker = L.marker(w.coords, { icon }).addTo(map);
+        markersById.current[w.id] = marker;
 
-        const list = w.products
-          .map((p) => `<div style="display:flex;justify-content:space-between;gap:12px">
-            <span>${escapeHtml(p.name)}</span><b>${formatNumber(p.ton)} ton</b></div>`)
+        const productRows = w.products
+          .map(
+            (p) => `<div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+            <span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${productColor(p.name)};margin-right:6px"></span>${escapeHtml(p.name)}</span><b>${formatNumber(p.ton)} ton</b></div>`,
+          )
           .join("");
-        const typeLabel =
-          w.kind === "port" ? "Liman" : w.type === "factory" ? "Fabrika" : w.type === "foreign" ? "Yurtdışı Depo" : "Depo";
+        const segmentBar = w.products
+          .map((p) => `<div style="width:${(p.ton / w.total) * 100}%;background:${productColor(p.name)}"></div>`)
+          .join("");
         const sourceNote =
           w.kind === "port" && w.sourceWarehouses > 0 ? ` · ${w.sourceWarehouses} depodan toplam` : "";
         marker.bindPopup(
           `<div style="min-width:180px">
              <div style="font-weight:700;margin-bottom:2px">${escapeHtml(w.name)}</div>
              <div style="font-size:11px;color:#6b7280;margin-bottom:6px">
-               ${typeLabel}${sourceNote}${[w.city, w.country].filter(Boolean).length ? " · " + escapeHtml([w.city, w.country].filter(Boolean).join(", ")) : ""}
+               ${TYPE_LABEL(w)}${sourceNote}${[w.city, w.country].filter(Boolean).length ? " · " + escapeHtml([w.city, w.country].filter(Boolean).join(", ")) : ""}
                ${w.exact ? '<br/><span style="color:#15803d;font-weight:600">✓ Tam konum</span>' : '<br/><span style="color:#b45309">≈ Tahmini konum (şehirden)</span>'}
              </div>
              ${
                hasStock
-                 ? `${list}
+                 ? `<div style="display:flex;height:6px;width:100%;border-radius:3px;overflow:hidden;margin-bottom:6px">${segmentBar}</div>
+             ${productRows}
              <div style="border-top:1px solid #e5e7eb;margin-top:6px;padding-top:4px;display:flex;justify-content:space-between">
                <b>Toplam</b><b>${formatNumber(w.total)} ton</b>
              </div>`
@@ -292,9 +307,18 @@ export function StockMap() {
         );
         bounds.push(w.coords);
       }
-      clusterGroup.addTo(map);
-      if (bounds.length > 1) map.fitBounds(bounds, { padding: [40, 40] });
-      else if (bounds.length === 1) map.setView(bounds[0], 7);
+
+      const focusPt =
+        searchId && searchId !== appliedSearchId.current ? onMap.find((p) => p.id === searchId) : undefined;
+      if (focusPt?.coords) {
+        map.setView(focusPt.coords, 12);
+        markersById.current[searchId]?.openPopup();
+      } else if (bounds.length > 1) {
+        map.fitBounds(bounds, { padding: [40, 40] });
+      } else if (bounds.length === 1) {
+        map.setView(bounds[0], 7);
+      }
+      if (searchId) appliedSearchId.current = searchId;
       // Konteyner boyutu geç oturursa yeniden ölç.
       setTimeout(() => map && map.invalidateSize(), 200);
     })();
@@ -303,7 +327,7 @@ export function StockMap() {
       cancelled = true;
       if (map) { map.remove(); mapRef.current = null; }
     };
-  }, [loading, onMap, maxTon]);
+  }, [loading, onMap, maxTon, searchId]);
 
   if (loading) return <div className="flex justify-center py-16"><Spinner /></div>;
   if (error) return (
@@ -316,131 +340,82 @@ export function StockMap() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="inline-flex overflow-hidden rounded-lg border border-border text-xs">
-          {(
-            [
-              ["all", "Tümü"],
-              ["domestic", "Yurtiçi"],
-              ["foreign", "Yurtdışı"],
-              ["port", "Liman"],
-            ] as const
-          ).map(([k, label]) => (
-            <button
-              key={k}
-              type="button"
-              onClick={() => setScope(k)}
-              className={`px-3 py-1.5 font-medium ${scope === k ? "bg-brand text-white" : "bg-white text-gray-600 hover:bg-gray-50"}`}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-        <div className="flex flex-wrap items-center gap-4 text-xs text-gray-600">
-          <span className="inline-flex items-center gap-1.5">
-            <span className="h-3 w-3 rounded-full border-2 border-white" style={{ background: BRAND }} /> Depo
-          </span>
-          <span className="inline-flex items-center gap-1.5">
-            <span className="h-3 w-3 rounded-full border-2 border-white" style={{ background: FACTORY }} /> Fabrika
-          </span>
-          <span className="inline-flex items-center gap-1.5">
-            <span className="h-3 w-3 rounded-full border-2 border-white" style={{ background: FOREIGN }} /> Yurtdışı
-          </span>
-          <span className="inline-flex items-center gap-1.5">
-            <span className="h-3 w-3 rounded border-2 border-white" style={{ background: PORT }} /> Liman
-          </span>
-          <span className="inline-flex items-center gap-1.5">
-            <span className="h-3 w-3 rounded-full border-2 border-gray-400 bg-white" /> Stok yok
-          </span>
-          <span className="text-gray-400">
-            Daire = depo/fabrika, kare = liman · dolu = stoklu (büyüklük ≈ tonaj), içi boş = şu an
-            stok yok · üstüne gelince / tıklayınca detay
-          </span>
-        </div>
+      <div className="flex flex-wrap items-center gap-4 text-xs text-gray-600">
+        <span className="inline-flex items-center gap-1.5">
+          <span className="h-3 w-3 rounded-full border-2 border-white" style={{ background: BRAND }} /> Depo
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <span className="h-3 w-3 rounded-full border-2 border-white" style={{ background: FACTORY }} /> Fabrika
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <span className="h-3 w-3 rounded-full border-2 border-white" style={{ background: FOREIGN }} /> Yurtdışı
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <span className="h-3 w-3 rounded border-2 border-white" style={{ background: PORT }} /> Liman
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <span className="h-3 w-3 rounded-full border-2 border-gray-400 bg-white" /> Stok yok
+        </span>
+        <span className="text-gray-400">
+          Daire = depo/fabrika, kare = liman · dolu = stoklu (büyüklük ≈ tonaj), içi boş = şu an stok
+          yok · üstüne gelince / tıklayınca ürün kırılımı
+        </span>
       </div>
 
-      {scoped.length === 0 ? (
-        <div className="rounded-lg border border-border bg-gray-50 px-3 py-2 text-sm text-gray-500">
-          {scope === "foreign"
-            ? "Yurtdışı depo yok. CRM → Depolar'dan tür 'Yurtdışı Depo' olan bir depo ekleyin."
-            : scope === "port"
-              ? "Liman yok. CRM'den tür 'Liman' olan bir firma ekleyip konumunu haritadan işaretleyin."
-              : "Bu kapsamda depo/liman yok."}
+      <div className="relative overflow-hidden rounded-xl border border-border">
+        {/* Arama + kapsam filtresi: haritanın üzerinde sabit bir kontrol kutusu. */}
+        <div className="absolute left-3 top-3 z-[1000] flex flex-col gap-2 rounded-lg border border-border bg-white/95 p-2 shadow-md backdrop-blur-sm">
+          <SearchableSelect
+            value={searchId}
+            onChange={handleSearchChange}
+            options={searchOptions}
+            placeholder="Liman/depo ara..."
+            className="w-56"
+          />
+          <div className="inline-flex overflow-hidden rounded-lg border border-border text-xs">
+            {(
+              [
+                ["all", "Tümü"],
+                ["domestic", "Yurtiçi"],
+                ["foreign", "Yurtdışı"],
+                ["port", "Liman"],
+              ] as const
+            ).map(([k, label]) => (
+              <button
+                key={k}
+                type="button"
+                onClick={() => setScope(k)}
+                className={`flex-1 px-3 py-1.5 font-medium ${scope === k ? "bg-brand text-white" : "bg-white text-gray-600 hover:bg-gray-50"}`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
         </div>
-      ) : onMap.length > 0 ? (
-        <div className="overflow-hidden rounded-xl border border-border">
+
+        {scoped.length === 0 ? (
+          <div className="flex h-[460px] items-center justify-center bg-gray-50 px-6 text-center text-sm text-gray-500">
+            {scope === "foreign"
+              ? "Yurtdışı depo yok. CRM → Depolar'dan tür 'Yurtdışı Depo' olan bir depo ekleyin."
+              : scope === "port"
+                ? "Liman yok. CRM'den tür 'Liman' olan bir firma ekleyip konumunu haritadan işaretleyin."
+                : "Bu kapsamda depo/liman yok."}
+          </div>
+        ) : onMap.length > 0 ? (
           <div ref={mapDivRef} style={{ height: 460, width: "100%" }} />
-        </div>
-      ) : (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
-          Bu kapsamdaki noktaların konumu eşleşmedi. CRM&apos;den şehir/ülke ekleyin veya haritadan tam
-          konum işaretleyin.
-        </div>
-      )}
+        ) : (
+          <div className="flex h-[460px] items-center justify-center bg-amber-50 px-6 text-center text-sm text-amber-700">
+            Bu kapsamdaki noktaların konumu eşleşmedi. CRM&apos;den şehir/ülke ekleyin veya haritadan
+            tam konum işaretleyin.
+          </div>
+        )}
+      </div>
 
       {tilesFailed && (
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
-          Harita altlığı (karolar) yüklenemedi; konumlar ve tonajlar aşağıdaki listede tam olarak görünür.
+          Harita altlığı (karolar) yüklenemedi.
         </div>
       )}
-
-      {/* Konum + ürün kırılımı listesi (haritanın metinsel karşılığı, her zaman görünür) */}
-      <Card className="p-0 overflow-hidden">
-        <div className="border-b border-border bg-gray-50 px-4 py-2 text-xs font-medium uppercase text-gray-500">
-          Konum bazında stok
-        </div>
-        <div className="divide-y divide-border">
-          {scoped.map((w) => (
-            <div key={w.id} className="px-4 py-3">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="flex items-center gap-2">
-                  <span className="font-medium">{w.name}</span>
-                  <Badge color={w.kind === "port" ? "gray" : w.type === "factory" ? "purple" : w.type === "foreign" ? "yellow" : "blue"}>
-                    {w.kind === "port" ? "Liman" : w.type === "factory" ? "Fabrika" : w.type === "foreign" ? "Yurtdışı" : "Depo"}
-                  </Badge>
-                  {(w.city || w.country) && (
-                    <span className="text-xs text-gray-500">{[w.city, w.country].filter(Boolean).join(", ")}</span>
-                  )}
-                  {w.kind === "port" && w.sourceWarehouses > 0 && (
-                    <span className="text-xs text-gray-500">· {w.sourceWarehouses} depodan toplam</span>
-                  )}
-                  {w.coords && (
-                    <Badge color={w.exact ? "green" : "yellow"}>{w.exact ? "Tam konum" : "Tahmini"}</Badge>
-                  )}
-                  {!w.coords && <span className="text-xs text-amber-600">(harita dışı — şehir/ülke eşleşmedi)</span>}
-                </div>
-                <span className={w.total > 0 ? "font-semibold" : "text-sm text-gray-400"}>
-                  {w.total > 0 ? `${formatNumber(w.total)} ton` : "Stok yok"}
-                </span>
-              </div>
-
-              {w.total > 0 && (
-                <>
-                  {/* Ürün segmenti: oran bir bakışta görülsün diye renkli çubuk */}
-                  <div className="mt-2 flex h-2 w-full overflow-hidden rounded-full bg-gray-100">
-                    {w.products.map((p, i) => (
-                      <div
-                        key={i}
-                        title={`${p.name}: ${formatNumber(p.ton)} ton`}
-                        style={{ width: `${(p.ton / w.total) * 100}%`, background: productColor(p.name) }}
-                      />
-                    ))}
-                  </div>
-                  <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1 text-sm text-gray-600">
-                    {w.products.map((p, i) => (
-                      <span key={i} className="inline-flex items-center gap-1.5">
-                        <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: productColor(p.name) }} />
-                        <span className="text-gray-500">{p.name}:</span>
-                        <span className="font-medium text-gray-900">{formatNumber(p.ton)} ton</span>
-                      </span>
-                    ))}
-                  </div>
-                </>
-              )}
-            </div>
-          ))}
-        </div>
-      </Card>
     </div>
   );
 }
