@@ -26,5 +26,22 @@ export default async function WarehouseDetailPage({
     parentName = (parent as { name: string } | null)?.name ?? null;
   }
 
-  return <WarehouseDetailView warehouse={warehouse} parentName={parentName} role={profile.role} />;
+  let portName: string | null = null;
+  if (warehouse.port_id) {
+    const { data: port } = await supabase
+      .from("companies")
+      .select("name")
+      .eq("id", warehouse.port_id)
+      .maybeSingle();
+    portName = (port as { name: string } | null)?.name ?? null;
+  }
+
+  return (
+    <WarehouseDetailView
+      warehouse={warehouse}
+      parentName={parentName}
+      portName={portName}
+      role={profile.role}
+    />
+  );
 }

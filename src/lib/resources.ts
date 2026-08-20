@@ -245,6 +245,9 @@ export const companiesResource: ResourceConfig = {
     { name: "type", label: "Tür", type: "select", options: COMPANY_TYPE_OPTIONS, required: true },
     { name: "city", label: "Şehir", type: "text" },
     { name: "country", label: "Ülke", type: "text" },
+    // Özellikle Liman türü için: haritadan tam konum işaretlenebilir (ör.
+    // gümrüklü sahanın nerede olduğu) — warehousesResource ile aynı widget.
+    { name: "lat", label: "Tam Konum (Haritadan Seç)", type: "map", pairField: "lng" },
     { name: "phone", label: "Telefon", type: "tel" },
     { name: "email", label: "E-posta", type: "email" },
     { name: "address", label: "Adres", type: "textarea" },
@@ -510,6 +513,9 @@ export const warehousesResource: ResourceConfig = {
     // Tek antrepoda birden fazla bölüm/depo olabilir — gerekirse bu bölümün
     // bağlı olduğu ana depo/antrepo buradan seçilir (opsiyonel).
     { name: "parent_id", label: "Bağlı Olduğu Ana Depo (Antrepo)", type: "reference", ref: { table: "warehouses", labelField: "name" } },
+    // Ürün bazen limanın kendi gümrüklü sahasında bekler — bu depo/bölüm
+    // fiilen bir limanın içindeyse buradan işaretlenir (opsiyonel).
+    { name: "port_id", label: "Bulunduğu Liman (Gümrüklü Saha)", type: "reference", ref: { table: "companies", labelField: "name", filter: { type: ["port"] } } },
     { name: "city", label: "Şehir", type: "text" },
     { name: "country", label: "Ülke", type: "text", placeholder: "Yurtdışı depo için" },
     // Tek widget: haritaya tıkla ya da "Konumumu Kullan" ile tam enlem/boylam

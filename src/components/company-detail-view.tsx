@@ -9,12 +9,12 @@ import { ResourceManager } from "./resource-manager";
 import { CompanyReport } from "./company-report";
 import { CompanyShipStats } from "./company-ship-stats";
 import { Badge, Card, Tabs } from "./ui";
-import { COMPANY_TYPE_OPTIONS, activitiesResource, contactsResource } from "@/lib/resources";
+import { COMPANY_TYPE_OPTIONS, activitiesResource, contactsResource, warehousesResource } from "@/lib/resources";
 import type { Company, Role } from "@/lib/types";
 import { baseRole } from "@/lib/nav";
 
 const OPS_PARTNER_TYPES = new Set(["surveyor", "port", "carrier", "agent", "broker", "ship_broker"]);
-type DetailTab = "contacts" | "activities" | "summary";
+type DetailTab = "contacts" | "activities" | "warehouses" | "summary";
 
 // Bir firmanın aktiviteleri artık CRM'in ortak/havuz sekmesinde değil, doğrudan
 // bu sayfada (bkz. crm-tabs.tsx — aktivite sekmesi kaldırıldı). crm_activities
@@ -91,6 +91,17 @@ export function CompanyDetailView({ company, role }: { company: Company; role: R
   };
   const activityModule = activityModuleFor(company.type, role);
 
+  // Liman ise: gümrüklü sahasındaki depolar buradan görülüp eklenebilir —
+  // firma alanı sabit -> formda gizli, otomatik bu limana atanır.
+  const warehousesConfig = {
+    ...warehousesResource,
+    listFields: ["name", "type", "city", "capacity", "is_active"],
+    fields: warehousesResource.fields.map((f) =>
+      f.name === "port_id" ? { ...f, formHidden: true } : f,
+    ),
+  };
+  const isPort = company.type === "port";
+
   return (
     <div className="space-y-5">
       <div>
@@ -128,6 +139,7 @@ export function CompanyDetailView({ company, role }: { company: Company; role: R
         tabs={[
           { key: "contacts", label: "Kişiler" },
           { key: "activities", label: "Aktiviteler" },
+          ...(isPort ? [{ key: "warehouses", label: "Depolar" }] : []),
           { key: "summary", label: "Operasyonel Özet" },
         ]}
       />
@@ -148,6 +160,16 @@ export function CompanyDetailView({ company, role }: { company: Company; role: R
           role={role}
           filter={{ company_id: company.id }}
           defaultValues={{ company_id: company.id, module: activityModule }}
+          hideTitle
+        />
+      )}
+
+      {tab === "warehouses" && isPort && (
+        <ResourceManager
+          config={warehousesConfig}
+          role={role}
+          filter={{ port_id: company.id }}
+          defaultValues={{ port_id: company.id }}
           hideTitle
         />
       )}

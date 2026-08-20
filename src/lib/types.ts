@@ -40,6 +40,8 @@ export interface Company {
   phone: string | null;
   email: string | null;
   address: string | null;
+  lat: number | null; // haritadan seçilen tam konum — ör. Liman'ın gümrüklü sahası
+  lng: number | null;
   logo_url: string | null;
   notes: string | null;
   created_at: string;
@@ -70,6 +72,7 @@ export interface Warehouse {
   name: string;
   type: "warehouse" | "factory" | "foreign"; // foreign = yurtdışı depo
   parent_id: string | null; // doluysa bu bir antrepo bölümü/alt deposu
+  port_id: string | null; // doluysa bu depo/bölüm bir limanın gümrüklü sahasında
   city: string | null;
   country: string | null;
   lat: number | null; // haritadan seçilen tam konum (doluysa city/country tahmininin önüne geçer)
