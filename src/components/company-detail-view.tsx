@@ -127,6 +127,16 @@ export function CompanyDetailView({ company, role }: { company: Company; role: R
           <div className="sm:col-span-2">
             <Info label="Adres" value={company.address} />
           </div>
+          {company.product_tags.length > 0 && (
+            <div className="sm:col-span-2">
+              <div className="text-xs text-gray-500">Getirdiği Ürünler</div>
+              <div className="mt-1 flex flex-wrap gap-1">
+                {company.product_tags.map((t) => (
+                  <Badge key={t} color="blue">{t}</Badge>
+                ))}
+              </div>
+            </div>
+          )}
           <div className="sm:col-span-2">
             <Info label="Notlar" value={company.notes} />
           </div>
