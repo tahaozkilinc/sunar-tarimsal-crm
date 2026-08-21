@@ -38,7 +38,8 @@ export interface FieldDef {
     | "tel"
     | "url"
     | "file"
-    | "map";
+    | "map"
+    | "tags"; // salt-okunur string dizisi — etiket (Badge) olarak gösterilir
   required?: boolean;
   unique?: boolean;
   positive?: boolean; // sayı > 0 olmalı
@@ -239,7 +240,7 @@ export const companiesResource: ResourceConfig = {
   writeRoles: ["admin", "purchasing", "sales", "operations"],
   orderBy: { column: "name", ascending: true },
   uppercaseText: true,
-  listFields: ["name", "type", "city", "phone"],
+  listFields: ["name", "type", "city", "phone", "product_tags"],
   fields: [
     { name: "name", label: "Firma Adı", type: "text", required: true, unique: true },
     { name: "type", label: "Tür", type: "select", options: COMPANY_TYPE_OPTIONS, required: true },
@@ -252,6 +253,10 @@ export const companiesResource: ResourceConfig = {
     { name: "email", label: "E-posta", type: "email" },
     { name: "address", label: "Adres", type: "textarea" },
     { name: "logo_url", label: "Firma Logosu (PNG/JPG)", type: "file", bucket: "company-logos" },
+    // Elle girilmez: tedarikçiyle açılan (iptal olmayan) sözleşmelerden DB
+    // tetikleyicisiyle otomatik türetilir (bkz. 0074). Salt liste sütununda
+    // etiket olarak görünür + serbest metinle aranabilir; formda gösterilmez.
+    { name: "product_tags", label: "Getirdiği Ürünler", type: "tags", formHidden: true, readOnly: true },
     { name: "notes", label: "Notlar", type: "textarea" },
   ],
 };

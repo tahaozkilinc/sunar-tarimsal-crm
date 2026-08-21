@@ -821,6 +821,17 @@ export function ResourceManager({
           </a>
         );
       }
+      case "tags": {
+        const tags = Array.isArray(value) ? (value as string[]) : [];
+        if (tags.length === 0) return <span className="text-gray-400">-</span>;
+        return (
+          <div className="flex flex-wrap gap-1">
+            {tags.map((t) => (
+              <Badge key={t} color="blue">{t}</Badge>
+            ))}
+          </div>
+        );
+      }
       default:
         return String(value);
     }
@@ -852,6 +863,8 @@ export function ResourceManager({
         const lng = row[field.pairField!];
         return lng !== null && lng !== undefined && lng !== "" ? `${value}, ${lng}` : String(value);
       }
+      case "tags":
+        return Array.isArray(value) ? (value as string[]).join(", ") : String(value);
       default:
         return String(value);
     }
@@ -874,6 +887,7 @@ export function ResourceManager({
       }
       if (f.type === "select" || f.type === "select_other")
         return f.options?.find((o) => o.value === v)?.label || String(v);
+      if (f.type === "tags") return Array.isArray(v) ? (v as string[]).join(" ") : String(v);
       return String(v);
     };
     return rows.filter((r) => {
@@ -1193,7 +1207,8 @@ export function ResourceManager({
         f.type === "select_other" ||
         f.type === "email" ||
         f.type === "tel" ||
-        f.type === "url") &&
+        f.type === "url" ||
+        f.type === "tags") &&
       !isLockedToSingleValue(f.name),
   );
   const hasFilterUI =

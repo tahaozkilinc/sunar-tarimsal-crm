@@ -44,6 +44,7 @@ export interface Company {
   lng: number | null;
   logo_url: string | null;
   notes: string | null;
+  product_tags: string[]; // bu firmanın (tedarikçi) getirdiği ürünler — sözleşmelerden otomatik türetilir
   created_at: string;
 }
 
