@@ -202,14 +202,17 @@ export const SALES_STATUS_OPTIONS: SelectOption[] = [
   { value: "cancelled", label: "İptal", color: "red" },
 ];
 
+// Satışın nereden sevk edildiği. Sabit üçü dışında bir durum varsa "Diğer"
+// seçilip serbest metinle yazılabilir (bkz. FieldDef.type "select_other").
 export const SALE_TYPE_OPTIONS: SelectOption[] = [
-  { value: "TRANSİT", label: "Transit", color: "yellow" },
-  { value: "MİLLİ", label: "Milli", color: "blue" },
+  { value: "warehouse", label: "Depodan", color: "blue" },
+  { value: "ship", label: "Gemiden", color: "yellow" },
+  { value: "bonded_warehouse", label: "Antrepodan", color: "purple" },
 ];
 
-// Depoya giren malın gümrük/menşe durumu (satıştaki Transit/Milli'den ayrı —
-// burada iki seçenek de farklı: depo stoğu bazen yerli tedarik, bazen
-// gümrüklenmiş/millileşmiş mal olabiliyor).
+// Depoya giren malın gümrük/menşe durumu (satışın nereden sevk edildiğinden
+// AYRI bir alan — burada iki seçenek de farklı: depo stoğu bazen yerli
+// tedarik, bazen gümrüklenmiş/millileşmiş mal olabiliyor).
 export const STOCK_STATUS_OPTIONS: SelectOption[] = [
   { value: "MİLLİ", label: "Milli", color: "blue" },
   { value: "YERLİ", label: "Yerli", color: "green" },
@@ -435,7 +438,7 @@ export const salesOrdersResource: ResourceConfig = {
   fields: [
     { name: "order_no", label: "Satış No", type: "text", unique: true },
     { name: "customer_id", label: "Müşteri", type: "reference", ref: { table: "companies", labelField: "name", filter: { type: ["customer", "both"] } }, required: true },
-    { name: "sale_type", label: "Satış Tipi", type: "select", options: SALE_TYPE_OPTIONS, required: true },
+    { name: "sale_type", label: "Satış Tipi", type: "select_other", options: SALE_TYPE_OPTIONS, required: true },
     // Şehir: depoların bulunduğu şehirler otomatik listelenir (optionsSource);
     // listede yoksa "Diğer" ile serbest yazılabilir (büyük harfe çevrilir). "Diğer"
     // metin kutusu için yeterli genişlik kalsın diye ayrı satırda (inlineAfter yok).
