@@ -149,7 +149,7 @@ export interface SalesOrder {
   // ETA'sı en yakın) bağlantıyı otomatik atar. "Bağlantısız satış olmaz"
   // kuralı DB'de aynen geçerli — yalnızca kim seçtiği değişti.
   contract_id: string;
-  sale_type: "TRANSİT" | "MİLLİ" | null;
+  sale_type: string | null; // Depodan/Gemiden/Antrepodan ya da "Diğer" ile serbest metin
   city: string | null; // depoların bulunduğu şehirlerden seçilir, gerekirse serbest (büyük harf)
   product_id: string; // zorunlu: artık kullanıcı doğrudan ürünü seçiyor (gemi değil)
   // warehouse_id KALDIRILDI: bir satış artık TEK depoya değil, sale_warehouses
