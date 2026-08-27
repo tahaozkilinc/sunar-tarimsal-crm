@@ -34,7 +34,8 @@ type Movement = {
   quantity: number | null;
   vehicle_plate: string | null;
   driver_name: string | null;
-  stock_status: "MİLLİ" | "YERLİ" | "ANTREPO" | null;
+  stock_status: string | null;
+  customs_declaration_no: string | null;
   movement_date: string | null;
   movement_time: string | null;
   created_at: string;
@@ -134,7 +135,9 @@ export function ShipOpsPage({
   // tonajı depoya + stok durumuna göre yazar. Aynı gemi için birden çok kez
   // gönderilerek (ör. yarısı Milli / yarısı Antrepo) bölünebilir.
   const [bulkWh, setBulkWh] = useState("");
-  const [bulkStatus, setBulkStatus] = useState("");
+  const [bulkStatus, setBulkStatus] = useState(""); // "" | "MİLLİ" | "ANTREPO" | "__other__"
+  const [bulkStatusOther, setBulkStatusOther] = useState("");
+  const [bulkCustomsNo, setBulkCustomsNo] = useState("");
   const [bulkQty, setBulkQty] = useState("");
   const [bulkDate, setBulkDate] = useState(new Date().toISOString().slice(0, 10));
   const [bulkSaving, setBulkSaving] = useState(false);
@@ -175,7 +178,7 @@ export function ShipOpsPage({
   const loadMovements = useCallback(async () => {
     const { data } = await supabase
       .from("stock_movements")
-      .select("id,contract_id,warehouse_id,quantity,vehicle_plate,driver_name,stock_status,movement_date,movement_time,created_at,created_by")
+      .select("id,contract_id,warehouse_id,quantity,vehicle_plate,driver_name,stock_status,customs_declaration_no,movement_date,movement_time,created_at,created_by")
       .eq("contract_id", contractId)
       .eq("movement_type", "inbound")
       .order("created_at", { ascending: true });
@@ -369,6 +372,20 @@ export function ShipOpsPage({
     if (!bulkWh) { setBulkErr("Hedef depo / fabrika seçin."); return; }
     const q = parseFloat(bulkQty.replace(",", "."));
     if (!bulkQty || isNaN(q) || q <= 0) { setBulkErr("Geçerli bir tonaj girin."); return; }
+    const resolvedStatus = bulkStatus === "__other__" ? bulkStatusOther.trim() : bulkStatus;
+    if (bulkStatus === "__other__" && !resolvedStatus) {
+      setBulkErr("Stok durumunu yazın."); return;
+    }
+    // Milli -> IM'li, Antrepo -> AN'li gümrük beyanname no istenir (kullanıcı isteği).
+    const customsNo = bulkCustomsNo.trim().toUpperCase();
+    if (bulkStatus === "MİLLİ" || bulkStatus === "ANTREPO") {
+      const prefix = bulkStatus === "MİLLİ" ? "IM" : "AN";
+      if (!customsNo) { setBulkErr(`Gümrük beyanname no girin (${prefix} ile başlar).`); return; }
+      if (!customsNo.startsWith(prefix)) {
+        setBulkErr(`${bulkStatus === "MİLLİ" ? "Milli" : "Antrepo"} için beyanname no "${prefix}" ile başlamalı.`);
+        return;
+      }
+    }
     setBulkSaving(true);
     setBulkErr(null);
     const { error: err } = await supabase.from("stock_movements").insert({
@@ -378,7 +395,8 @@ export function ShipOpsPage({
       movement_type: "inbound",
       quantity:      q,
       unit:          contract.unit || unit,
-      stock_status:  bulkStatus || null,
+      stock_status:  resolvedStatus || null,
+      customs_declaration_no: customsNo || null,
       movement_date: bulkDate,
     });
     if (err) { setBulkSaving(false); setBulkErr(err.message); return; }
@@ -387,6 +405,7 @@ export function ShipOpsPage({
     }
     setBulkFlash(`${formatNumber(q)} ${unit} eklendi`);
     setBulkQty("");
+    setBulkCustomsNo("");
     setBulkSaving(false);
     await loadMovements();
     setTimeout(() => setBulkFlash(null), 1800);
@@ -455,13 +474,14 @@ export function ShipOpsPage({
 
   const exportCsv = () => {
     if (!contract) return;
-    const headers = ["Sıra", "Tarih", "Saat Girişi", "Plaka", "Şoför", "Depo / Fabrika", "Stok Durumu", `Miktar (${unit})`];
+    const headers = ["Sıra", "Tarih", "Saat Girişi", "Plaka", "Şoför", "Depo / Fabrika", "Stok Durumu", "Beyanname No", `Miktar (${unit})`];
     const body = movements.map((m, i) => {
       const t = m.movement_time ? m.movement_time.slice(0, 5) : timeFmt(m.created_at);
-      return [i + 1, formatDate(m.movement_date), t, m.vehicle_plate || "", m.driver_name || "", wName(m.warehouse_id), statusOptOf(m.stock_status)?.label || "", Number(m.quantity) || 0];
+      const st = statusOptOf(m.stock_status)?.label || m.stock_status || "";
+      return [i + 1, formatDate(m.movement_date), t, m.vehicle_plate || "", m.driver_name || "", wName(m.warehouse_id), st, m.customs_declaration_no || "", Number(m.quantity) || 0];
     });
-    const depotRows = byWarehouse.map(bw => ["", "", "", "", "", bw.name + " (toplam)", "", bw.qty]);
-    const csv = [headers, ...body, [], ["", "", "", "", "", "TOPLAM", "", totalDrawn], ...depotRows]
+    const depotRows = byWarehouse.map(bw => ["", "", "", "", "", bw.name + " (toplam)", "", "", bw.qty]);
+    const csv = [headers, ...body, [], ["", "", "", "", "", "TOPLAM", "", "", totalDrawn], ...depotRows]
       .map(row => row.map(c => `"${String(c ?? "").replace(/"/g, '""')}"`).join(";"))
       .join("\n");
     const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
@@ -803,7 +823,16 @@ export function ShipOpsPage({
                           <td className="px-3 py-2">{m.driver_name || <span className="text-gray-400">—</span>}</td>
                           <td className="px-3 py-2 text-xs">{wName(m.warehouse_id)}</td>
                           <td className="px-3 py-2 text-xs">
-                            {st ? <Badge color={st.color}>{st.label}</Badge> : <span className="text-gray-400">—</span>}
+                            {m.stock_status ? (
+                              <>
+                                <Badge color={st?.color || "gray"}>{st?.label || m.stock_status}</Badge>
+                                {m.customs_declaration_no && (
+                                  <div className="mt-0.5 text-[11px] text-gray-400">{m.customs_declaration_no}</div>
+                                )}
+                              </>
+                            ) : (
+                              <span className="text-gray-400">—</span>
+                            )}
                           </td>
                           <td className="px-3 py-2 text-xs text-gray-500">{creatorName(m.created_by)}</td>
                           <td className="px-3 py-2 text-right font-semibold">
@@ -886,7 +915,8 @@ export function ShipOpsPage({
                     <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-xs text-gray-600">
                       {m.driver_name ? `${m.driver_name} · ` : ""}
                       {m.vehicle_plate ? wName(m.warehouse_id) : null}
-                      {st && <Badge color={st.color}>{st.label}</Badge>}
+                      {m.stock_status && <Badge color={st?.color || "gray"}>{st?.label || m.stock_status}</Badge>}
+                      {m.customs_declaration_no && <span className="text-gray-400">{m.customs_declaration_no}</span>}
                     </div>
                     <div className="mt-2 flex items-center justify-between border-t border-border pt-2">
                       <button
@@ -961,13 +991,38 @@ export function ShipOpsPage({
                     </Select>
                   </Field>
                   <Field label="Stok Durumu">
-                    <Select value={bulkStatus} onChange={e => setBulkStatus(e.target.value)}>
+                    <Select
+                      value={bulkStatus}
+                      onChange={e => { setBulkStatus(e.target.value); setBulkCustomsNo(""); }}
+                    >
                       <option value="">Belirtilmedi</option>
                       {STOCK_STATUS_OPTIONS.map(o => (
                         <option key={o.value} value={o.value}>{o.label}</option>
                       ))}
+                      <option value="__other__">Diğer</option>
                     </Select>
                   </Field>
+                  {bulkStatus === "__other__" && (
+                    <Field label="Durumu Yazın" required>
+                      <Input
+                        value={bulkStatusOther}
+                        onChange={e => setBulkStatusOther(e.target.value.toUpperCase())}
+                        placeholder="Ör. TRANSİT"
+                      />
+                    </Field>
+                  )}
+                  {(bulkStatus === "MİLLİ" || bulkStatus === "ANTREPO") && (
+                    <Field
+                      label={`Gümrük Beyanname No (${bulkStatus === "MİLLİ" ? "IM" : "AN"} İle Başlar)`}
+                      required
+                    >
+                      <Input
+                        value={bulkCustomsNo}
+                        onChange={e => setBulkCustomsNo(e.target.value.toUpperCase())}
+                        placeholder={bulkStatus === "MİLLİ" ? "IM..." : "AN..."}
+                      />
+                    </Field>
+                  )}
                   <Field label={`Tonaj (${unit})`} required>
                     <Input
                       id="ship-ops-bulk-qty"

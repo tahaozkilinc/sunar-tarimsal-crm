@@ -130,7 +130,8 @@ export interface StockMovement {
   movement_type: string;
   quantity: number;
   unit: string;
-  stock_status: "MİLLİ" | "YERLİ" | "ANTREPO" | null; // girişteki malın gümrük/menşe durumu (opsiyonel)
+  stock_status: string | null; // Milli/Antrepo ya da "Diğer" ile serbest metin (opsiyonel)
+  customs_declaration_no: string | null; // gümrük beyanname no — Milli: IM..., Antrepo: AN...
   movement_date: string;
   movement_time: string | null; // opsiyonel: aracın fiilen hareket ettiği saat
   vehicle_plate: string | null;

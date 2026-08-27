@@ -213,9 +213,12 @@ export const SALE_TYPE_OPTIONS: SelectOption[] = [
 // Depoya giren malın gümrük/menşe durumu (satışın nereden sevk edildiğinden
 // AYRI bir alan — burada iki seçenek de farklı: depo stoğu bazen yerli
 // tedarik, bazen gümrüklenmiş/millileşmiş mal olabiliyor).
+// Milli ve Yerli aynı anlama geldiğinden (kullanıcı isteği) tek "Milli" olarak
+// birleştirildi; "Yerli" artık seçenek değil (eski kayıtlarda kalabilir, sorun
+// değil). Listede olmayan bir durum "Diğer" ile serbest yazılabilir (bkz.
+// stock_status alanı, "select_other").
 export const STOCK_STATUS_OPTIONS: SelectOption[] = [
   { value: "MİLLİ", label: "Milli", color: "blue" },
-  { value: "YERLİ", label: "Yerli", color: "green" },
   { value: "ANTREPO", label: "Antrepo", color: "purple" },
 ];
 
@@ -408,7 +411,8 @@ export const stockMovementsResource: ResourceConfig = {
     { name: "quantity", label: "Miktar", type: "number", required: true, positive: true },
     { name: "unit", label: "Birim", type: "text" },
     // Girişte (Giriş / Yurtdışı Depo Girişi / Düzeltme) malın durumu — opsiyonel.
-    { name: "stock_status", label: "Milli / Yerli", type: "select", options: STOCK_STATUS_OPTIONS },
+    { name: "stock_status", label: "Stok Durumu", type: "select_other", options: STOCK_STATUS_OPTIONS },
+    { name: "customs_declaration_no", label: "Gümrük Beyanname No", type: "text", placeholder: "Milli: IM..., Antrepo: AN..." },
     { name: "vehicle_plate", label: "Araç Plakası", type: "text" },
     { name: "driver_name", label: "Şoför", type: "text" },
     // Gemiden boşaltma (ship-ops-page.tsx) da, buradaki elle giriş de AYNI
