@@ -7,7 +7,7 @@ import { Badge, Button, Card, EmptyState, Field, Input, Select, Spinner } from "
 import { MovementPhotos, type MovementPhoto } from "./movement-photos";
 import { PhotoGallery } from "./photo-gallery";
 import { formatDate, formatNumber } from "@/lib/format";
-import { CONTRACT_STATUS_OPTIONS, SALES_STATUS_OPTIONS } from "@/lib/resources";
+import { CONTRACT_STATUS_OPTIONS, SALES_STATUS_OPTIONS, STOCK_STATUS_OPTIONS } from "@/lib/resources";
 import { ArrowLeft, Camera, CheckCircle, Download, Leaf, Printer, Trash2 } from "lucide-react";
 
 type Contract = {
@@ -34,6 +34,7 @@ type Movement = {
   quantity: number | null;
   vehicle_plate: string | null;
   driver_name: string | null;
+  stock_status: "MİLLİ" | "YERLİ" | "ANTREPO" | null;
   movement_date: string | null;
   movement_time: string | null;
   created_at: string;
@@ -129,6 +130,17 @@ export function ShipOpsPage({
   const [formErr, setFormErr] = useState<string | null>(null);
   const [flash, setFlash]   = useState<string | null>(null);
 
+  // Toplu depo girişi (admin/operasyon): araç bazlı değil, doğrudan toplam
+  // tonajı depoya + stok durumuna göre yazar. Aynı gemi için birden çok kez
+  // gönderilerek (ör. yarısı Milli / yarısı Antrepo) bölünebilir.
+  const [bulkWh, setBulkWh] = useState("");
+  const [bulkStatus, setBulkStatus] = useState("");
+  const [bulkQty, setBulkQty] = useState("");
+  const [bulkDate, setBulkDate] = useState(new Date().toISOString().slice(0, 10));
+  const [bulkSaving, setBulkSaving] = useState(false);
+  const [bulkErr, setBulkErr] = useState<string | null>(null);
+  const [bulkFlash, setBulkFlash] = useState<string | null>(null);
+
   // Gemiye gözetim / liman / nakliyeci / acente atama
   const [surveyorId, setSurveyorId] = useState("");
   const [portId,     setPortId]     = useState("");
@@ -163,7 +175,7 @@ export function ShipOpsPage({
   const loadMovements = useCallback(async () => {
     const { data } = await supabase
       .from("stock_movements")
-      .select("id,contract_id,warehouse_id,quantity,vehicle_plate,driver_name,movement_date,movement_time,created_at,created_by")
+      .select("id,contract_id,warehouse_id,quantity,vehicle_plate,driver_name,stock_status,movement_date,movement_time,created_at,created_by")
       .eq("contract_id", contractId)
       .eq("movement_type", "inbound")
       .order("created_at", { ascending: true });
@@ -247,6 +259,7 @@ export function ShipOpsPage({
   const wName = (id: string | null) => warehouses.find(w => w.id === id)?.name || "—";
   const cName = (id: string | null) => companies.find(c => c.id === id)?.name || "—";
   const creatorName = (id: string | null) => (id && creatorNames[id]) || "—";
+  const statusOptOf = (v: string | null) => STOCK_STATUS_OPTIONS.find(o => o.value === v);
 
   const surveyors   = useMemo(() => companies.filter(c => c.type === "surveyor"), [companies]);
   const ports       = useMemo(() => companies.filter(c => c.type === "port"), [companies]);
@@ -271,12 +284,24 @@ export function ShipOpsPage({
 
   const byWarehouse = useMemo(() => {
     const map = new Map<string, number>();
+    const statusMap = new Map<string, Map<string, number>>();
     movements.forEach(m => {
       const k = m.warehouse_id || "_none_";
       map.set(k, (map.get(k) || 0) + (Number(m.quantity) || 0));
+      const sk = m.stock_status || "—";
+      const inner = statusMap.get(k) || new Map<string, number>();
+      inner.set(sk, (inner.get(sk) || 0) + (Number(m.quantity) || 0));
+      statusMap.set(k, inner);
     });
     return Array.from(map.entries())
-      .map(([id, qty]) => ({ id, name: id === "_none_" ? "Depo belirtilmemiş" : wName(id), qty }))
+      .map(([id, qty]) => ({
+        id,
+        name: id === "_none_" ? "Depo belirtilmemiş" : wName(id),
+        qty,
+        byStatus: Array.from(statusMap.get(id)?.entries() || [])
+          .map(([status, sqty]) => ({ status, qty: sqty }))
+          .sort((a, b) => b.qty - a.qty),
+      }))
       .sort((a, b) => b.qty - a.qty);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [movements, warehouses]);
@@ -337,6 +362,34 @@ export function ShipOpsPage({
       setFlash(null);
       document.getElementById("ship-ops-plate")?.focus();
     }, 1800);
+  };
+
+  const addBulk = async () => {
+    if (!contract) return;
+    if (!bulkWh) { setBulkErr("Hedef depo / fabrika seçin."); return; }
+    const q = parseFloat(bulkQty.replace(",", "."));
+    if (!bulkQty || isNaN(q) || q <= 0) { setBulkErr("Geçerli bir tonaj girin."); return; }
+    setBulkSaving(true);
+    setBulkErr(null);
+    const { error: err } = await supabase.from("stock_movements").insert({
+      contract_id:   contract.id,
+      product_id:    contract.product_id,
+      warehouse_id:  bulkWh,
+      movement_type: "inbound",
+      quantity:      q,
+      unit:          contract.unit || unit,
+      stock_status:  bulkStatus || null,
+      movement_date: bulkDate,
+    });
+    if (err) { setBulkSaving(false); setBulkErr(err.message); return; }
+    if (contract.status !== "arrived" && contract.status !== "completed") {
+      setContract(prev => prev ? { ...prev, status: "arrived" } : prev);
+    }
+    setBulkFlash(`${formatNumber(q)} ${unit} eklendi`);
+    setBulkQty("");
+    setBulkSaving(false);
+    await loadMovements();
+    setTimeout(() => setBulkFlash(null), 1800);
   };
 
   const deleteMov = async (id: string) => {
@@ -402,13 +455,13 @@ export function ShipOpsPage({
 
   const exportCsv = () => {
     if (!contract) return;
-    const headers = ["Sıra", "Tarih", "Saat Girişi", "Plaka", "Şoför", "Depo / Fabrika", `Miktar (${unit})`];
+    const headers = ["Sıra", "Tarih", "Saat Girişi", "Plaka", "Şoför", "Depo / Fabrika", "Stok Durumu", `Miktar (${unit})`];
     const body = movements.map((m, i) => {
       const t = m.movement_time ? m.movement_time.slice(0, 5) : timeFmt(m.created_at);
-      return [i + 1, formatDate(m.movement_date), t, m.vehicle_plate || "", m.driver_name || "", wName(m.warehouse_id), Number(m.quantity) || 0];
+      return [i + 1, formatDate(m.movement_date), t, m.vehicle_plate || "", m.driver_name || "", wName(m.warehouse_id), statusOptOf(m.stock_status)?.label || "", Number(m.quantity) || 0];
     });
-    const depotRows = byWarehouse.map(bw => ["", "", "", "", "", bw.name + " (toplam)", bw.qty]);
-    const csv = [headers, ...body, [], ["", "", "", "", "", "TOPLAM", totalDrawn], ...depotRows]
+    const depotRows = byWarehouse.map(bw => ["", "", "", "", "", bw.name + " (toplam)", "", bw.qty]);
+    const csv = [headers, ...body, [], ["", "", "", "", "", "TOPLAM", "", totalDrawn], ...depotRows]
       .map(row => row.map(c => `"${String(c ?? "").replace(/"/g, '""')}"`).join(";"))
       .join("\n");
     const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
@@ -622,7 +675,7 @@ export function ShipOpsPage({
           fkColumn="contract_id"
           fkValue={contract.id}
           canWrite={canManage}
-          labels={["Numune", "Ürün", "Belge"]}
+          labels={["Çeki Listesi", "Numune", "Ürün", "Belge"]}
           emptyText="Bu gemiye ait görsel / dosya yok."
         />
       </Card>
@@ -665,10 +718,10 @@ export function ShipOpsPage({
           <div className="text-xs text-gray-400">{unit}</div>
         </Card>
         <Card className="p-3">
-          <div className="text-[11px] uppercase text-gray-500">Araç / Süre</div>
+          <div className="text-[11px] uppercase text-gray-500">Giriş / Süre</div>
           {opStats ? (
             <>
-              <div className="mt-0.5 text-lg font-bold">{opStats.count} araç</div>
+              <div className="mt-0.5 text-lg font-bold">{opStats.count} giriş</div>
               <div className="text-[11px] text-gray-500">
                 {timeFmt(opStats.first)} → {opStats.count > 1 ? timeFmt(opStats.last) : "devam"}
                 {" "}({durFmt(elapsedMs ?? opStats.durationMs, false)})
@@ -680,7 +733,7 @@ export function ShipOpsPage({
         </Card>
       </div>
 
-      {/* ── Depo bazlı dağılım ── */}
+      {/* ── Depo bazlı dağılım (stok durumu kırılımıyla) ── */}
       {byWarehouse.length > 0 && (
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
           {byWarehouse.map(bw => (
@@ -688,6 +741,18 @@ export function ShipOpsPage({
               <div className="truncate text-[11px] text-gray-500">{bw.name}</div>
               <div className="mt-0.5 font-bold">{formatNumber(bw.qty)}</div>
               <div className="text-xs text-gray-400">{unit}</div>
+              {bw.byStatus.length > 1 && (
+                <div className="mt-1.5 flex flex-wrap gap-1">
+                  {bw.byStatus.map(s => {
+                    const opt = statusOptOf(s.status);
+                    return (
+                      <Badge key={s.status} color={opt?.color || "gray"}>
+                        {opt?.label || s.status}: {formatNumber(s.qty)}
+                      </Badge>
+                    );
+                  })}
+                </div>
+              )}
             </Card>
           ))}
         </div>
@@ -698,9 +763,9 @@ export function ShipOpsPage({
 
         {/* Araç tablosu (sola / alta) */}
         <div className="order-2 lg:order-1">
-          <div className="mb-2 text-sm font-semibold">Araç Listesi</div>
+          <div className="mb-2 text-sm font-semibold">Giriş Listesi</div>
           {movements.length === 0 ? (
-            <EmptyState message="Henüz araç girişi yapılmadı." />
+            <EmptyState message="Henüz depoya giriş yapılmadı." />
           ) : (
             <>
             {/* Masaüstü: tablo */}
@@ -713,6 +778,7 @@ export function ShipOpsPage({
                     <th className="px-3 py-2.5 font-medium">Plaka</th>
                     <th className="px-3 py-2.5 font-medium">Şoför</th>
                     <th className="px-3 py-2.5 font-medium">Depo / Fabrika</th>
+                    <th className="px-3 py-2.5 font-medium">Stok Durumu</th>
                     <th className="px-3 py-2.5 font-medium">Giren</th>
                     <th className="px-3 py-2.5 text-right font-medium">Miktar</th>
                     <th className="px-2 py-2.5 print:hidden" />
@@ -722,6 +788,7 @@ export function ShipOpsPage({
                   {movements.map((m, i) => {
                     const count = photosByMovement[m.id]?.length || 0;
                     const open = openPhotos.has(m.id);
+                    const st = statusOptOf(m.stock_status);
                     return (
                       <Fragment key={m.id}>
                         <tr className="border-b border-border last:border-0 hover:bg-gray-50">
@@ -735,6 +802,9 @@ export function ShipOpsPage({
                           </td>
                           <td className="px-3 py-2">{m.driver_name || <span className="text-gray-400">—</span>}</td>
                           <td className="px-3 py-2 text-xs">{wName(m.warehouse_id)}</td>
+                          <td className="px-3 py-2 text-xs">
+                            {st ? <Badge color={st.color}>{st.label}</Badge> : <span className="text-gray-400">—</span>}
+                          </td>
                           <td className="px-3 py-2 text-xs text-gray-500">{creatorName(m.created_by)}</td>
                           <td className="px-3 py-2 text-right font-semibold">
                             {formatNumber(m.quantity)} <span className="text-xs font-normal text-gray-400">{unit}</span>
@@ -765,7 +835,7 @@ export function ShipOpsPage({
                         </tr>
                         {open && (
                           <tr className="border-b border-border bg-gray-50/60 print:hidden">
-                            <td colSpan={8} className="px-3 py-3">
+                            <td colSpan={9} className="px-3 py-3">
                               <MovementPhotos
                                 movementId={m.id}
                                 photos={photosByMovement[m.id]}
@@ -781,7 +851,7 @@ export function ShipOpsPage({
                 </tbody>
                 <tfoot>
                   <tr className="border-t-2 border-border">
-                    <td colSpan={6} className="px-3 py-2 text-xs font-semibold text-gray-600">TOPLAM</td>
+                    <td colSpan={7} className="px-3 py-2 text-xs font-semibold text-gray-600">TOPLAM</td>
                     <td className="px-3 py-2 text-right font-bold">
                       {formatNumber(totalDrawn)} <span className="text-xs font-normal text-gray-400">{unit}</span>
                     </td>
@@ -791,17 +861,18 @@ export function ShipOpsPage({
               </table>
             </div>
 
-            {/* Mobil: araç kartları (yatay kaydırma yerine okunabilir liste) */}
+            {/* Mobil: giriş kartları (yatay kaydırma yerine okunabilir liste) */}
             <div className="space-y-2 md:hidden">
               {movements.map((m) => {
                 const count = photosByMovement[m.id]?.length || 0;
                 const open = openPhotos.has(m.id);
+                const st = statusOptOf(m.stock_status);
                 return (
                   <div key={m.id} className="rounded-xl border border-border bg-white p-3">
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
                         <div className="font-semibold tracking-wider">
-                          {m.vehicle_plate || <span className="text-gray-400">Plakasız</span>}
+                          {m.vehicle_plate || wName(m.warehouse_id)}
                         </div>
                         <div className="mt-0.5 text-xs text-gray-500">
                           {formatDate(m.movement_date)} · {m.movement_time ? m.movement_time.slice(0, 5) : timeFmt(m.created_at)}
@@ -812,9 +883,10 @@ export function ShipOpsPage({
                         <div className="text-[11px] text-gray-400">{unit}</div>
                       </div>
                     </div>
-                    <div className="mt-1.5 text-xs text-gray-600">
+                    <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-xs text-gray-600">
                       {m.driver_name ? `${m.driver_name} · ` : ""}
-                      {wName(m.warehouse_id)}
+                      {m.vehicle_plate ? wName(m.warehouse_id) : null}
+                      {st && <Badge color={st.color}>{st.label}</Badge>}
                     </div>
                     <div className="mt-2 flex items-center justify-between border-t border-border pt-2">
                       <button
@@ -862,7 +934,73 @@ export function ShipOpsPage({
 
         {/* Sağ: form + tonaj farkı */}
         <div className="order-1 lg:order-2 space-y-4 print:hidden">
-          {canWrite && contract.status !== "completed" && (
+          {/* Admin/Operasyon: araç araç değil, doğrudan toplam tonajı depoya
+              (+ stok durumuna) yazan toplu giriş. Nakliyeci/Gözetim (dış roller)
+              için araç bazlı hızlı giriş aynen kalır — DB 100 ton/kayıt limiti
+              zaten onlara özel (bkz. 0046 fn_sm_guard). */}
+          {canManage && contract.status !== "completed" && (
+            <div>
+              <div className="mb-2 text-sm font-semibold">Toplu Depo Girişi</div>
+              {!etaReady ? (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
+                  ETA ({formatDate(contract.eta)}) gelmeden operasyon başlatılamaz.
+                </div>
+              ) : (
+                <Card className="space-y-3 p-4">
+                  <p className="text-xs text-gray-500">
+                    Araç araç değil, doğrudan toplam tonajı yazın. Aynı gemi farklı
+                    depolara / stok durumlarına bölünecekse (ör. yarısı Milli,
+                    yarısı Antrepo) bu formu birden çok kez gönderin.
+                  </p>
+                  <Field label="Depo / Fabrika" required>
+                    <Select value={bulkWh} onChange={e => setBulkWh(e.target.value)}>
+                      <option value="">Seçiniz...</option>
+                      {warehouses.map(w => (
+                        <option key={w.id} value={w.id}>{w.name}</option>
+                      ))}
+                    </Select>
+                  </Field>
+                  <Field label="Stok Durumu">
+                    <Select value={bulkStatus} onChange={e => setBulkStatus(e.target.value)}>
+                      <option value="">Belirtilmedi</option>
+                      {STOCK_STATUS_OPTIONS.map(o => (
+                        <option key={o.value} value={o.value}>{o.label}</option>
+                      ))}
+                    </Select>
+                  </Field>
+                  <Field label={`Tonaj (${unit})`} required>
+                    <Input
+                      id="ship-ops-bulk-qty"
+                      type="text"
+                      inputMode="decimal"
+                      value={bulkQty}
+                      onChange={e => setBulkQty(e.target.value.replace(",", ".").replace(/[^0-9.]/g, ""))}
+                      placeholder={remaining > 0 ? `Kalan: ${formatNumber(remaining)} ${unit}` : "Tonaj"}
+                      onKeyDown={e => { if (e.key === "Enter") addBulk(); }}
+                      autoFocus
+                    />
+                  </Field>
+                  <Field label="Tarih">
+                    <Input type="date" value={bulkDate} onChange={e => setBulkDate(e.target.value)} />
+                  </Field>
+                  {bulkErr && (
+                    <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                      {bulkErr}
+                    </div>
+                  )}
+                  {bulkFlash && (
+                    <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-700">
+                      ✓ {bulkFlash}
+                    </div>
+                  )}
+                  <Button onClick={addBulk} disabled={bulkSaving} className="w-full">
+                    {bulkSaving ? "Ekleniyor..." : "Ekle"}
+                  </Button>
+                </Card>
+              )}
+            </div>
+          )}
+          {canWrite && !canManage && contract.status !== "completed" && (
             <>
               <div>
                 <div className="mb-2 text-sm font-semibold">Hızlı Araç Girişi</div>
@@ -988,33 +1126,42 @@ export function ShipOpsPage({
             </>
           )}
 
-          {/* Tonaj farkı */}
+          {/* Tonaj farkı — gemi tamamlandığında ve eksik varsa bu artık kesin
+              FİRE'dır (bir daha gelmeyecek); operasyon sürerken henüz sadece
+              "bekleyen/kalan" tonajdır. */}
           {movements.length > 0 && (
             <div>
-              <div className="mb-2 text-sm font-semibold">Tonaj Farkı</div>
-              <Card className="divide-y divide-border p-0 overflow-hidden">
-                <div className="flex items-center justify-between px-4 py-2.5 text-sm">
-                  <span className="text-gray-500">Sözleşme</span>
-                  <span className="font-medium">{formatNumber(contracted)} {unit}</span>
-                </div>
-                <div className="flex items-center justify-between px-4 py-2.5 text-sm">
-                  <span className="text-gray-500">Çekilen</span>
-                  <span className="font-medium text-brand">{formatNumber(totalDrawn)} {unit}</span>
-                </div>
-                <div className="flex items-center justify-between px-4 py-3 text-sm font-bold">
-                  <span className="text-gray-600">Fark</span>
-                  <span className={remaining < 0 ? "text-red-600" : remaining === 0 ? "text-emerald-600" : "text-amber-600"}>
-                    {remaining === 0 ? "±0 (tam)" : remaining > 0
-                      ? `−${formatNumber(remaining)} ${unit}`
-                      : `+${formatNumber(-remaining)} ${unit} (fazla)`}
-                    {contracted > 0 && remaining !== 0 && (
-                      <span className="ml-1 text-xs font-normal text-gray-400">
-                        {diffPct > 0 ? "+" : ""}{diffPct.toFixed(1)}%
-                      </span>
-                    )}
-                  </span>
-                </div>
-              </Card>
+              {(() => {
+                const isFire = contract.status === "completed" && remaining > 0;
+                return (
+                  <>
+                    <div className="mb-2 text-sm font-semibold">{isFire ? "Fire" : "Tonaj Farkı"}</div>
+                    <Card className="divide-y divide-border p-0 overflow-hidden">
+                      <div className="flex items-center justify-between px-4 py-2.5 text-sm">
+                        <span className="text-gray-500">Sözleşme</span>
+                        <span className="font-medium">{formatNumber(contracted)} {unit}</span>
+                      </div>
+                      <div className="flex items-center justify-between px-4 py-2.5 text-sm">
+                        <span className="text-gray-500">Çekilen</span>
+                        <span className="font-medium text-brand">{formatNumber(totalDrawn)} {unit}</span>
+                      </div>
+                      <div className="flex items-center justify-between px-4 py-3 text-sm font-bold">
+                        <span className="text-gray-600">{isFire ? "Fire" : "Fark"}</span>
+                        <span className={remaining < 0 ? "text-red-600" : remaining === 0 ? "text-emerald-600" : isFire ? "text-red-600" : "text-amber-600"}>
+                          {remaining === 0 ? "±0 (tam)" : remaining > 0
+                            ? `−${formatNumber(remaining)} ${unit}`
+                            : `+${formatNumber(-remaining)} ${unit} (fazla)`}
+                          {contracted > 0 && remaining !== 0 && (
+                            <span className="ml-1 text-xs font-normal text-gray-400">
+                              {diffPct > 0 ? "+" : ""}{diffPct.toFixed(1)}%
+                            </span>
+                          )}
+                        </span>
+                      </div>
+                    </Card>
+                  </>
+                );
+              })()}
 
               {canManage && (
                 <Button
@@ -1044,8 +1191,8 @@ export function ShipOpsPage({
             <div className="font-bold">{formatNumber(totalDrawn)} {unit}</div>
           </div>
           <div>
-            <div className="text-gray-500 text-xs">Fark</div>
-            <div className={`font-bold ${remaining < 0 ? "text-red-600" : remaining === 0 ? "text-emerald-600" : "text-amber-600"}`}>
+            <div className="text-gray-500 text-xs">{contract.status === "completed" && remaining > 0 ? "Fire" : "Fark"}</div>
+            <div className={`font-bold ${remaining < 0 ? "text-red-600" : remaining === 0 ? "text-emerald-600" : contract.status === "completed" ? "text-red-600" : "text-amber-600"}`}>
               {remaining === 0 ? "±0"
                 : remaining > 0 ? `−${formatNumber(remaining)}`
                 : `+${formatNumber(-remaining)}`} {unit}
@@ -1053,7 +1200,7 @@ export function ShipOpsPage({
             </div>
           </div>
           <div>
-            <div className="text-gray-500 text-xs">Araç</div>
+            <div className="text-gray-500 text-xs">Giriş</div>
             <div className="font-bold">{movements.length} adet</div>
           </div>
         </div>

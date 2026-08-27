@@ -216,6 +216,7 @@ export const SALE_TYPE_OPTIONS: SelectOption[] = [
 export const STOCK_STATUS_OPTIONS: SelectOption[] = [
   { value: "MİLLİ", label: "Milli", color: "blue" },
   { value: "YERLİ", label: "Yerli", color: "green" },
+  { value: "ANTREPO", label: "Antrepo", color: "purple" },
 ];
 
 export const ACTIVITY_TYPE_OPTIONS: SelectOption[] = [
