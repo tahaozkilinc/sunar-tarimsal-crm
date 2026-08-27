@@ -237,12 +237,12 @@ export function WarehouseDetailExtra({
             <div className="space-y-2">
               {byStatus.map((r) => (
                 <div key={r.key} className="flex items-center gap-3">
-                  <Badge color={r.key === "MİLLİ" ? "blue" : r.key === "YERLİ" ? "green" : "gray"}>
+                  <Badge color={r.key === "MİLLİ" ? "blue" : r.key === "ANTREPO" ? "purple" : "gray"}>
                     {r.name}
                   </Badge>
                   <div className="h-3 flex-1 overflow-hidden rounded bg-gray-100">
                     <div
-                      className={`h-full rounded ${r.key === "MİLLİ" ? "bg-blue-500" : r.key === "YERLİ" ? "bg-emerald-500" : "bg-gray-400"}`}
+                      className={`h-full rounded ${r.key === "MİLLİ" ? "bg-blue-500" : r.key === "ANTREPO" ? "bg-purple-500" : "bg-gray-400"}`}
                       style={{ width: `${totalStatus > 0 ? (r.ton / totalStatus) * 100 : 0}%` }}
                     />
                   </div>
@@ -319,7 +319,7 @@ export function WarehouseDetailExtra({
                             ))}
                           </Select>
                         ) : r.stock_status ? (
-                          <Badge color={r.stock_status === "MİLLİ" ? "blue" : r.stock_status === "YERLİ" ? "green" : "gray"}>
+                          <Badge color={r.stock_status === "MİLLİ" ? "blue" : r.stock_status === "ANTREPO" ? "purple" : "gray"}>
                             {r.stock_status}
                           </Badge>
                         ) : (
