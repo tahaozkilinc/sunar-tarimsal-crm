@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { Badge, Button, Card, EmptyState, Input, Modal, Spinner } from "./ui";
+import { Badge, Button, Card, DeadlineBadge, EmptyState, Input, Modal, Spinner } from "./ui";
 import { formatDate, formatMoney, formatNumber } from "@/lib/format";
 import { formatUsd, toUsd } from "@/lib/fx";
 import { baseRole } from "@/lib/nav";
@@ -21,6 +21,7 @@ type SO = {
   price: number | null;
   currency: string | null;
   delivery_date: string | null;
+  payment_due_date: string | null;
   status: string;
   is_paid: boolean;
   payment_ref: string | null;
@@ -50,9 +51,9 @@ export function CollectionsView({ role }: { role: Role }) {
     const [so, co] = await Promise.all([
       supabase
         .from("sales_orders")
-        .select("id,order_no,customer_id,quantity,price,currency,delivery_date,status,is_paid,payment_ref,paid_at,usd_try,eur_try")
+        .select("id,order_no,customer_id,quantity,price,currency,delivery_date,payment_due_date,status,is_paid,payment_ref,paid_at,usd_try,eur_try")
         .neq("status", "cancelled")
-        .order("delivery_date", { ascending: true }),
+        .order("payment_due_date", { ascending: true }),
       supabase.from("companies").select("id,name"),
     ]);
     if (so.error) setError(so.error.message);
@@ -168,6 +169,7 @@ export function CollectionsView({ role }: { role: Role }) {
                   <tr className="border-b border-border text-left text-[11px] uppercase text-gray-400">
                     <th className="py-1.5 pr-3 font-medium">Satış No</th>
                     <th className="py-1.5 pr-3 font-medium">Teslim</th>
+                    <th className="py-1.5 pr-3 font-medium">Vade</th>
                     <th className="py-1.5 pr-3 text-right font-medium">Miktar</th>
                     <th className="py-1.5 pr-3 text-right font-medium">Tutar</th>
                     <th className="py-1.5 pr-3 text-right font-medium">USD</th>
@@ -181,6 +183,16 @@ export function CollectionsView({ role }: { role: Role }) {
                       <tr key={s.id} className="border-b border-border/60 last:border-0">
                         <td className="py-2 pr-3 font-medium">{s.order_no || "—"}</td>
                         <td className="py-2 pr-3 text-gray-500">{formatDate(s.delivery_date)}</td>
+                        <td className="py-2 pr-3">
+                          {s.payment_due_date ? (
+                            <span className="flex items-center gap-1.5 whitespace-nowrap">
+                              <span className="text-gray-500">{formatDate(s.payment_due_date)}</span>
+                              <DeadlineBadge date={s.payment_due_date} />
+                            </span>
+                          ) : (
+                            <span className="text-gray-400">—</span>
+                          )}
+                        </td>
                         <td className="py-2 pr-3 text-right">{formatNumber(s.quantity)} t</td>
                         <td className="py-2 pr-3 text-right">
                           {formatMoney(amountOf(s), s.currency || "TRY")}

@@ -462,6 +462,8 @@ export const salesOrdersResource: ResourceConfig = {
     // panelinde ve Satış Operasyon ekranında uyarı rozeti gösterilir.
     { name: "final_sale_date", label: "Son Teslim Tarihi", type: "date", required: true, showDeadline: true },
     { name: "status", label: "Durum", type: "select", options: SALES_STATUS_OPTIONS, required: true },
+    // Müşterinin ödeyeceği vade — Finans -> Tahsilatlar tablosunda da gösterilir.
+    { name: "payment_due_date", label: "Ödeme Vadesi", type: "date", showDeadline: true },
     { name: "usd_try", label: "USD/TRY (TCMB)", type: "number", placeholder: "Otomatik" },
     { name: "eur_try", label: "EUR/TRY (TCMB)", type: "number", placeholder: "Otomatik" },
     { name: "fx_date", label: "Kur Tarihi", type: "date" },
