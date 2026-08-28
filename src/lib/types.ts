@@ -153,8 +153,8 @@ export interface SalesOrder {
   sale_type: string | null; // Depodan/Gemiden/Antrepodan ya da "Diğer" ile serbest metin
   city: string | null; // depoların bulunduğu şehirlerden seçilir, gerekirse serbest (büyük harf)
   product_id: string; // zorunlu: artık kullanıcı doğrudan ürünü seçiyor (gemi değil)
-  // warehouse_id KALDIRILDI: bir satış artık TEK depoya değil, sale_warehouses
-  // junction tablosundaki İZİNLİ depo kümesine bağlı (çoklu depo).
+  // warehouse_id yok: hangi depodan sevk edileceğine burada değil, sevkiyat
+  // anında Satış Operasyon ekranında (sales-dispatch.tsx) operasyoncu karar verir.
   quantity: number;
   unit: string;
   price: number | null;
@@ -167,12 +167,6 @@ export interface SalesOrder {
   dispatch_closed_at: string | null; // operasyoncu "Sevkiyatı Bitir" dediyse dolu
   dispatch_closed_by: string | null;
   notes: string | null;
-}
-
-// sale_warehouses: bir satışın sevk edilebileceği izinli depolar (çoklu).
-export interface SaleWarehouse {
-  sale_id: string;
-  warehouse_id: string;
 }
 
 export interface CrmActivity {

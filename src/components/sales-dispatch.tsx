@@ -15,9 +15,9 @@ import type { Role } from "@/lib/types";
 // TİCARİ kayıttır; buradaki her satır stock_movements'a 'outbound_sale' olarak
 // yazılır ve depo stoğunu (inventory) SATIŞ ANINDA değil, araç ÇIKTIĞINDA düşer.
 //
-//   Depodan        -> warehouse_id dolu, contract_id BOŞ. Yalnızca Satışlar
-//                      ekranında o satışa seçilen depo(lar)dan biri olabilir
-//                      (sale_warehouses beyaz listesi — DB'de sert kural).
+//   Depodan        -> warehouse_id dolu, contract_id BOŞ. Herhangi bir aktif
+//                      yurtiçi depodan yapılabilir (hangi depodan yükleneceğine
+//                      operasyoncu karar verir) — yalnızca mevcut stok sınırı var.
 //   Gemiden Direkt -> warehouse_id BOŞ, contract_id = satışın bağlı gemisi.
 //
 // sales_ops rolü fiyatı hiç görmez: satışlar 'dispatch_sales' (fiyatsız)
@@ -64,7 +64,6 @@ export function SalesDispatch({ role }: { role: Role }) {
   const canWrite = ["admin", "sales", "sales_ops"].includes(base) && !role.endsWith("_view");
 
   const [sales, setSales] = useState<Sale[]>([]);
-  const [allowedByS, setAllowedByS] = useState<Record<string, string[]>>({}); // sale_id -> izinli depo id'leri
   const [warehouses, setWarehouses] = useState<Wh[]>([]);
   const [products, setProducts] = useState<Ref[]>([]);
   const [companies, setCompanies] = useState<Ref[]>([]);
@@ -138,21 +137,6 @@ export function SalesDispatch({ role }: { role: Role }) {
     setCompanies((coRes.data as Ref[]) || []);
     setInventory((invRes.data as InvRow[]) || []);
 
-    // Her satışın sevkiyata izinli depoları (beyaz liste — DB'de fn_sm_guard aynısını zorunlu kılar).
-    if (saleRows.length > 0) {
-      const { data: swData } = await supabase
-        .from("sale_warehouses")
-        .select("sale_id,warehouse_id")
-        .in("sale_id", saleRows.map((s) => s.id));
-      const am: Record<string, string[]> = {};
-      ((swData as { sale_id: string; warehouse_id: string }[] | null) || []).forEach((r) => {
-        (am[r.sale_id] ||= []).push(r.warehouse_id);
-      });
-      setAllowedByS(am);
-    } else {
-      setAllowedByS({});
-    }
-
     const { data: mv, error: mvErr } = await supabase
       .from("stock_movements")
       .select("id,sale_id,contract_id,warehouse_id,quantity,movement_date,movement_time,vehicle_plate,driver_name,notes,created_at,created_by")
@@ -186,7 +170,6 @@ export function SalesDispatch({ role }: { role: Role }) {
     Number(inventory.find((r) => r.warehouse_id === whId && r.product_id === productId)?.available_qty) || 0;
 
   const selectedSale = saleOf(saleId);
-  const selectedAllowed = saleId ? allowedByS[saleId] || [] : [];
   const dispatched = saleId ? dispatchedBySale.get(saleId) || 0 : 0;
   const remaining = selectedSale ? (Number(selectedSale.quantity) || 0) - dispatched : 0;
 
@@ -287,7 +270,6 @@ export function SalesDispatch({ role }: { role: Role }) {
               const rem = (Number(s.quantity) || 0) - disp;
               const rows = movements.filter((m) => m.sale_id === s.id);
               const isOpen = expanded.has(s.id);
-              const allowedCount = (allowedByS[s.id] || []).length;
               return (
                 <Card key={s.id} className="p-4">
                   <button
@@ -299,9 +281,6 @@ export function SalesDispatch({ role }: { role: Role }) {
                       <span className="ml-2 text-xs text-gray-500">
                         {s.order_no || "—"} · {pName(s.product_id)}
                       </span>
-                      {!isSalesOps && allowedCount === 0 && (
-                        <Badge color="yellow">Depo atanmamış</Badge>
-                      )}
                       {s.final_sale_date && (
                         <div className="mt-1 flex items-center gap-2">
                           <span className="text-xs text-gray-500">Son Teslim Tarihi: {formatDate(s.final_sale_date)}</span>
@@ -458,9 +437,8 @@ export function SalesDispatch({ role }: { role: Role }) {
                 <div className="inline-flex w-full overflow-hidden rounded-lg border border-border text-sm">
                   <button
                     type="button"
-                    disabled={!!selectedSale && selectedAllowed.length === 0}
                     onClick={() => setMode("warehouse")}
-                    className={`flex-1 px-3 py-2 font-medium disabled:cursor-not-allowed disabled:opacity-40 ${mode === "warehouse" ? "bg-brand text-white" : "bg-white text-gray-600"}`}
+                    className={`flex-1 px-3 py-2 font-medium ${mode === "warehouse" ? "bg-brand text-white" : "bg-white text-gray-600"}`}
                   >
                     Depodan
                   </button>
@@ -473,26 +451,18 @@ export function SalesDispatch({ role }: { role: Role }) {
                     Gemiden Direkt
                   </button>
                 </div>
-                {selectedSale && selectedAllowed.length === 0 && mode === "warehouse" && (
-                  <div className="mt-1 text-xs text-amber-600">
-                    Bu satış için henüz depo seçilmemiş (Satışlar ekranından eklenir) — şimdilik yalnızca
-                    &quot;Gemiden Direkt&quot; kullanılabilir.
-                  </div>
-                )}
               </Field>
 
               {mode === "warehouse" && (
-                <Field label="Depo (yalnızca bu satış için seçilenler)" required>
+                <Field label="Depo" required>
                   <Select value={warehouseId} onChange={(e) => setWarehouseId(e.target.value)}>
                     <option value="">Seçiniz...</option>
-                    {warehouses
-                      .filter((w) => selectedAllowed.includes(w.id))
-                      .map((w) => (
-                        <option key={w.id} value={w.id}>
-                          {w.name}
-                          {selectedSale ? ` — mevcut ${formatNumber(availableAt(w.id, selectedSale.product_id))} t` : ""}
-                        </option>
-                      ))}
+                    {warehouses.map((w) => (
+                      <option key={w.id} value={w.id}>
+                        {w.name}
+                        {selectedSale ? ` — mevcut ${formatNumber(availableAt(w.id, selectedSale.product_id))} t` : ""}
+                      </option>
+                    ))}
                   </Select>
                 </Field>
               )}
@@ -554,8 +524,9 @@ export function SalesDispatch({ role }: { role: Role }) {
 
       <p className="text-xs text-gray-400">
         Depo stoğu, satış kaydı oluşturulduğu an değil araç fiilen çıktığında düşer. &quot;Depodan&quot;
-        yalnızca Satışlar ekranında o satış için seçilen depo(lar)da çalışır ve mevcut stok aşılamaz;
-        &quot;Gemiden Direkt&quot; satışın bağlı gemisi iptal/tamamlanmış değilse kullanılabilir.
+        herhangi bir aktif yurtiçi depodan yapılabilir (mevcut stok aşılamaz) — hangi depodan
+        yükleneceğine operasyoncu karar verir; &quot;Gemiden Direkt&quot; satışın bağlı gemisi
+        iptal/tamamlanmış değilse kullanılabilir.
         &quot;Sevkiyatı Bitir&quot; dediğinizde tonaj tam eşleşmese bile satış kapanır; fark varsa hem burada
         hem Satışlar ekranındaki sevkiyat panelinde işaretlenir.
       </p>

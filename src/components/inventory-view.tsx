@@ -25,12 +25,12 @@ import { WarehouseShipSummary } from "./warehouse-ship-summary";
 // yalnızca "rezerve" bilgisi ayrıca gösteriliyor.
 //
 // Depo satırındaki büyük rakam artık SATILABİLİR (mevcut - rezerve): bir
-// satışın hangi depo(lar)dan çıkabileceği sale_warehouses beyaz listesinden
-// gelir; liste tek depoysa rezervasyon doğrudan ona, birden fazlaysa o
-// üründen depodaki mevcut miktarla ORANTILI dağıtılır (attributeByWarehouse'
-// daki ile aynı "elde veriyle en iyi tahmin" yaklaşımı) — kesin değil ama
-// depo seçilene kadar elde başka veri yok. Depo hiç seçilmemişse o kısım
-// hiçbir depoya yazılmaz, yalnızca üstteki ürün bazlı özette görünür.
+// satışın sevkiyat deposu önceden seçilmediğinden (operasyoncu dağıtım anında
+// karar verir), rezervasyon o ürünün STOKTA OLDUĞU depolar arasında mevcut
+// miktarla ORANTILI dağıtılır (attributeByWarehouse'daki ile aynı "elde
+// veriyle en iyi tahmin" yaklaşımı) — kesin değil ama fiilen sevk edilene
+// kadar elde başka veri yok. Ürün hiçbir depoda yoksa o kısım hiçbir depoya
+// yazılmaz, yalnızca üstteki ürün bazlı özette görünür.
 
 type InventoryRow = {
   warehouse_id: string;
@@ -44,7 +44,6 @@ type InventoryRow = {
 };
 type Reservation = { id: string; product_id: string | null; quantity: number | null; status: string };
 type DispatchRow = { sale_id: string | null; quantity: number | null };
-type SaleWarehouseRow = { sale_id: string; warehouse_id: string };
 
 const LOC_BADGE: Record<string, { color: "blue" | "purple" | "yellow"; label: string }> = {
   warehouse: { color: "blue", label: "Depo" },
@@ -57,7 +56,6 @@ export function InventoryView({ hideTitle = false }: { hideTitle?: boolean }) {
   const [rows, setRows] = useState<InventoryRow[]>([]);
   const [reservations, setReservations] = useState<Reservation[]>([]);
   const [dispatched, setDispatched] = useState<Record<string, number>>({});
-  const [allowedByS, setAllowedByS] = useState<Record<string, string[]>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
@@ -87,20 +85,6 @@ export function InventoryView({ hideTitle = false }: { hideTitle?: boolean }) {
         d[m.sale_id] = (d[m.sale_id] || 0) + (Number(m.quantity) || 0);
       });
       setDispatched(d);
-
-      // Rezervasyonların hangi depo(lar)a düşebileceği (beyaz liste) —
-      // depo bazlı satılabilir tonaj hesabı için gerekli (bkz. üst not).
-      if (resRows.length > 0) {
-        const { data: swData } = await supabase
-          .from("sale_warehouses")
-          .select("sale_id,warehouse_id")
-          .in("sale_id", resRows.map((r) => r.id));
-        const am: Record<string, string[]> = {};
-        ((swData as SaleWarehouseRow[] | null) || []).forEach((r) => {
-          (am[r.sale_id] ||= []).push(r.warehouse_id);
-        });
-        setAllowedByS(am);
-      }
       setLoading(false);
     })();
   }, [supabase]);
@@ -123,11 +107,25 @@ export function InventoryView({ hideTitle = false }: { hideTitle?: boolean }) {
     return map;
   }, [rows]);
 
-  // Depo×ürün mevcut miktar — rezervasyonu birden fazla izinli depo arasında
+  // Depo×ürün mevcut miktar — rezervasyonu, o ürünün bulunduğu depolar arasında
   // orantılı dağıtırken kullanılır (bkz. reservedByWarehouse).
   const availableByWhProduct = useMemo(() => {
     const map = new Map<string, number>();
     rows.forEach((r) => map.set(`${r.warehouse_id}|${r.product_id}`, Number(r.available_qty) || 0));
+    return map;
+  }, [rows]);
+
+  // Her ürünün şu an stokta (available_qty>0) olduğu depolar — sevkiyat deposu
+  // artık önceden seçilmediğinden (operasyoncu karar verir), rezervasyon
+  // dağıtımı için "adayları" bu belirler.
+  const warehousesByProduct = useMemo(() => {
+    const map = new Map<string, string[]>();
+    rows.forEach((r) => {
+      if ((Number(r.available_qty) || 0) <= 0) return;
+      const arr = map.get(r.product_id) || [];
+      arr.push(r.warehouse_id);
+      map.set(r.product_id, arr);
+    });
     return map;
   }, [rows]);
 
@@ -163,10 +161,9 @@ export function InventoryView({ hideTitle = false }: { hideTitle?: boolean }) {
       .sort((a, b) => b.reserved - a.reserved);
   }, [reservations, dispatched, productNames, totalAvailableByProduct]);
 
-  // Rezervasyonu depo(lar)a dağıt: satışın izinli deposu (sale_warehouses)
-  // tekse doğrudan ona, birden fazlaysa o üründen depodaki mevcut miktarla
-  // ORANTILI (hepsi 0'sa eşit) — depo hiç seçilmemişse "unassigned"da kalır,
-  // hiçbir depo satırına yazılmaz.
+  // Rezervasyonu depo(lar)a dağıt: o ürünün stokta olduğu depolar arasında
+  // mevcut miktarla ORANTILI (hepsi 0'sa eşit) — ürün hiçbir depoda yoksa
+  // "unassigned"da kalır, hiçbir depo satırına yazılmaz.
   const { reservedByWarehouse, unassignedReserved } = useMemo(() => {
     const byWh = new Map<string, number>();
     let unassigned = 0;
@@ -176,20 +173,20 @@ export function InventoryView({ hideTitle = false }: { hideTitle?: boolean }) {
       const disp = dispatched[s.id] || 0;
       const remaining = Math.round((qty - disp) * 100) / 100;
       if (remaining <= 0.01) return;
-      const allowed = allowedByS[s.id] || [];
-      if (allowed.length === 0) {
+      const candidates = warehousesByProduct.get(s.product_id) || [];
+      if (candidates.length === 0) {
         unassigned += remaining;
         return;
       }
-      const avails = allowed.map((whId) => Math.max(0, availableByWhProduct.get(`${whId}|${s.product_id}`) || 0));
+      const avails = candidates.map((whId) => Math.max(0, availableByWhProduct.get(`${whId}|${s.product_id}`) || 0));
       const totalAvail = avails.reduce((a, b) => a + b, 0);
-      allowed.forEach((whId, i) => {
-        const share = totalAvail > 0 ? avails[i] / totalAvail : 1 / allowed.length;
+      candidates.forEach((whId, i) => {
+        const share = totalAvail > 0 ? avails[i] / totalAvail : 1 / candidates.length;
         byWh.set(whId, (byWh.get(whId) || 0) + remaining * share);
       });
     });
     return { reservedByWarehouse: byWh, unassignedReserved: unassigned };
-  }, [reservations, dispatched, allowedByS, availableByWhProduct]);
+  }, [reservations, dispatched, warehousesByProduct, availableByWhProduct]);
 
   // Depo bazlı gruplama — panelin ilk bakışta gösterdiği "hangi depoda ne kadar
   // satılabilir". sellable = fiziki mevcut - depoya düşen rezerve payı; ekranda
@@ -284,8 +281,8 @@ export function InventoryView({ hideTitle = false }: { hideTitle?: boolean }) {
               </div>
               {unassignedReserved > 0.01 && (
                 <p className="mt-3 border-t border-border pt-2 text-[11px] text-gray-400">
-                  Bunun {formatNumber(unassignedReserved)} tonu için satışta henüz depo seçilmemiş — depo
-                  seçilince aşağıdaki depo satırlarına yansır.
+                  Bunun {formatNumber(unassignedReserved)} tonu şu an hiçbir depoda görünmüyor — stok
+                  girilince aşağıdaki depo satırlarına yansır.
                 </p>
               )}
             </Card>
