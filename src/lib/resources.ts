@@ -448,7 +448,9 @@ export const salesOrdersResource: ResourceConfig = {
     // listede yoksa "Diğer" ile serbest yazılabilir (büyük harfe çevrilir). "Diğer"
     // metin kutusu için yeterli genişlik kalsın diye ayrı satırda (inlineAfter yok).
     { name: "city", label: "Şehir", type: "select_other", optionsSource: { table: "warehouses", column: "city" }, required: true },
-    { name: "product_id", label: "Ürün", type: "reference", ref: { table: "products", labelField: "name", filter: { is_active: ["true"] } }, required: true },
+    // Yalnızca şu an stokta (herhangi bir depoda available_qty>0) olan ürünler
+    // seçilebilir — olmayan bir ürün satılamaz (bkz. sellable_products, 0079).
+    { name: "product_id", label: "Ürün", type: "reference", ref: { table: "sellable_products", labelField: "name" }, required: true },
     // Kaynak bağlantı (gemi) artık burada seçilmiyor — trigger otomatik atar
     // (bkz. üstteki not). Detay görünümünde hangi bağlantıya düştüğü görünür.
     { name: "contract_id", label: "Kaynak Bağlantı (Gemi)", type: "reference", ref: { table: "sellable_contracts", labelField: "vessel", labelFields: ["vessel", "contract_no"] }, formHidden: true },
