@@ -454,8 +454,8 @@ export const salesOrdersResource: ResourceConfig = {
     // Kaynak bağlantı (gemi) artık burada seçilmiyor — trigger otomatik atar
     // (bkz. üstteki not). Detay görünümünde hangi bağlantıya düştüğü görünür.
     { name: "contract_id", label: "Kaynak Bağlantı (Gemi)", type: "reference", ref: { table: "sellable_contracts", labelField: "vessel", labelFields: ["vessel", "contract_no"] }, formHidden: true },
-    // Çıkış deposu artık TEK seçim değil: kaydettikten sonra "Detay" görünümünde
-    // "Sevkiyat Depoları" bölümünden çoklu depo seçilir (sale_warehouses).
+    // Çıkış deposu burada seçilmez: hangi depodan yükleneceğine Satış
+    // Operasyon ekranında (sales-dispatch.tsx) sevkiyat anında operasyoncu karar verir.
     { name: "quantity", label: "Miktar", type: "number", required: true, positive: true },
     { name: "unit", label: "Birim", type: "select", options: UNIT_OPTIONS, required: true, inlineAfter: true },
     { name: "price", label: "Birim Fiyat", type: "money", min: 0 },
