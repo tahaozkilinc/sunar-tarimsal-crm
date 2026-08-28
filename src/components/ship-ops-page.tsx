@@ -376,13 +376,16 @@ export function ShipOpsPage({
     if (bulkStatus === "__other__" && !resolvedStatus) {
       setBulkErr("Stok durumunu yazın."); return;
     }
-    // Milli -> IM'li, Antrepo -> AN'li gümrük beyanname no istenir (kullanıcı isteği).
+    // Beyanname no formatı: YY + Gümrük İdare Kodu (6) + Rejim Kodu (2: IM/AN) +
+    // Sıra No (8) = 18 hane; rejim kodu BAŞTA değil, 9-10. karakterde (ör.
+    // Milli: 26310100IM00018828, Antrepo: 26310100AN00018828 — kullanıcı örneği).
     const customsNo = bulkCustomsNo.trim().toUpperCase();
     if (bulkStatus === "MİLLİ" || bulkStatus === "ANTREPO") {
-      const prefix = bulkStatus === "MİLLİ" ? "IM" : "AN";
-      if (!customsNo) { setBulkErr(`Gümrük beyanname no girin (${prefix} ile başlar).`); return; }
-      if (!customsNo.startsWith(prefix)) {
-        setBulkErr(`${bulkStatus === "MİLLİ" ? "Milli" : "Antrepo"} için beyanname no "${prefix}" ile başlamalı.`);
+      const regime = bulkStatus === "MİLLİ" ? "IM" : "AN";
+      const sample = `26310100${regime}00018828`;
+      if (!customsNo) { setBulkErr(`Gümrük beyanname no girin (ör. ${sample}).`); return; }
+      if (customsNo.length !== 18 || customsNo.slice(8, 10) !== regime) {
+        setBulkErr(`Beyanname no 18 haneli olmalı, 9-10. karakterleri "${regime}" olmalı (ör. ${sample}).`);
         return;
       }
     }
@@ -1012,14 +1015,12 @@ export function ShipOpsPage({
                     </Field>
                   )}
                   {(bulkStatus === "MİLLİ" || bulkStatus === "ANTREPO") && (
-                    <Field
-                      label={`Gümrük Beyanname No (${bulkStatus === "MİLLİ" ? "IM" : "AN"} İle Başlar)`}
-                      required
-                    >
+                    <Field label="Gümrük Beyanname No (18 Hane)" required>
                       <Input
                         value={bulkCustomsNo}
                         onChange={e => setBulkCustomsNo(e.target.value.toUpperCase())}
-                        placeholder={bulkStatus === "MİLLİ" ? "IM..." : "AN..."}
+                        placeholder={bulkStatus === "MİLLİ" ? "26310100IM00018828" : "26310100AN00018828"}
+                        maxLength={18}
                       />
                     </Field>
                   )}
