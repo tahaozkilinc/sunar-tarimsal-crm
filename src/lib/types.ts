@@ -163,6 +163,7 @@ export interface SalesOrder {
   delivery_date_to: string | null; // teslim penceresi bitişi (opsiyonel)
   final_sale_date: string | null; // sevkiyatın bitirilmesi beklenen son gün
   status: string;
+  payment_due_date: string | null; // müşterinin ödeyeceği vade
   dispatch_closed_at: string | null; // operasyoncu "Sevkiyatı Bitir" dediyse dolu
   dispatch_closed_by: string | null;
   notes: string | null;
