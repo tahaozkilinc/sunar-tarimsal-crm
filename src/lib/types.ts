@@ -97,6 +97,7 @@ export interface PurchaseContract {
   origin_country: string | null;
   loading_port: string | null;
   vessel: string | null;
+  etd: string | null; // tahmini kalkış — gantt çubuğunun başlangıcı (laycan DEĞİL)
   eta: string | null;
   laycan_start: string | null;
   laycan_end: string | null;

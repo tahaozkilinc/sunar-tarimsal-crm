@@ -362,6 +362,10 @@ export const purchaseContractsResource: ResourceConfig = {
     { name: "origin_country", label: "Menşe Ülke", type: "text" },
     { name: "loading_port", label: "Yükleme Limanı", type: "text" },
     { name: "vessel", label: "Gemi / Araç", type: "text" },
+    // Yolda geçen süreyi (Bağlantı -> Özet gantt'ı) laycan yerine gerçekten
+    // yansıtsın diye — laycan yükleme penceresidir, sefer süresi değil.
+    // Opsiyonel: boşsa gantt çubuğu doğrudan ETA'da (ince) başlar.
+    { name: "etd", label: "ETD (Tahmini Kalkış)", type: "date" },
     { name: "eta", label: "ETA (Tahmini Varış)", type: "date" },
     { name: "laycan_start", label: "Laycan Başlangıç", type: "date" },
     { name: "laycan_end", label: "Laycan Bitiş", type: "date" },

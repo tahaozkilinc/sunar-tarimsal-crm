@@ -85,11 +85,10 @@ type Contract = {
   created_at: string | null;
   contract_no: string | null;
   vessel: string | null;
+  etd: string | null;
   eta: string | null;
   product_id: string | null;
   supplier_id: string | null;
-  laycan_start: string | null;
-  laycan_end: string | null;
   origin_country: string | null;
 };
 
@@ -153,7 +152,7 @@ export function BaglantiSummary() {
         supabase
           .from("purchase_contracts")
           .select(
-            "id,status,quantity,price,currency,created_at,contract_no,vessel,eta,product_id,supplier_id,laycan_start,laycan_end,origin_country",
+            "id,status,quantity,price,currency,created_at,contract_no,vessel,etd,eta,product_id,supplier_id,origin_country",
           ),
         supabase.from("companies").select("id,name"),
       ]);
@@ -251,12 +250,16 @@ export function BaglantiSummary() {
     () => rows.filter((r) => r.status === "active" || r.status === "in_transit"),
     [rows],
   );
+  // Çubuk ETD -> ETA (fiilen "yolda" olunan süre) — laycan (yükleme penceresi,
+  // sefer değil) KULLANILMIYOR; ETD boşsa çubuk doğrudan ETA'da (ince) başlar
+  // (kullanıcı isteği — eskiden laycan_start kullanılınca gemi olduğundan çok
+  // daha uzun süredir yoldaymış gibi görünüyordu).
   const dated = useMemo(
     () =>
       ganttRows
         .map((c) => {
-          const startStr = c.laycan_start || c.eta;
-          const endStr = c.laycan_end || c.eta;
+          const startStr = c.etd || c.eta;
+          const endStr = c.eta;
           return {
             c,
             start: startStr ? parseLocalDate(startStr) : null,
@@ -419,7 +422,7 @@ export function BaglantiSummary() {
                           width: `${width}%`,
                           background: GANTT_STATUS_COLOR[c.status || ""] || "#6b7280",
                         }}
-                        title={`${sn(c.supplier_id)} · ETA ${formatDate(c.eta)}${c.origin_country ? ` · ${c.origin_country}` : ""}`}
+                        title={`${sn(c.supplier_id)}${c.etd ? ` · ETD ${formatDate(c.etd)}` : ""} · ETA ${formatDate(c.eta)}${c.origin_country ? ` · ${c.origin_country}` : ""}`}
                       >
                         <span className="truncate">{formatNumber(c.quantity)}</span>
                       </div>
