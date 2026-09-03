@@ -87,6 +87,10 @@ type Contract = {
   vessel: string | null;
   eta: string | null;
   product_id: string | null;
+  supplier_id: string | null;
+  laycan_start: string | null;
+  laycan_end: string | null;
+  origin_country: string | null;
 };
 
 const OPEN_STATUSES = new Set(["draft", "active", "in_transit"]);
@@ -94,6 +98,19 @@ const CARD_COLORS = [
   "#4b5563", "#84cc16", "#22c55e", "#6b7280", "#14b8a6",
   "#ec4899", "#3b82f6", "#f59e0b", "#8b5cf6", "#06b6d4",
 ];
+// "Yolda" gantt zaman çizelgesi için (bkz. BaglantiSummary altı) — eskiden
+// Bağlantı -> Sevkiyat sekmesindeydi, kullanıcı isteğiyle buraya taşındı.
+const GANTT_STATUS_COLOR: Record<string, string> = {
+  active: "#3b82f6",
+  in_transit: "#f59e0b",
+};
+const GANTT_MONTHS_TR = ["Oca", "Şub", "Mar", "Nis", "May", "Haz", "Tem", "Ağu", "Eyl", "Eki", "Kas", "Ara"];
+// Tarih-yalnızca (YYYY-MM-DD) string'ler "T00:00:00" olmadan new Date() ile
+// parse edilirse UTC gece yarısı sayılır — tarayıcı saat dilimi UTC'nin
+// gerisindeyse bir gün (ay sınırındaysa bir AY) geriye kayabilir; bu yüzden
+// hep yerel saatle parse ediyoruz (gantt'ın "tam çalışmama" şikayetinin nedeni
+// buydu — bkz. warehouse-ship-summary.tsx'teki aynı desen).
+const parseLocalDate = (s: string) => new Date(s.slice(0, 10) + "T00:00:00");
 
 type ProductStat = {
   id: string;
@@ -126,18 +143,25 @@ export function BaglantiSummary() {
   const supabase = useMemo(() => createClient(), []);
   const productMap = useProductMap(supabase);
   const [rows, setRows] = useState<Contract[]>([]);
+  const [suppliers, setSuppliers] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let on = true;
     (async () => {
-      const { data } = await supabase
-        .from("purchase_contracts")
-        .select(
-          "id,status,quantity,price,currency,created_at,contract_no,vessel,eta,product_id",
-        );
+      const [c, s] = await Promise.all([
+        supabase
+          .from("purchase_contracts")
+          .select(
+            "id,status,quantity,price,currency,created_at,contract_no,vessel,eta,product_id,supplier_id,laycan_start,laycan_end,origin_country",
+          ),
+        supabase.from("companies").select("id,name"),
+      ]);
       if (!on) return;
-      setRows((data as Contract[] | null) || []);
+      setRows((c.data as Contract[] | null) || []);
+      const sm: Record<string, string> = {};
+      ((s.data as { id: string; name: string }[] | null) || []).forEach((x) => (sm[x.id] = x.name));
+      setSuppliers(sm);
       setLoading(false);
     })();
     return () => {
@@ -146,6 +170,7 @@ export function BaglantiSummary() {
   }, [supabase]);
 
   const pn = (id: string | null) => (id && productMap[id]) || "Ürünsüz";
+  const sn = (id: string | null) => (id && suppliers[id]) || "—";
   const year = new Date().getFullYear();
 
   const productStats = useMemo<ProductStat[]>(() => {
@@ -221,6 +246,62 @@ export function BaglantiSummary() {
     [rows],
   );
 
+  // Gantt zaman çizelgesi verisi — yalnızca "yolda" (aktif + transit) gemiler.
+  const ganttRows = useMemo(
+    () => rows.filter((r) => r.status === "active" || r.status === "in_transit"),
+    [rows],
+  );
+  const dated = useMemo(
+    () =>
+      ganttRows
+        .map((c) => {
+          const startStr = c.laycan_start || c.eta;
+          const endStr = c.laycan_end || c.eta;
+          return {
+            c,
+            start: startStr ? parseLocalDate(startStr) : null,
+            end: endStr ? parseLocalDate(endStr) : null,
+          };
+        })
+        .filter((x): x is { c: Contract; start: Date; end: Date | null } => !!x.start && !isNaN(x.start.getTime()))
+        .sort((a, b) => a.start.getTime() - b.start.getTime()),
+    [ganttRows],
+  );
+  const ganttMonths = useMemo(() => {
+    if (dated.length === 0) return [] as { y: number; m: number }[];
+    let min = dated[0].start;
+    let max = dated[0].end || dated[0].start;
+    dated.forEach((x) => {
+      if (x.start < min) min = x.start;
+      const e = x.end || x.start;
+      if (e > max) max = e;
+    });
+    const arr: { y: number; m: number }[] = [];
+    let y = min.getFullYear();
+    let mo = min.getMonth();
+    while (y < max.getFullYear() || (y === max.getFullYear() && mo <= max.getMonth())) {
+      arr.push({ y, m: mo });
+      mo++;
+      if (mo > 11) {
+        mo = 0;
+        y++;
+      }
+    }
+    return arr;
+  }, [dated]);
+  const ganttPct = (d: Date) => {
+    if (ganttMonths.length === 0) return 0;
+    const idx = ganttMonths.findIndex((mm) => mm.y === d.getFullYear() && mm.m === d.getMonth());
+    if (idx < 0) return d < new Date(ganttMonths[0].y, ganttMonths[0].m, 1) ? 0 : 100;
+    const dim = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+    return ((idx + (d.getDate() - 1) / dim) / ganttMonths.length) * 100;
+  };
+  const ganttToday = new Date();
+  const ganttTodayInRange =
+    ganttMonths.length > 0 &&
+    ganttToday >= new Date(ganttMonths[0].y, ganttMonths[0].m, 1) &&
+    ganttToday <= new Date(ganttMonths[ganttMonths.length - 1].y, ganttMonths[ganttMonths.length - 1].m + 1, 0);
+
   if (loading) return <Loading />;
 
   return (
@@ -268,6 +349,88 @@ export function BaglantiSummary() {
           ))}
         </div>
       )}
+
+      {/* Yolda olan gemiler — Gantt zaman çizelgesi (ETA / Laycan) */}
+      <Card className="p-4">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-sm font-semibold">Yolda Olan Gemiler — Zaman Çizelgesi (ETA / Laycan)</h2>
+          <div className="flex flex-wrap gap-2 text-xs">
+            <span className="inline-flex items-center gap-1">
+              <span className="inline-block h-3 w-3 rounded-sm" style={{ background: GANTT_STATUS_COLOR.active }} />
+              Aktif
+            </span>
+            <span className="inline-flex items-center gap-1">
+              <span className="inline-block h-3 w-3 rounded-sm" style={{ background: GANTT_STATUS_COLOR.in_transit }} />
+              Transit
+            </span>
+          </div>
+        </div>
+
+        {dated.length === 0 ? (
+          <EmptyState message="Yolda (tarihli) gemi yok." />
+        ) : (
+          <div className="overflow-x-auto">
+            <div style={{ minWidth: `${176 + ganttMonths.length * 80}px` }}>
+              {/* Ay başlıkları */}
+              <div className="flex border-b border-border text-xs text-gray-500">
+                <div className="w-44 shrink-0 px-2 py-2 font-medium">Gemi / Sözleşme</div>
+                <div className="flex flex-1">
+                  {ganttMonths.map((mm, i) => (
+                    <div key={i} className="flex-1 border-l border-border px-2 py-2">
+                      {GANTT_MONTHS_TR[mm.m]} {String(mm.y).slice(2)}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Satırlar */}
+              {dated.map(({ c, start, end }) => {
+                const left = ganttPct(start);
+                const right = end ? ganttPct(end) : left;
+                const width = Math.max(right - left, 1.5);
+                return (
+                  <div key={c.id} className="flex items-center border-b border-border last:border-0">
+                    <div className="w-44 shrink-0 px-2 py-2">
+                      <div className="truncate text-sm font-medium">{c.vessel || c.contract_no || "—"}</div>
+                      <div className="truncate text-xs text-gray-500">
+                        {pn(c.product_id)} · {formatNumber(c.quantity)} ton
+                      </div>
+                    </div>
+                    <div className="relative h-10 flex-1">
+                      {/* ay ızgarası */}
+                      <div className="absolute inset-0 flex">
+                        {ganttMonths.map((_, i) => (
+                          <div key={i} className="flex-1 border-l border-border/60" />
+                        ))}
+                      </div>
+                      {/* bugün çizgisi */}
+                      {ganttTodayInRange && (
+                        <div
+                          className="absolute top-0 bottom-0 z-10 w-px bg-red-400"
+                          style={{ left: `${ganttPct(ganttToday)}%` }}
+                          title="Bugün"
+                        />
+                      )}
+                      {/* bar */}
+                      <div
+                        className="absolute top-2.5 flex h-5 items-center justify-center rounded px-1 text-[10px] font-medium text-white"
+                        style={{
+                          left: `${left}%`,
+                          width: `${width}%`,
+                          background: GANTT_STATUS_COLOR[c.status || ""] || "#6b7280",
+                        }}
+                        title={`${sn(c.supplier_id)} · ETA ${formatDate(c.eta)}${c.origin_country ? ` · ${c.origin_country}` : ""}`}
+                      >
+                        <span className="truncate">{formatNumber(c.quantity)}</span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </Card>
 
       <ListCard title="Yolda / Gelecek olanlar" empty="Yolda kayıt yok." count={upcoming.length}>
         {upcoming.map((c) => (
