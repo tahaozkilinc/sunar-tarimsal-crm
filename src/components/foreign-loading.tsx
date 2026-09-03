@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Badge, Button, Card, EmptyState, Field, Input, Select, Spinner } from "./ui";
 import { formatDate, formatNumber } from "@/lib/format";
+import { translateDbError } from "@/lib/db-errors";
 import { L } from "@/lib/i18n";
 import { Trash2 } from "lucide-react";
 import type { Role } from "@/lib/types";
@@ -86,7 +87,7 @@ export function ForeignLoading({ role, language }: { role: Role; language: "tr" 
         .order("eta", { ascending: true }),
       supabase.from("products").select("id,name"),
     ]);
-    if (w.error) { setError(w.error.message); setLoading(false); return; }
+    if (w.error) { setError(translateDbError(w.error)); setLoading(false); return; }
     const whList = (w.data as Wh[]) || [];
     setWhs(whList);
     setContracts((c.data as Contract[]) || []);
@@ -98,7 +99,7 @@ export function ForeignLoading({ role, language }: { role: Role; language: "tr" 
         .in("warehouse_id", whList.map((x) => x.id))
         .in("movement_type", ["origin_in", "transfer"])
         .order("created_at", { ascending: false });
-      if (mvErr) setError(mvErr.message);
+      if (mvErr) setError(translateDbError(mvErr));
       setMovements((mv as Movement[]) || []);
     } else {
       setMovements([]);
@@ -180,7 +181,7 @@ export function ForeignLoading({ role, language }: { role: Role; language: "tr" 
       movement_date: date,
     });
     setSaving(false);
-    if (err) { setFormErr(err.message); return; }
+    if (err) { setFormErr(translateDbError(err)); return; }
     setFlash(
       t(
         `${formatNumber(q)} ton ${dir === "in" ? "depoya girildi" : "gemiye yüklendi"}`,
@@ -195,7 +196,7 @@ export function ForeignLoading({ role, language }: { role: Role; language: "tr" 
   const deleteMovement = async (id: string) => {
     if (!window.confirm(t("Bu hareket silinsin mi?", "Delete this movement?"))) return;
     const { error: err } = await supabase.from("stock_movements").delete().eq("id", id);
-    if (err) { window.alert(t("Silinemedi: ", "Could not delete: ") + err.message); return; }
+    if (err) { window.alert(t("Silinemedi: ", "Could not delete: ") + translateDbError(err)); return; }
     await load();
   };
 

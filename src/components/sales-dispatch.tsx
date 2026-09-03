@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { Badge, Button, Card, DeadlineBadge, EmptyState, Field, Input, Select, Spinner } from "./ui";
 import { MovementPhotos, type MovementPhoto } from "./movement-photos";
 import { formatDate, formatNumber } from "@/lib/format";
+import { translateDbError } from "@/lib/db-errors";
 import { baseRole } from "@/lib/nav";
 import { Trash2, ChevronDown, ChevronUp, CheckCircle2 } from "lucide-react";
 import type { Role } from "@/lib/types";
@@ -129,7 +130,7 @@ export function SalesDispatch({ role }: { role: Role }) {
       supabase.from("companies").select("id,name"),
       supabase.from("inventory").select("warehouse_id,product_id,available_qty"),
     ]);
-    if (saleRes.error) { setError(saleRes.error.message); setLoading(false); return; }
+    if (saleRes.error) { setError(translateDbError(saleRes.error)); setLoading(false); return; }
     const saleRows = (saleRes.data as Sale[]) || [];
     setSales(saleRows);
     setWarehouses((whRes.data as Wh[]) || []);
@@ -142,7 +143,7 @@ export function SalesDispatch({ role }: { role: Role }) {
       .select("id,sale_id,contract_id,warehouse_id,quantity,movement_date,movement_time,vehicle_plate,driver_name,notes,created_at,created_by")
       .eq("movement_type", "outbound_sale")
       .order("created_at", { ascending: false });
-    if (mvErr) setError(mvErr.message);
+    if (mvErr) setError(translateDbError(mvErr));
     const rows = (mv as Movement[]) || [];
     setMovements(rows);
     await loadPhotos(rows.map((r) => r.id));
@@ -204,7 +205,7 @@ export function SalesDispatch({ role }: { role: Role }) {
       movement_time: time || null,
     });
     setSaving(false);
-    if (err) { setFormErr(err.message); return; }
+    if (err) { setFormErr(translateDbError(err)); return; }
     setFlash(`${formatNumber(q)} ton çıkış kaydedildi`);
     setQty(""); setPlate(""); setDriver("");
     timeTouchedRef.current = false;
@@ -216,7 +217,7 @@ export function SalesDispatch({ role }: { role: Role }) {
   const deleteMovement = async (id: string) => {
     if (!window.confirm("Bu çıkış kaydı silinsin mi?")) return;
     const { error: err } = await supabase.from("stock_movements").delete().eq("id", id);
-    if (err) { window.alert("Silinemedi: " + err.message); return; }
+    if (err) { window.alert("Silinemedi: " + translateDbError(err)); return; }
     await load();
   };
 
@@ -233,7 +234,7 @@ export function SalesDispatch({ role }: { role: Role }) {
     setClosingId(s.id);
     const { error: err } = await supabase.rpc("close_sale_dispatch", { p_sale_id: s.id });
     setClosingId(null);
-    if (err) { window.alert("Kapatılamadı: " + err.message); return; }
+    if (err) { window.alert("Kapatılamadı: " + translateDbError(err)); return; }
     if (saleId === s.id) setSaleId("");
     await load();
   };

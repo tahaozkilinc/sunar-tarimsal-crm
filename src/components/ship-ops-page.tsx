@@ -7,6 +7,7 @@ import { Badge, Button, Card, EmptyState, Field, Input, Select, Spinner } from "
 import { MovementPhotos, type MovementPhoto } from "./movement-photos";
 import { PhotoGallery } from "./photo-gallery";
 import { formatDate, formatNumber } from "@/lib/format";
+import { translateDbError } from "@/lib/db-errors";
 import { CONTRACT_STATUS_OPTIONS, SALES_STATUS_OPTIONS, STOCK_STATUS_OPTIONS } from "@/lib/resources";
 import { ArrowLeft, Camera, CheckCircle, Download, Leaf, Printer, Trash2 } from "lucide-react";
 
@@ -215,7 +216,7 @@ export function ShipOpsPage({
           .maybeSingle();
         if (ext.data) c = ext;
       }
-      if (c.error) { setError(c.error.message); setLoading(false); return; }
+      if (c.error) { setError(translateDbError(c.error)); setLoading(false); return; }
       const cd = c.data as Contract | null;
       setContract(cd ?? null);
       setWarehouses((w.data as Ref[]) || []);
@@ -347,7 +348,7 @@ export function ShipOpsPage({
       movement_date:  date,
       movement_time:  time || null,
     });
-    if (err) { setSaving(false); setFormErr(err.message); return; }
+    if (err) { setSaving(false); setFormErr(translateDbError(err)); return; }
     if (contract.status !== "arrived" && contract.status !== "completed") {
       // DB tarafında 0004 trigger'ı (SECURITY DEFINER) durumu 'arrived' yapar;
       // buradan update atmak operasyon rolünde RLS'e takılıp sessizce 0 satır
@@ -402,7 +403,7 @@ export function ShipOpsPage({
       customs_declaration_no: customsNo || null,
       movement_date: bulkDate,
     });
-    if (err) { setBulkSaving(false); setBulkErr(err.message); return; }
+    if (err) { setBulkSaving(false); setBulkErr(translateDbError(err)); return; }
     if (contract.status !== "arrived" && contract.status !== "completed") {
       setContract(prev => prev ? { ...prev, status: "arrived" } : prev);
     }
@@ -421,7 +422,7 @@ export function ShipOpsPage({
     // fotoğraflarını kaybettirirdi.
     const paths = (photosByMovement[id] || []).map((p) => p.path);
     const { error: err } = await supabase.from("stock_movements").delete().eq("id", id);
-    if (err) { window.alert("Silinemedi: " + err.message); return; }
+    if (err) { window.alert("Silinemedi: " + translateDbError(err)); return; }
     if (paths.length) await supabase.storage.from("movement-photos").remove(paths);
     await loadMovements();
   };
@@ -443,7 +444,7 @@ export function ShipOpsPage({
     // Statü geçişi DEFINER RPC ile: pc_write operasyona kapalı olduğundan
     // doğrudan update RLS'te sessizce 0 satır güncelliyordu (görünmez hata).
     const { error: err } = await supabase.rpc("complete_ships", { p_contract_ids: [contract.id] });
-    if (err) { window.alert("Gemi bitirilemedi: " + err.message); return; }
+    if (err) { window.alert("Gemi bitirilemedi: " + translateDbError(err)); return; }
     setContract(prev => prev ? { ...prev, status: "completed" } : prev);
   };
 
@@ -460,7 +461,7 @@ export function ShipOpsPage({
       p_assigned_to: assignedToId || null,
       p_ship_broker_id: shipBrokerId || null,
     });
-    if (rpcResult.error) { setAssignSaving(false); setAssignErr(rpcResult.error.message); return; }
+    if (rpcResult.error) { setAssignSaving(false); setAssignErr(translateDbError(rpcResult.error)); return; }
     const parties = {
       surveyor_id: surveyorId || null,
       port_id:     portId || null,

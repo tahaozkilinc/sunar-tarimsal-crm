@@ -19,6 +19,7 @@ import {
 } from "./ui";
 import { formatDate, formatNumber } from "@/lib/format";
 import { exportToExcel } from "@/lib/export";
+import { translateDbError } from "@/lib/db-errors";
 import type { FieldDef, ResourceConfig, SelectOption } from "@/lib/resources";
 import type { Role } from "@/lib/types";
 import { Download, Eye, Filter, MapPin, Paperclip, Pencil, Plus, Trash2, X } from "lucide-react";
@@ -238,7 +239,7 @@ function FileInput({
     const { error } = await supabase.storage.from(bucket).upload(key, file, { upsert: false });
     setUploading(false);
     if (error) {
-      setErr(error.message);
+      setErr(translateDbError(error));
       return;
     }
     onChange(key);
@@ -639,7 +640,7 @@ export function ResourceManager({
     // count sorgusuna gerek kalmadan.
     if (limited) query = query.limit(ROW_LIMIT + 1);
     const { data, error } = await query;
-    if (error) setError(error.message);
+    if (error) setError(translateDbError(error));
     const all = (data as Row[]) || [];
     if (limited && all.length > ROW_LIMIT) {
       setHasMore(true);
@@ -1081,7 +1082,7 @@ export function ResourceManager({
 
     setSaving(false);
     if (result.error) {
-      setFormError(result.error.message);
+      setFormError(translateDbError(result.error));
       return;
     }
     setModalOpen(false);
@@ -1095,10 +1096,10 @@ export function ResourceManager({
         .from(config.table)
         .update({ [config.softDelete.column]: false })
         .eq("id", row.id);
-      if (error) { alert("Silinemedi: " + error.message); return; }
+      if (error) { alert("Silinemedi: " + translateDbError(error)); return; }
     } else {
       const { error } = await supabase.from(config.table).delete().eq("id", row.id);
-      if (error) { alert("Silinemedi: " + error.message); return; }
+      if (error) { alert("Silinemedi: " + translateDbError(error)); return; }
     }
     loadRows();
   };
@@ -1131,7 +1132,7 @@ export function ResourceManager({
       : supabase.from(config.table).delete().in("id", ids);
     const { data, error } = await query.select("id");
     setBulkDeleting(false);
-    if (error) { alert("Silinemedi: " + error.message); return; }
+    if (error) { alert("Silinemedi: " + translateDbError(error)); return; }
     const deletedCount = data?.length || 0;
     setSelected(new Set());
     loadRows();
@@ -1166,7 +1167,7 @@ export function ResourceManager({
       .eq("id", detail.id);
     setSavingNote(false);
     if (error) {
-      alert("Not kaydedilemedi: " + error.message);
+      alert("Not kaydedilemedi: " + translateDbError(error));
       return;
     }
     setDetail({ ...detail, [notesFieldName]: noteText });

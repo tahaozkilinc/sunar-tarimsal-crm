@@ -7,6 +7,7 @@ import { Badge, Card, EmptyState, Spinner } from "./ui";
 import { formatNumber } from "@/lib/format";
 import { formatUsd, toUsd } from "@/lib/fx";
 import { CONTRACT_STATUS_OPTIONS } from "@/lib/resources";
+import { translateDbError } from "@/lib/db-errors";
 
 // Pozisyon raporu: ürün bazında NET pozisyon = bağlanan − satılan.
 // Bir tüccarın temel risk görünümü: hangi üründe ne kadar "açıktayım",
@@ -75,7 +76,7 @@ export function PositionReport() {
         supabase.from("sales_orders").select("contract_id,quantity,status").neq("status", "cancelled"),
         supabase.from("products").select("id,name"),
       ]);
-      if (pc.error) setError(pc.error.message);
+      if (pc.error) setError(translateDbError(pc.error));
       setContracts((pc.data as PC[]) || []);
       setSales((so.data as SO[]) || []);
       setProducts((pr.data as Ref[]) || []);

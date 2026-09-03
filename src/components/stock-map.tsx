@@ -5,6 +5,7 @@ import "leaflet/dist/leaflet.css";
 import { createClient } from "@/lib/supabase/client";
 import { EmptyState, SearchableSelect, Spinner } from "./ui";
 import { formatNumber } from "@/lib/format";
+import { translateDbError } from "@/lib/db-errors";
 import { TURKEY_CENTER, geocodeLocation } from "@/lib/turkey-cities";
 
 // Stok haritası: TÜM aktif depo/fabrika/limanlar noktayla gösterilir (stoksuz
@@ -113,7 +114,7 @@ export function StockMap() {
         supabase.from("warehouses").select("id,name,type,city,country,lat,lng,is_active,port_id"),
         supabase.from("companies").select("id,name,city,country,lat,lng").eq("type", "port"),
       ]);
-      if (inv.error) { setError(inv.error.message); setLoading(false); return; }
+      if (inv.error) { setError(translateDbError(inv.error)); setLoading(false); return; }
       setRows((inv.data as InvRow[]) || []);
       const wmap: Record<string, WhMeta> = {};
       ((wh.data as (WhMeta & { id: string })[] | null) || []).forEach((w) => {

@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { Badge, Button, Card, Input, Select } from "./ui";
 import { formatDate } from "@/lib/format";
 import { CURRENCY_OPTIONS, EXPENSE_TYPE_OPTIONS } from "@/lib/resources";
+import { translateDbError } from "@/lib/db-errors";
 import { baseRole } from "@/lib/nav";
 import type { Role } from "@/lib/types";
 import { CheckCircle2, Trash2 } from "lucide-react";
@@ -89,7 +90,7 @@ export function PendingExpenses({ role }: { role: Role }) {
       .update({ amount, currency: d.currency })
       .eq("id", row.id);
     setBusy((p) => ({ ...p, [row.id]: false }));
-    if (error) { setErr((p) => ({ ...p, [row.id]: error.message })); return; }
+    if (error) { setErr((p) => ({ ...p, [row.id]: translateDbError(error) })); return; }
     setRows((prev) => prev.filter((r) => r.id !== row.id));
   };
 
@@ -98,7 +99,7 @@ export function PendingExpenses({ role }: { role: Role }) {
     setBusy((p) => ({ ...p, [row.id]: true }));
     const { error } = await supabase.from("warehouse_expenses").delete().eq("id", row.id);
     setBusy((p) => ({ ...p, [row.id]: false }));
-    if (error) { setErr((p) => ({ ...p, [row.id]: error.message })); return; }
+    if (error) { setErr((p) => ({ ...p, [row.id]: translateDbError(error) })); return; }
     setRows((prev) => prev.filter((r) => r.id !== row.id));
   };
 

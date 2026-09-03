@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Badge, Card, EmptyState, Input, Spinner } from "./ui";
 import { formatNumber } from "@/lib/format";
+import { translateDbError } from "@/lib/db-errors";
 import { ChevronDown, ChevronRight, Search } from "lucide-react";
 import { WarehouseShipSummary } from "./warehouse-ship-summary";
 
@@ -75,7 +76,7 @@ export function InventoryView({ hideTitle = false }: { hideTitle?: boolean }) {
           .eq("movement_type", "outbound_sale")
           .not("sale_id", "is", null),
       ]);
-      if (inv.error) setError(inv.error.message);
+      if (inv.error) setError(translateDbError(inv.error));
       setRows((inv.data as InventoryRow[]) || []);
       const resRows = (res.data as Reservation[]) || [];
       setReservations(resRows);
