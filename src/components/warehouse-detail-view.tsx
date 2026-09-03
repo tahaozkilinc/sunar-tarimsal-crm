@@ -7,7 +7,7 @@ import { WarehouseDetailExtra } from "./warehouse-detail-extra";
 import { ResourceManager } from "./resource-manager";
 import { PhotoGallery } from "./photo-gallery";
 import { Badge, Card, Tabs } from "./ui";
-import { LOCATION_TYPE_OPTIONS, warehouseContactsResource, warehousesResource } from "@/lib/resources";
+import { LOCATION_TYPE_OPTIONS, pricingAgreementsResource, warehouseContactsResource, warehousesResource } from "@/lib/resources";
 import { formatNumber } from "@/lib/format";
 import { baseRole } from "@/lib/nav";
 import type { Warehouse, Role } from "@/lib/types";
@@ -34,7 +34,7 @@ function Info({ label, value }: { label: string; value: string | null }) {
   );
 }
 
-type Tab = "details" | "subwarehouses" | "stock" | "ledger";
+type Tab = "details" | "subwarehouses" | "stock" | "ledger" | "pricing";
 
 export function WarehouseDetailView({
   warehouse,
@@ -85,6 +85,7 @@ export function WarehouseDetailView({
           { key: "subwarehouses", label: "Alt Depolar" },
           { key: "stock", label: "Stok Özeti" },
           { key: "ledger", label: "Hareket Geçmişi" },
+          { key: "pricing", label: "Anlaşmalı Fiyat" },
         ]}
       />
 
@@ -140,6 +141,21 @@ export function WarehouseDetailView({
 
       {(tab === "stock" || tab === "ledger") && (
         <WarehouseDetailExtra warehouseId={warehouse.id} role={role} section={tab} />
+      )}
+
+      {tab === "pricing" && (
+        <ResourceManager
+          config={{
+            ...pricingAgreementsResource,
+            fields: pricingAgreementsResource.fields.map((f) =>
+              ["warehouse_id", "port_id", "target_type"].includes(f.name) ? { ...f, formHidden: true } : f,
+            ),
+          }}
+          role={role}
+          filter={{ warehouse_id: warehouse.id }}
+          defaultValues={{ warehouse_id: warehouse.id, target_type: "warehouse" }}
+          hideTitle
+        />
       )}
     </div>
   );

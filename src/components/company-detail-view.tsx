@@ -9,12 +9,12 @@ import { ResourceManager } from "./resource-manager";
 import { CompanyReport } from "./company-report";
 import { CompanyShipStats } from "./company-ship-stats";
 import { Badge, Card, Tabs } from "./ui";
-import { COMPANY_TYPE_OPTIONS, activitiesResource, contactsResource, warehousesResource } from "@/lib/resources";
+import { COMPANY_TYPE_OPTIONS, activitiesResource, contactsResource, pricingAgreementsResource, warehousesResource } from "@/lib/resources";
 import type { Company, Role } from "@/lib/types";
 import { baseRole } from "@/lib/nav";
 
 const OPS_PARTNER_TYPES = new Set(["surveyor", "port", "carrier", "agent", "broker", "ship_broker"]);
-type DetailTab = "contacts" | "activities" | "warehouses" | "summary";
+type DetailTab = "contacts" | "activities" | "warehouses" | "pricing" | "summary";
 
 // Bir firmanın aktiviteleri artık CRM'in ortak/havuz sekmesinde değil, doğrudan
 // bu sayfada (bkz. crm-tabs.tsx — aktivite sekmesi kaldırıldı). crm_activities
@@ -102,6 +102,15 @@ export function CompanyDetailView({ company, role }: { company: Company; role: R
   };
   const isPort = company.type === "port";
 
+  // Liman ile anlaşmalı fiyat (elleçleme ücreti vb.) — firma alanı sabit,
+  // formda gizli, otomatik bu limana atanır.
+  const pricingConfig = {
+    ...pricingAgreementsResource,
+    fields: pricingAgreementsResource.fields.map((f) =>
+      ["port_id", "warehouse_id", "target_type"].includes(f.name) ? { ...f, formHidden: true } : f,
+    ),
+  };
+
   return (
     <div className="space-y-5">
       <div>
@@ -150,6 +159,7 @@ export function CompanyDetailView({ company, role }: { company: Company; role: R
           { key: "contacts", label: "Kişiler" },
           { key: "activities", label: "Aktiviteler" },
           ...(isPort ? [{ key: "warehouses", label: "Depolar" }] : []),
+          ...(isPort ? [{ key: "pricing", label: "Anlaşmalı Fiyat" }] : []),
           { key: "summary", label: "Operasyonel Özet" },
         ]}
       />
@@ -180,6 +190,16 @@ export function CompanyDetailView({ company, role }: { company: Company; role: R
           role={role}
           filter={{ port_id: company.id }}
           defaultValues={{ port_id: company.id }}
+          hideTitle
+        />
+      )}
+
+      {tab === "pricing" && isPort && (
+        <ResourceManager
+          config={pricingConfig}
+          role={role}
+          filter={{ port_id: company.id }}
+          defaultValues={{ port_id: company.id, target_type: "port" }}
           hideTitle
         />
       )}

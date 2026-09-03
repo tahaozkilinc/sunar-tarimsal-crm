@@ -32,6 +32,10 @@ const CONSTRAINT_MESSAGES: Record<string, string> = {
   ck_we_fx: "USD/TRY veya EUR/TRY kuru geçersiz görünüyor (0 ile 1000 arasında olmalı).",
   ck_we_target: "Depo veya bağlantıdan en az biri seçilmeli.",
 
+  // pricing_agreements (0082)
+  ck_pa_target: "Bir anlaşma ya depoya ya da limana ait olabilir, ikisine birden değil.",
+  ck_pa_valid_range: "Geçerlilik bitiş tarihi, başlangıç tarihinden önce olamaz.",
+
   // warehouses (0044, 0053)
   ck_wh_lat: "Enlem -90 ile 90 arasında olmalı.",
   ck_wh_lng: "Boylam -180 ile 180 arasında olmalı.",

@@ -574,6 +574,40 @@ export const warehouseExpensesResource: ResourceConfig = {
   ],
 };
 
+// Depo/liman ile ANLAŞMALI fiyat (tarife) — warehouse_expenses'ten farklı:
+// bu, fiilen oluşan bir masraf değil, standing bir anlaşma kaydı. Zaman
+// içinde değişebileceğinden (yeni yıl, yeni kira) var olanı güncellemek
+// yerine yeni satır eklenir. Hem depo detayına (warehouse_id) hem liman firma
+// detayına (port_id) formHidden + defaultValues ile enjekte edilerek
+// gömülür — bkz. warehouse-detail-view.tsx / company-detail-view.tsx.
+export const PRICING_MODEL_OPTIONS: SelectOption[] = [
+  { value: "per_ton", label: "Ton Başına", color: "blue" },
+  { value: "annual", label: "Yıllık Sabit", color: "purple" },
+  { value: "flat", label: "Sabit (Kira vb.)", color: "gray" },
+];
+
+export const pricingAgreementsResource: ResourceConfig = {
+  table: "pricing_agreements",
+  title: "Anlaşmalı Fiyat",
+  singular: "Anlaşma",
+  writeRoles: ["admin", "operations", "maliyet"],
+  defaultValues: { currency: "USD", pricing_model: "per_ton" },
+  orderBy: { column: "valid_from", ascending: false },
+  listFields: ["pricing_model", "price", "currency", "valid_from", "valid_to"],
+  fields: [
+    { name: "target_type", label: "Hedef", type: "select", options: [{ value: "warehouse", label: "Depo" }, { value: "port", label: "Liman" }], formHidden: true },
+    { name: "warehouse_id", label: "Depo", type: "reference", ref: { table: "warehouses", labelField: "name" }, formHidden: true },
+    { name: "port_id", label: "Liman", type: "reference", ref: { table: "companies", labelField: "name", filter: { type: ["port"] } }, formHidden: true },
+    { name: "pricing_model", label: "Fiyatlandırma Şekli", type: "select", options: PRICING_MODEL_OPTIONS, required: true },
+    // per_ton: $/ton, annual: $/yıl, flat: toplam sabit tutar (ör. kira) — bkz. pricing_model.
+    { name: "price", label: "Fiyat", type: "money", required: true, positive: true },
+    { name: "currency", label: "Para Birimi", type: "select", options: CURRENCY_OPTIONS },
+    { name: "valid_from", label: "Geçerlilik Başlangıcı", type: "date" },
+    { name: "valid_to", label: "Geçerlilik Bitişi", type: "date" },
+    { name: "notes", label: "Notlar", type: "textarea", placeholder: "Ör. kapasite, ek şartlar..." },
+  ],
+};
+
 export const principalsResource: ResourceConfig = {
   table: "principals",
   title: "Adına Alınanlar",

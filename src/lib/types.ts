@@ -82,6 +82,22 @@ export interface Warehouse {
   is_active: boolean;
 }
 
+// Depo/liman ile anlaşmalı fiyat (tarife) — fiilen oluşan bir masraf değil,
+// standing bir anlaşma kaydı (bkz. warehouse_expenses ile farkı, resources.ts).
+export interface PricingAgreement {
+  id: string;
+  target_type: "warehouse" | "port";
+  warehouse_id: string | null;
+  port_id: string | null;
+  pricing_model: "per_ton" | "annual" | "flat";
+  price: number;
+  currency: string;
+  valid_from: string | null;
+  valid_to: string | null;
+  notes: string | null;
+  created_at: string;
+}
+
 export interface PurchaseContract {
   id: string;
   contract_no: string | null;
