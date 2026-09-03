@@ -89,7 +89,7 @@ export interface PricingAgreement {
   target_type: "warehouse" | "port";
   warehouse_id: string | null;
   port_id: string | null;
-  pricing_model: "per_ton" | "annual" | "flat";
+  pricing_model: "per_ton" | "annual" | "monthly" | "flat";
   price: number;
   currency: string;
   valid_from: string | null;

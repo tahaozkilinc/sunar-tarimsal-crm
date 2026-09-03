@@ -583,6 +583,7 @@ export const warehouseExpensesResource: ResourceConfig = {
 export const PRICING_MODEL_OPTIONS: SelectOption[] = [
   { value: "per_ton", label: "Ton Başına", color: "blue" },
   { value: "annual", label: "Yıllık Sabit", color: "purple" },
+  { value: "monthly", label: "Aylık Sabit", color: "yellow" },
   { value: "flat", label: "Sabit (Kira vb.)", color: "gray" },
 ];
 
@@ -599,7 +600,7 @@ export const pricingAgreementsResource: ResourceConfig = {
     { name: "warehouse_id", label: "Depo", type: "reference", ref: { table: "warehouses", labelField: "name" }, formHidden: true },
     { name: "port_id", label: "Liman", type: "reference", ref: { table: "companies", labelField: "name", filter: { type: ["port"] } }, formHidden: true },
     { name: "pricing_model", label: "Fiyatlandırma Şekli", type: "select", options: PRICING_MODEL_OPTIONS, required: true },
-    // per_ton: $/ton, annual: $/yıl, flat: toplam sabit tutar (ör. kira) — bkz. pricing_model.
+    // per_ton: $/ton, annual: $/yıl, monthly: $/ay, flat: toplam sabit tutar (ör. kira) — bkz. pricing_model.
     { name: "price", label: "Fiyat", type: "money", required: true, positive: true },
     { name: "currency", label: "Para Birimi", type: "select", options: CURRENCY_OPTIONS },
     { name: "valid_from", label: "Geçerlilik Başlangıcı", type: "date" },
