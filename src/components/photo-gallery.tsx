@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { compressImage, isImagePath } from "@/lib/image";
+import { translateDbError } from "@/lib/db-errors";
 import { Spinner } from "./ui";
 import { FileText, Plus, Trash2 } from "lucide-react";
 
@@ -93,7 +94,7 @@ export function PhotoGallery({
         const key = `${fkValue}/${crypto.randomUUID()}.${ext}`;
         const up = await supabase.storage.from(bucket).upload(key, blob, { upsert: false, contentType });
         if (up.error) {
-          setErr(up.error.message);
+          setErr(translateDbError(up.error));
           break;
         }
         const ins = await supabase
@@ -101,7 +102,7 @@ export function PhotoGallery({
           .insert({ [fkColumn]: fkValue, path: key, label: pendingLabel.current });
         if (ins.error) {
           await supabase.storage.from(bucket).remove([key]);
-          setErr(ins.error.message);
+          setErr(translateDbError(ins.error));
           break;
         }
       }

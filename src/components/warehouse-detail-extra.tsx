@@ -5,6 +5,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { Badge, Card, Select } from "./ui";
 import { formatDate, formatNumber } from "@/lib/format";
+import { translateDbError } from "@/lib/db-errors";
 import {
   attributeByWarehouse,
   buildLedger,
@@ -118,7 +119,7 @@ export function WarehouseDetailExtra({
       .eq("id", movementId)
       .select("id")
       .maybeSingle();
-    if (error) { window.alert("Güncellenemedi: " + error.message); return; }
+    if (error) { window.alert("Güncellenemedi: " + translateDbError(error)); return; }
     if (!data) { window.alert("Bu hareketi güncelleme yetkiniz yok (başka bir gemiye atanmış olabilir)."); return; }
     setMovements((prev) => prev.map((m) => (m.id === movementId ? { ...m, stock_status: status || null } : m)));
   };

@@ -13,6 +13,7 @@ import {
   Spinner,
 } from "./ui";
 import { ROLE_LABELS } from "@/lib/nav";
+import { translateDbError } from "@/lib/db-errors";
 import type { Profile, Role } from "@/lib/types";
 import { Plus, Trash2 } from "lucide-react";
 
@@ -96,7 +97,7 @@ export function UsersManager() {
     const json = await res.json();
     setSaving(false);
     if (!res.ok) {
-      setError(json.error || "Kullanıcı oluşturulamadı.");
+      setError(json.error ? translateDbError(json.error) : "Kullanıcı oluşturulamadı.");
       return;
     }
     setModalOpen(false);
@@ -118,7 +119,7 @@ export function UsersManager() {
     });
     if (!res.ok) {
       const json = await res.json();
-      alert("Silinemedi: " + (json.error || ""));
+      alert("Silinemedi: " + (json.error ? translateDbError(json.error) : ""));
       return;
     }
     load();

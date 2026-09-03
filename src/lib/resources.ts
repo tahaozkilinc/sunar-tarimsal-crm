@@ -337,7 +337,7 @@ export const purchaseContractsResource: ResourceConfig = {
   writeRoles: ["admin", "purchasing"],
   defaultValues: { unit: "ton", currency: "USD" },
   orderBy: { column: "created_at", ascending: false },
-  listFields: ["contract_no", "supplier_id", "product_id", "quantity", "eta", "status", "created_by"],
+  listFields: ["contract_no", "vessel", "supplier_id", "product_id", "quantity", "eta", "status"],
   fxCapture: true,
   uppercaseText: true,
   fields: [

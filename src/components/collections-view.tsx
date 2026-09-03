@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { Badge, Button, Card, DeadlineBadge, EmptyState, Input, Modal, Spinner } from "./ui";
 import { formatDate, formatMoney, formatNumber } from "@/lib/format";
 import { formatUsd, toUsd } from "@/lib/fx";
+import { translateDbError } from "@/lib/db-errors";
 import { baseRole } from "@/lib/nav";
 import type { Role } from "@/lib/types";
 import { CheckCircle, RotateCcw } from "lucide-react";
@@ -56,7 +57,7 @@ export function CollectionsView({ role }: { role: Role }) {
         .order("payment_due_date", { ascending: true }),
       supabase.from("companies").select("id,name"),
     ]);
-    if (so.error) setError(so.error.message);
+    if (so.error) setError(translateDbError(so.error));
     setSales((so.data as SO[]) || []);
     const m: Record<string, string> = {};
     ((co.data as Ref[] | null) || []).forEach((c) => (m[c.id] = c.name));
@@ -106,7 +107,7 @@ export function CollectionsView({ role }: { role: Role }) {
       p_payment_ref: ref.trim(),
     });
     setSaving(false);
-    if (err) { setMarkErr(err.message); return; }
+    if (err) { setMarkErr(translateDbError(err)); return; }
     setMarkSale(null);
     setRef("");
     await load();
@@ -118,7 +119,7 @@ export function CollectionsView({ role }: { role: Role }) {
       p_sale_id: s.id,
       p_paid: false,
     });
-    if (err) alert(err.message);
+    if (err) alert(translateDbError(err));
     await load();
   };
 

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { compressImage, isImagePath } from "@/lib/image";
+import { translateDbError } from "@/lib/db-errors";
 import { Spinner } from "./ui";
 import { FileText, Plus, Trash2 } from "lucide-react";
 
@@ -74,7 +75,7 @@ export function MovementPhotos({
           contentType,
         });
         if (up.error) {
-          setErr(up.error.message);
+          setErr(translateDbError(up.error));
           break;
         }
         const ins = await supabase
@@ -83,7 +84,7 @@ export function MovementPhotos({
         if (ins.error) {
           // Tabloya yazılamadıysa yüklenen dosyayı geri al (yetim kalmasın).
           await supabase.storage.from(BUCKET).remove([key]);
-          setErr(ins.error.message);
+          setErr(translateDbError(ins.error));
           break;
         }
       }

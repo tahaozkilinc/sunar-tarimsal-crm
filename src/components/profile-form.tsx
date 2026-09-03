@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { Button, Card, Field, Input } from "./ui";
 import { ROLE_LABELS, ROLE_LABELS_EN } from "@/lib/nav";
 import { L } from "@/lib/i18n";
+import { translateDbError } from "@/lib/db-errors";
 import type { Role } from "@/lib/types";
 import { Globe, KeyRound, UserCog } from "lucide-react";
 
@@ -61,7 +62,7 @@ export function ProfileForm({
     if (!error) await supabase.auth.updateUser({ data: { full_name: trimmed } });
     setSavingName(false);
     if (error) {
-      setNameMsg({ ok: false, text: `${t("Güncellenemedi", "Could not update")}: ${error.message}` });
+      setNameMsg({ ok: false, text: `${t("Güncellenemedi", "Could not update")}: ${translateDbError(error)}` });
       return;
     }
     setNameMsg({ ok: true, text: t("İsim güncellendi.", "Name updated.") });
@@ -88,7 +89,7 @@ export function ProfileForm({
     const { error } = await supabase.auth.updateUser({ password: pw });
     setSavingPw(false);
     if (error) {
-      setPwMsg({ ok: false, text: `${t("Şifre değiştirilemedi", "Could not change password")}: ${error.message}` });
+      setPwMsg({ ok: false, text: `${t("Şifre değiştirilemedi", "Could not change password")}: ${translateDbError(error)}` });
       return;
     }
     setPw("");

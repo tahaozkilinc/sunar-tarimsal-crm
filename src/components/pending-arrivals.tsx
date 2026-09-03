@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { Badge, Card, EmptyState, Spinner } from "./ui";
 import { formatDate, formatNumber } from "@/lib/format";
 import { CONTRACT_STATUS_OPTIONS } from "@/lib/resources";
+import { translateDbError } from "@/lib/db-errors";
 import type { Role } from "@/lib/types";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { ShipOpsPage } from "./ship-ops-page";
@@ -59,7 +60,7 @@ export function PendingArrivals({ role }: { role: Role }) {
         .select("contract_id,quantity")
         .eq("movement_type", "inbound"),
     ]);
-    if (c.error) setError(c.error.message);
+    if (c.error) setError(translateDbError(c.error));
     setRows((c.data as Contract[]) || []);
     setProducts((p.data as Ref[]) || []);
     const sums: Record<string, number> = {};

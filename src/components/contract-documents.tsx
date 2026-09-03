@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { formatDate } from "@/lib/format";
+import { translateDbError } from "@/lib/db-errors";
 import { baseRole } from "@/lib/nav";
 import type { Role } from "@/lib/types";
 import { Input, Spinner } from "./ui";
@@ -92,7 +93,7 @@ export function ContractDocuments({ contractId, role }: { contractId: string; ro
           contentType: file.type || undefined,
         });
         if (up.error) {
-          setErr(up.error.message);
+          setErr(translateDbError(up.error));
           break;
         }
         const ins = await supabase
@@ -101,7 +102,7 @@ export function ContractDocuments({ contractId, role }: { contractId: string; ro
         if (ins.error) {
           // Tabloya yazılamadıysa yüklenen dosyayı geri al (yetim kalmasın).
           await supabase.storage.from(BUCKET).remove([key]);
-          setErr(ins.error.message);
+          setErr(translateDbError(ins.error));
           break;
         }
       }

@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { Badge, Button, Card, EmptyState, Field, Input, Modal, Spinner } from "./ui";
 import { formatDate, formatMoney, formatNumber } from "@/lib/format";
 import { formatUsd, toUsd } from "@/lib/fx";
+import { translateDbError } from "@/lib/db-errors";
 import { CONTRACT_STATUS_OPTIONS } from "@/lib/resources";
 import type { Role } from "@/lib/types";
 import { CheckCircle2, Search } from "lucide-react";
@@ -68,7 +69,7 @@ export function FinanceView({ role, hideTitle = false }: { role: Role; hideTitle
         .from("payment_schedule")
         .select("*")
         .order("payment_due_date", { ascending: true });
-      if (error) setError(error.message);
+      if (error) setError(translateDbError(error));
       const list = (data as Row[]) || [];
       setRows(list);
       setNeedsMigration(list.length > 0 && !("price" in list[0]));
@@ -94,7 +95,7 @@ export function FinanceView({ role, hideTitle = false }: { role: Role; hideTitle
       p_payment_ref: payRef.trim(),
     });
     setPaySaving(false);
-    if (err) { setPayErr(err.message); return; }
+    if (err) { setPayErr(translateDbError(err)); return; }
     setRows(prev => prev.map(r => r.id === payRow.id
       ? { ...r, is_paid: true, payment_ref: payRef.trim(), paid_at: new Date().toISOString() }
       : r));
@@ -107,7 +108,7 @@ export function FinanceView({ role, hideTitle = false }: { role: Role; hideTitle
       p_contract_id: row.id,
       p_paid: false,
     });
-    if (err) { setError(err.message); return; }
+    if (err) { setError(translateDbError(err)); return; }
     setRows(prev => prev.map(r => r.id === row.id ? { ...r, is_paid: false, paid_at: null } : r));
   };
 

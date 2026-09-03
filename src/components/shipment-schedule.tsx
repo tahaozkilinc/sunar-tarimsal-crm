@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { Card, EmptyState, Select, Spinner } from "./ui";
 import { formatDate, formatNumber } from "@/lib/format";
 import { CONTRACT_STATUS_OPTIONS } from "@/lib/resources";
+import { translateDbError } from "@/lib/db-errors";
 
 type Contract = {
   id: string;
@@ -66,7 +67,7 @@ export function ShipmentSchedule() {
         supabase.from("products").select("id,name"),
         supabase.from("companies").select("id,name"),
       ]);
-      if (c.error) setError(c.error.message);
+      if (c.error) setError(translateDbError(c.error));
       setContracts((c.data as unknown as Contract[]) || []);
       setProducts((p.data as unknown as Ref[]) || []);
       setSuppliers((s.data as unknown as Ref[]) || []);

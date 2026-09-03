@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { Card, EmptyState, Input, Spinner } from "./ui";
 import { formatNumber } from "@/lib/format";
 import { formatUsd, toUsd } from "@/lib/fx";
+import { translateDbError } from "@/lib/db-errors";
 import { Download, FileText, Search } from "lucide-react";
 
 // Gemi (bağlantı) bazlı maliyet / kâr-zarar: ne kadara aldık, ne kadara sattık.
@@ -99,7 +100,7 @@ export function CostView({ hideTitle }: { hideTitle?: boolean } = {}) {
           .select("contract_id,amount,currency,usd_try,eur_try")
           .not("contract_id", "is", null),
       ]);
-      if (pc.error) setError(pc.error.message);
+      if (pc.error) setError(translateDbError(pc.error));
       setContracts((pc.data as PC[]) || []);
       setSales((so.data as SO[]) || []);
       setExpenses((we.data as WE[]) || []);
