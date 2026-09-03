@@ -3,20 +3,21 @@
 import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Card, EmptyState, Select, Spinner } from "./ui";
-import { formatDate, formatNumber } from "@/lib/format";
+import { formatNumber } from "@/lib/format";
 import { CONTRACT_STATUS_OPTIONS } from "@/lib/resources";
 import { translateDbError } from "@/lib/db-errors";
+
+// Gantt zaman çizelgesi buradan Bağlantı -> Özet'e taşındı (kullanıcı isteği,
+// bkz. BaglantiSummary — yalnızca "yolda" olanlarla, aynı ekranın diğer
+// kartlarıyla birlikte). Burada ürün/ay bazlı özet + takvim kalıyor.
 
 type Contract = {
   id: string;
   contract_no: string | null;
-  supplier_id: string | null;
   product_id: string | null;
   quantity: number;
   unit: string;
   eta: string | null;
-  laycan_start: string | null;
-  laycan_end: string | null;
   vessel: string | null;
   status: string;
   origin_country: string | null;
@@ -38,15 +39,10 @@ const MONTHS_TR_FULL = [
 ];
 const WEEKDAYS_TR = ["Pzt", "Sal", "Çar", "Per", "Cum", "Cmt", "Paz"];
 
-function statusLabel(s: string) {
-  return CONTRACT_STATUS_OPTIONS.find((o) => o.value === s)?.label || s;
-}
-
 export function ShipmentSchedule() {
   const supabase = useMemo(() => createClient(), []);
   const [contracts, setContracts] = useState<Contract[]>([]);
   const [products, setProducts] = useState<Ref[]>([]);
-  const [suppliers, setSuppliers] = useState<Ref[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [productFilter, setProductFilter] = useState("");
@@ -58,27 +54,21 @@ export function ShipmentSchedule() {
 
   useEffect(() => {
     (async () => {
-      const [c, p, s] = await Promise.all([
+      const [c, p] = await Promise.all([
         supabase
           .from("purchase_contracts")
-          .select(
-            "id,contract_no,supplier_id,product_id,quantity,unit,eta,laycan_start,laycan_end,vessel,status,origin_country",
-          ),
+          .select("id,contract_no,product_id,quantity,unit,eta,vessel,status,origin_country"),
         supabase.from("products").select("id,name"),
-        supabase.from("companies").select("id,name"),
       ]);
       if (c.error) setError(translateDbError(c.error));
       setContracts((c.data as unknown as Contract[]) || []);
       setProducts((p.data as unknown as Ref[]) || []);
-      setSuppliers((s.data as unknown as Ref[]) || []);
       setLoading(false);
     })();
   }, [supabase]);
 
   const productName = (id: string | null) =>
     products.find((p) => p.id === id)?.name || "Ürünsüz";
-  const supplierName = (id: string | null) =>
-    suppliers.find((s) => s.id === id)?.name || "-";
 
   // "Bağlı" = iptal edilmemiş sözleşmeler
   const rows = useMemo(
@@ -112,11 +102,17 @@ export function ShipmentSchedule() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rows, products]);
 
+  // Tarih-yalnızca (YYYY-MM-DD) string'ler "T00:00:00" olmadan new Date() ile
+  // parse edilirse UTC gece yarısı sayılır — tarayıcı saat dilimi UTC'nin
+  // gerisindeyse bir gün (ay sınırındaysa bir AY) geriye kayar. Bu yüzden hep
+  // yerel saatle parse ediyoruz (bkz. warehouse-ship-summary.tsx aynı desen).
+  const parseLocalDate = (s: string) => new Date(s.slice(0, 10) + "T00:00:00");
+
   const byMonth = useMemo(() => {
     const m = new Map<string, number>();
     rows.forEach((c) => {
       if (!c.eta) return;
-      const d = new Date(c.eta);
+      const d = parseLocalDate(c.eta);
       if (isNaN(d.getTime())) return;
       const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
       m.set(key, (m.get(key) || 0) + (Number(c.quantity) || 0));
@@ -132,7 +128,7 @@ export function ShipmentSchedule() {
     const map = new Map<string, Contract[]>();
     rows.forEach((c) => {
       if (!c.eta) return;
-      const d = new Date(c.eta);
+      const d = parseLocalDate(c.eta);
       if (isNaN(d.getTime())) return;
       if (
         d.getFullYear() === calMonth.getFullYear() &&
@@ -146,61 +142,6 @@ export function ShipmentSchedule() {
     });
     return map;
   }, [rows, calMonth]);
-
-  // --- Gantt verisi ---
-  const dated = useMemo(
-    () =>
-      rows
-        .map((c) => {
-          const startStr = c.laycan_start || c.eta;
-          const endStr = c.laycan_end || c.eta;
-          return {
-            c,
-            start: startStr ? new Date(startStr) : null,
-            end: endStr ? new Date(endStr) : null,
-          };
-        })
-        .filter((x) => x.start && !isNaN(x.start.getTime()))
-        .sort((a, b) => a.start!.getTime() - b.start!.getTime()),
-    [rows],
-  );
-
-  const months = useMemo(() => {
-    if (dated.length === 0) return [] as { y: number; m: number }[];
-    let min = dated[0].start!;
-    let max = dated[0].end || dated[0].start!;
-    dated.forEach((x) => {
-      if (x.start! < min) min = x.start!;
-      const e = x.end || x.start!;
-      if (e > max) max = e;
-    });
-    const arr: { y: number; m: number }[] = [];
-    let y = min.getFullYear();
-    let mo = min.getMonth();
-    while (y < max.getFullYear() || (y === max.getFullYear() && mo <= max.getMonth())) {
-      arr.push({ y, m: mo });
-      mo++;
-      if (mo > 11) {
-        mo = 0;
-        y++;
-      }
-    }
-    return arr;
-  }, [dated]);
-
-  const pct = (d: Date) => {
-    if (months.length === 0) return 0;
-    const idx = months.findIndex((mm) => mm.y === d.getFullYear() && mm.m === d.getMonth());
-    if (idx < 0) return d < new Date(months[0].y, months[0].m, 1) ? 0 : 100;
-    const dim = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
-    return ((idx + (d.getDate() - 1) / dim) / months.length) * 100;
-  };
-
-  const today = new Date();
-  const todayInRange =
-    months.length > 0 &&
-    today >= new Date(months[0].y, months[0].m, 1) &&
-    today <= new Date(months[months.length - 1].y, months[months.length - 1].m + 1, 0);
 
   if (loading)
     return (
@@ -412,97 +353,6 @@ export function ShipmentSchedule() {
             </div>
           );
         })()}
-      </Card>
-
-      {/* Gantt zaman çizelgesi */}
-      <Card className="p-4">
-        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-          <h2 className="text-sm font-semibold">Sevkiyat Zaman Çizelgesi (ETA / Laycan)</h2>
-          <div className="flex flex-wrap gap-2 text-xs">
-            {CONTRACT_STATUS_OPTIONS.filter((o) => o.value !== "cancelled").map((o) => (
-              <span key={o.value} className="inline-flex items-center gap-1">
-                <span
-                  className="inline-block h-3 w-3 rounded-sm"
-                  style={{ background: STATUS_COLOR[o.value] }}
-                />
-                {o.label}
-              </span>
-            ))}
-          </div>
-        </div>
-
-        {dated.length === 0 ? (
-          <EmptyState message="Tarihli (ETA/laycan) sözleşme yok." />
-        ) : (
-          <div className="overflow-x-auto">
-            <div style={{ minWidth: `${176 + months.length * 80}px` }}>
-              {/* Ay başlıkları */}
-              <div className="flex border-b border-border text-xs text-gray-500">
-                <div className="w-44 shrink-0 px-2 py-2 font-medium">Gemi / Sözleşme</div>
-                <div className="flex flex-1">
-                  {months.map((mm, i) => (
-                    <div
-                      key={i}
-                      className="flex-1 border-l border-border px-2 py-2"
-                    >
-                      {MONTHS_TR[mm.m]} {String(mm.y).slice(2)}
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Satırlar */}
-              {dated.map(({ c, start, end }) => {
-                const left = pct(start!);
-                const right = end ? pct(end) : left;
-                const width = Math.max(right - left, 1.5);
-                return (
-                  <div
-                    key={c.id}
-                    className="flex items-center border-b border-border last:border-0"
-                  >
-                    <div className="w-44 shrink-0 px-2 py-2">
-                      <div className="truncate text-sm font-medium">
-                        {c.vessel || c.contract_no || "—"}
-                      </div>
-                      <div className="truncate text-xs text-gray-500">
-                        {productName(c.product_id)} · {formatNumber(c.quantity)} {c.unit}
-                      </div>
-                    </div>
-                    <div className="relative h-10 flex-1">
-                      {/* ay ızgarası */}
-                      <div className="absolute inset-0 flex">
-                        {months.map((_, i) => (
-                          <div key={i} className="flex-1 border-l border-border/60" />
-                        ))}
-                      </div>
-                      {/* bugün çizgisi */}
-                      {todayInRange && (
-                        <div
-                          className="absolute top-0 bottom-0 z-10 w-px bg-red-400"
-                          style={{ left: `${pct(today)}%` }}
-                          title="Bugün"
-                        />
-                      )}
-                      {/* bar */}
-                      <div
-                        className="absolute top-2.5 flex h-5 items-center justify-center rounded px-1 text-[10px] font-medium text-white"
-                        style={{
-                          left: `${left}%`,
-                          width: `${width}%`,
-                          background: STATUS_COLOR[c.status] || "#6b7280",
-                        }}
-                        title={`${supplierName(c.supplier_id)} · ${statusLabel(c.status)} · ETA ${formatDate(c.eta)}`}
-                      >
-                        <span className="truncate">{formatNumber(c.quantity)}</span>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
       </Card>
     </div>
   );

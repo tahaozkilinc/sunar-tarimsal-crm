@@ -99,7 +99,6 @@ export function ShipOpsPage({
   const [warehouses, setWarehouses] = useState<Ref[]>([]);
   const [products, setProducts]   = useState<Ref[]>([]);
   const [companies, setCompanies] = useState<CompanyRef[]>([]);
-  const [opsUsers, setOpsUsers]   = useState<Ref[]>([]); // role='operations' -> "Operasyon Sorumlusu" seçenekleri
   const [creatorNames, setCreatorNames] = useState<Record<string, string>>({});
   const [canWrite, setCanWrite]   = useState(false); // araç tonajı + irsaliye (admin/operations/nakliyeci/gozetim)
   const [canManage, setCanManage] = useState(false); // taraf atama, gemiyi bitir, numune galerisi (admin/operations)
@@ -150,7 +149,6 @@ export function ShipOpsPage({
   const [portId,     setPortId]     = useState("");
   const [carrierId,  setCarrierId]  = useState("");
   const [agentId,    setAgentId]    = useState("");
-  const [assignedToId, setAssignedToId] = useState("");
   const [shipBrokerId, setShipBrokerId] = useState("");
   const [assignSaving, setAssignSaving] = useState(false);
   const [assignErr, setAssignErr] = useState<string | null>(null);
@@ -226,13 +224,11 @@ export function ShipOpsPage({
       setPortId(cd?.port_id ?? "");
       setCarrierId(cd?.carrier_id ?? "");
       setAgentId(cd?.agent_id ?? "");
-      setAssignedToId(cd?.assigned_to ?? "");
       setShipBrokerId(cd?.ship_broker_id ?? "");
       const pnRows = (pn.data as { id: string; full_name: string | null; role: string | null }[] | null) || [];
       const names: Record<string, string> = {};
       pnRows.forEach((x) => { names[x.id] = x.full_name || "—"; });
       setCreatorNames(names);
-      setOpsUsers(pnRows.filter((x) => x.role === "operations").map((x) => ({ id: x.id, name: x.full_name || "—" })));
       let isManager = false;
       if (au.user) {
         const { data: prof } = await supabase
@@ -275,7 +271,6 @@ export function ShipOpsPage({
     portId     !== (contract?.port_id ?? "") ||
     carrierId  !== (contract?.carrier_id ?? "") ||
     agentId    !== (contract?.agent_id ?? "") ||
-    assignedToId !== (contract?.assigned_to ?? "") ||
     shipBrokerId !== (contract?.ship_broker_id ?? "");
 
   const totalDrawn = useMemo(
@@ -458,7 +453,7 @@ export function ShipOpsPage({
       p_port_id:     portId || null,
       p_carrier_id:  carrierId || null,
       p_agent_id:    agentId || null,
-      p_assigned_to: assignedToId || null,
+      p_assigned_to: null,
       p_ship_broker_id: shipBrokerId || null,
     });
     if (rpcResult.error) { setAssignSaving(false); setAssignErr(translateDbError(rpcResult.error)); return; }
@@ -467,7 +462,6 @@ export function ShipOpsPage({
       port_id:     portId || null,
       carrier_id:  carrierId || null,
       agent_id:    agentId || null,
-      assigned_to: assignedToId || null,
       ship_broker_id: shipBrokerId || null,
     };
     setContract(prev => prev ? { ...prev, ...parties } : prev);
@@ -623,16 +617,6 @@ export function ShipOpsPage({
               </Select>
             ) : (
               <div className="rounded-lg border border-border bg-gray-50 px-3 py-2 text-sm">{cName(contract.ship_broker_id)}</div>
-            )}
-          </Field>
-          <Field label="Operasyon Sorumlusu">
-            {canWrite && contract.status !== "completed" ? (
-              <Select value={assignedToId} onChange={e => setAssignedToId(e.target.value)}>
-                <option value="">Seçiniz...</option>
-                {opsUsers.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
-              </Select>
-            ) : (
-              <div className="rounded-lg border border-border bg-gray-50 px-3 py-2 text-sm">{creatorName(contract.assigned_to)}</div>
             )}
           </Field>
         </div>
