@@ -236,15 +236,6 @@ export function BaglantiSummary() {
     return out;
   }, [rows, productMap, year]);
 
-  const upcoming = useMemo(
-    () =>
-      rows
-        .filter((r) => r.status === "active" || r.status === "in_transit")
-        .sort((a, b) => (a.eta || "9999").localeCompare(b.eta || "9999"))
-        .slice(0, 6),
-    [rows],
-  );
-
   // Gantt zaman çizelgesi verisi — yalnızca "yolda" (aktif + transit) gemiler.
   const ganttRows = useMemo(
     () => rows.filter((r) => r.status === "active" || r.status === "in_transit"),
@@ -399,7 +390,7 @@ export function BaglantiSummary() {
                         {pn(c.product_id)} · {formatNumber(c.quantity)} ton
                       </div>
                     </div>
-                    <div className="relative h-10 flex-1">
+                    <div className="relative h-12 flex-1">
                       {/* ay ızgarası */}
                       <div className="absolute inset-0 flex">
                         {ganttMonths.map((_, i) => (
@@ -414,9 +405,21 @@ export function BaglantiSummary() {
                           title="Bugün"
                         />
                       )}
+                      {/* ETA etiketi — çubuğun bittiği (ETA) noktanın üzerinde */}
+                      {c.eta && (
+                        <div
+                          className="absolute top-0 whitespace-nowrap text-[10px] font-medium text-gray-500"
+                          style={{
+                            left: `${Math.min(Math.max(right, 3), 97)}%`,
+                            transform: right > 85 ? "translateX(-100%)" : right < 15 ? "translateX(0%)" : "translateX(-50%)",
+                          }}
+                        >
+                          ETA: {formatDate(c.eta)}
+                        </div>
+                      )}
                       {/* bar */}
                       <div
-                        className="absolute top-2.5 flex h-5 items-center justify-center rounded px-1 text-[10px] font-medium text-white"
+                        className="absolute bottom-1 flex h-5 items-center justify-center rounded px-1 text-[10px] font-medium text-white"
                         style={{
                           left: `${left}%`,
                           width: `${width}%`,
@@ -434,21 +437,6 @@ export function BaglantiSummary() {
           </div>
         )}
       </Card>
-
-      <ListCard title="Yolda / Gelecek olanlar" empty="Yolda kayıt yok." count={upcoming.length}>
-        {upcoming.map((c) => (
-          <div key={c.id} className="flex items-center justify-between gap-3 py-2 text-sm">
-            <span className="min-w-0 truncate">
-              <span className="font-medium">{c.vessel || c.contract_no || "—"}</span>
-              <span className="text-gray-500"> · {pn(c.product_id)}</span>
-            </span>
-            <span className="shrink-0 text-right">
-              {formatNumber(c.quantity)} ton
-              <span className="ml-2 text-xs text-gray-400">ETA {formatDate(c.eta)}</span>
-            </span>
-          </div>
-        ))}
-      </ListCard>
     </div>
   );
 }
