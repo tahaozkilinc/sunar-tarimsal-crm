@@ -103,12 +103,18 @@ export function CompanyDetailView({ company, role }: { company: Company; role: R
   const isPort = company.type === "port";
 
   // Liman ile anlaşmalı fiyat (elleçleme ücreti vb.) — firma alanı sabit,
-  // formda gizli, otomatik bu limana atanır.
+  // formda gizli, otomatik bu limana atanır. Hizmet kalemi (Gemi Tahliye/
+  // Liman Tahliye/Diğer) yalnızca liman anlaşmalarında anlamlı olduğundan
+  // burada görünür + zorunlu; listede de gösterilir ki aynı hizmetin
+  // zaman içindeki fiyat artışı diğer hizmetlerle karışmadan takip edilebilsin.
   const pricingConfig = {
     ...pricingAgreementsResource,
-    fields: pricingAgreementsResource.fields.map((f) =>
-      ["port_id", "warehouse_id", "target_type"].includes(f.name) ? { ...f, formHidden: true } : f,
-    ),
+    listFields: ["service_item", "pricing_model", "price", "currency", "valid_from", "valid_to"],
+    fields: pricingAgreementsResource.fields.map((f) => {
+      if (["port_id", "warehouse_id", "target_type"].includes(f.name)) return { ...f, formHidden: true };
+      if (f.name === "service_item") return { ...f, required: true };
+      return f;
+    }),
   };
 
   return (

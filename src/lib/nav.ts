@@ -21,7 +21,11 @@ export const NAV_ITEMS: NavItem[] = [
     href: "/crm",
     label: "CRM",
     icon: "Users",
-    roles: ["admin", "purchasing", "sales", "operations", "viewer"],
+    // maliyet: depo/liman anlaşmalı fiyat (tarife) sekmesi buradaki firma/depo
+    // detay sayfalarında olduğundan erişimi olmalı (companies_select_maliyet
+    // RLS politikası zaten izin veriyordu — nav.ts eksik kalmıştı, bu yüzden
+    // her seferinde requireAccess("/crm") tarafından ana sayfaya atılıyordu).
+    roles: ["admin", "purchasing", "sales", "operations", "maliyet", "viewer"],
   },
   {
     href: "/purchasing",
