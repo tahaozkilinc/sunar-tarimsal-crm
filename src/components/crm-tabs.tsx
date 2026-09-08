@@ -92,7 +92,9 @@ const MODULE_META: Record<
 // operasyon beş iş ortağı türünü (gözetim/liman/nakliyeci/acente/Gemi Brokeri)
 // + Depolar'ı ayrı ayrı görür (depo yönetimi zaten operasyonun işi, bkz.
 // warehouses_write); satın alma kendi modülüne ek olarak Hammadde Brokeri'ni
-// görür (bağlantı açılırken seçildiği için satın almaya ait, operasyona değil).
+// görür (bağlantı açılırken seçildiği için satın almaya ait, operasyona değil);
+// maliyet yalnızca Liman + Depolar'ı görür (anlaşmalı fiyat/tarife girişi için
+// ihtiyacı olan tek alan bu — bkz. pricing_agreements writeRoles).
 function modulesForRole(role: Role): CrmModule[] {
   const base = baseRole(role);
   if (base === "admin" || base === "viewer")
@@ -100,6 +102,7 @@ function modulesForRole(role: Role): CrmModule[] {
   if (base === "sales") return ["sales"];
   if (base === "operations") return ["surveyor", "port", "carrier", "agent", "ship_broker", "warehouses"];
   if (base === "purchasing") return ["purchasing", "broker"];
+  if (base === "maliyet") return ["port", "warehouses"];
   return ["purchasing"];
 }
 

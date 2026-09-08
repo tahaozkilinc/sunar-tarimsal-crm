@@ -89,6 +89,7 @@ export interface PricingAgreement {
   target_type: "warehouse" | "port";
   warehouse_id: string | null;
   port_id: string | null;
+  service_item: string | null; // yalnızca liman anlaşmalarında (Gemi Tahliye/Liman Tahliye/Diğer)
   pricing_model: "per_ton" | "annual" | "monthly" | "flat";
   price: number;
   currency: string;

@@ -147,8 +147,10 @@ export function WarehouseDetailView({
         <ResourceManager
           config={{
             ...pricingAgreementsResource,
+            // Hizmet kalemi (Gemi Tahliye/Liman Tahliye) yalnızca liman
+            // anlaşmalarında anlamlı — depoda gizli kalır.
             fields: pricingAgreementsResource.fields.map((f) =>
-              ["warehouse_id", "port_id", "target_type"].includes(f.name) ? { ...f, formHidden: true } : f,
+              ["warehouse_id", "port_id", "target_type", "service_item"].includes(f.name) ? { ...f, formHidden: true } : f,
             ),
           }}
           role={role}

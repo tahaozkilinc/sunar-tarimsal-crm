@@ -587,6 +587,14 @@ export const PRICING_MODEL_OPTIONS: SelectOption[] = [
   { value: "flat", label: "Sabit (Kira vb.)", color: "gray" },
 ];
 
+// Liman hizmet kalemi — yalnızca liman anlaşmalarında anlamlı (depoda
+// formHidden, bkz. warehouse-detail-view.tsx). Sabit ikisi dışında bir hizmet
+// varsa "Diğer" ile serbest yazılabilir (select_other otomatik ekler).
+export const PRICING_SERVICE_ITEM_OPTIONS: SelectOption[] = [
+  { value: "ship_discharge", label: "Gemi Tahliye", color: "blue" },
+  { value: "port_handling", label: "Liman Tahliye", color: "purple" },
+];
+
 export const pricingAgreementsResource: ResourceConfig = {
   table: "pricing_agreements",
   title: "Anlaşmalı Fiyat",
@@ -599,6 +607,9 @@ export const pricingAgreementsResource: ResourceConfig = {
     { name: "target_type", label: "Hedef", type: "select", options: [{ value: "warehouse", label: "Depo" }, { value: "port", label: "Liman" }], formHidden: true },
     { name: "warehouse_id", label: "Depo", type: "reference", ref: { table: "warehouses", labelField: "name" }, formHidden: true },
     { name: "port_id", label: "Liman", type: "reference", ref: { table: "companies", labelField: "name", filter: { type: ["port"] } }, formHidden: true },
+    // Yalnızca liman anlaşmalarında görünür/zorunlu — bkz. company-detail-view.tsx
+    // (port embed: required) / warehouse-detail-view.tsx (depo embed: formHidden).
+    { name: "service_item", label: "Hizmet Kalemi", type: "select_other", options: PRICING_SERVICE_ITEM_OPTIONS },
     { name: "pricing_model", label: "Fiyatlandırma Şekli", type: "select", options: PRICING_MODEL_OPTIONS, required: true },
     // per_ton: $/ton, annual: $/yıl, monthly: $/ay, flat: toplam sabit tutar (ör. kira) — bkz. pricing_model.
     { name: "price", label: "Fiyat", type: "money", required: true, positive: true },
