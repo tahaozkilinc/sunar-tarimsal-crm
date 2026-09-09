@@ -562,7 +562,10 @@ export function ShipOpsPage({
         </div>
       </div>
 
-      {/* ── Gözetim / Liman / Nakliyeci (yalnızca admin/operasyon atar) ── */}
+      {/* ── Gözetim / Liman / Nakliyeci (yalnızca admin/operasyon atar) ──
+          Bilerek status === "completed" kontrolü YOK: bu salt metadata (kim
+          gözetim yaptı vb.), stok/tonaj hesaplarını etkilemiyor — gemi
+          bittikten sonra da (ör. yanlış yazılan gözetim şirketi) düzeltilebilmeli. */}
       {canManage && (
       <Card className="p-4 print:hidden">
         <div className="mb-3 flex items-center justify-between">
@@ -570,7 +573,7 @@ export function ShipOpsPage({
         </div>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <Field label="Gözetim Şirketi">
-            {canWrite && contract.status !== "completed" ? (
+            {canWrite ? (
               <Select value={surveyorId} onChange={e => setSurveyorId(e.target.value)}>
                 <option value="">Seçiniz...</option>
                 {surveyors.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
@@ -580,7 +583,7 @@ export function ShipOpsPage({
             )}
           </Field>
           <Field label="Liman">
-            {canWrite && contract.status !== "completed" ? (
+            {canWrite ? (
               <Select value={portId} onChange={e => setPortId(e.target.value)}>
                 <option value="">Seçiniz...</option>
                 {ports.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
@@ -590,7 +593,7 @@ export function ShipOpsPage({
             )}
           </Field>
           <Field label="Nakliyeci">
-            {canWrite && contract.status !== "completed" ? (
+            {canWrite ? (
               <Select value={carrierId} onChange={e => setCarrierId(e.target.value)}>
                 <option value="">Seçiniz...</option>
                 {carriers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -600,7 +603,7 @@ export function ShipOpsPage({
             )}
           </Field>
           <Field label="Acente">
-            {canWrite && contract.status !== "completed" ? (
+            {canWrite ? (
               <Select value={agentId} onChange={e => setAgentId(e.target.value)}>
                 <option value="">Seçiniz...</option>
                 {agents.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
@@ -610,7 +613,7 @@ export function ShipOpsPage({
             )}
           </Field>
           <Field label="Gemi Brokeri">
-            {canWrite && contract.status !== "completed" ? (
+            {canWrite ? (
               <Select value={shipBrokerId} onChange={e => setShipBrokerId(e.target.value)}>
                 <option value="">Seçiniz...</option>
                 {shipBrokers.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
@@ -620,7 +623,7 @@ export function ShipOpsPage({
             )}
           </Field>
         </div>
-        {canWrite && contract.status !== "completed" && (
+        {canWrite && (
           <div className="mt-3 flex items-center gap-3">
             <Button onClick={saveParties} disabled={assignSaving || !partiesDirty} size="sm">
               {assignSaving ? "Kaydediliyor..." : "Atamaları Kaydet"}
