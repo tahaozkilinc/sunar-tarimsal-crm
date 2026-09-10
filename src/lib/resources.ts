@@ -452,8 +452,11 @@ export const salesOrdersResource: ResourceConfig = {
     // listede yoksa "Diğer" ile serbest yazılabilir (büyük harfe çevrilir). "Diğer"
     // metin kutusu için yeterli genişlik kalsın diye ayrı satırda (inlineAfter yok).
     { name: "city", label: "Şehir", type: "select_other", optionsSource: { table: "warehouses", column: "city" }, required: true },
-    // Yalnızca şu an stokta (herhangi bir depoda available_qty>0) olan ürünler
-    // seçilebilir — olmayan bir ürün satılamaz (bkz. sellable_products, 0079).
+    // Yalnızca şu an stokta (herhangi bir depoda available_qty>0) olan VE
+    // TİCARET adına açılmış, kalan tonajı olan bir sözleşmesi bulunan ürünler
+    // seçilebilir (bkz. sellable_products, 0079/0085) — satış faturası yalnızca
+    // TİCARET tüzel kişiliği adına kesilebildiğinden. fn_sales_order_autofill_
+    // contract da aynı kısıtla otomatik bağlantı seçiyor (0085).
     { name: "product_id", label: "Ürün", type: "reference", ref: { table: "sellable_products", labelField: "name" }, required: true },
     // Kaynak bağlantı (gemi) artık burada seçilmiyor — trigger otomatik atar
     // (bkz. üstteki not). Detay görünümünde hangi bağlantıya düştüğü görünür.
