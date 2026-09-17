@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { notFound } from "next/navigation";
 import { requireAccess } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
@@ -14,5 +15,9 @@ export default async function CompanyDetailPage({
   const supabase = await createClient();
   const { data } = await supabase.from("companies").select("*").eq("id", id).single();
   if (!data) notFound();
-  return <CompanyDetailView company={data as Company} role={profile.role} />;
+  return (
+    <Suspense fallback={null}>
+      <CompanyDetailView company={data as Company} role={profile.role} />
+    </Suspense>
+  );
 }

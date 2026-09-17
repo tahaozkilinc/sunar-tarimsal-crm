@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Tabs } from "./ui";
 import { ResourceManager } from "./resource-manager";
 import { OperationPartnerStats } from "./company-ship-stats";
@@ -107,11 +107,19 @@ function modulesForRole(role: Role): CrmModule[] {
 }
 
 export function CrmTabs({ role }: { role: Role }) {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const available = modulesForRole(role);
-  const [crmModule, setCrmModule] = useState<CrmModule>(available[0]);
-  const effModule = available.includes(crmModule) ? crmModule : available[0];
+  // Seçili modül URL'de tutulur (?tab=...) — component state DEĞİL. Böylece
+  // geri tuşu/"CRM'e dön" ile buraya dönüldüğünde en son bakılan sekmede
+  // kalınır, her zaman ilk sekmeye (ör. Tedarikçiler) sıfırlanmaz (kullanıcı
+  // isteği: "hangi sayfaysam orada kalsın"). Tab değişimi router.replace ile
+  // yapılır ki her tıklama history'ye ayrı kayıt eklemesin.
+  const tabParam = searchParams.get("tab") as CrmModule | null;
+  const effModule = tabParam && available.includes(tabParam) ? tabParam : available[0];
   const meta = MODULE_META[effModule];
   const isOps = OPERATIONS_MODULES.includes(effModule);
+  const setCrmModule = (m: CrmModule) => router.replace(`/crm?tab=${m}`, { scroll: false });
 
   // Depolar: companies deseni buraya uymuyor (warehouses tablosu). Diğer CRM
   // modülleri gibi satır tıklanınca ayrı bir sayfaya gider (bkz.
@@ -167,7 +175,7 @@ export function CrmTabs({ role }: { role: Role }) {
         title={meta.companyLabel}
         hideTitle
         hideFilters
-        rowHref={(row) => `/crm/${row.id}`}
+        rowHref={(row) => `/crm/${row.id}?from=${effModule}`}
       />
     </div>
   );

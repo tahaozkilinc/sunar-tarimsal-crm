@@ -55,7 +55,7 @@ export function WarehouseDetailView({
     <div className="space-y-5">
       <div>
         <Link
-          href="/crm"
+          href="/crm?tab=warehouses"
           className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700"
         >
           <ArrowLeft className="h-4 w-4" /> CRM&apos;e dön
