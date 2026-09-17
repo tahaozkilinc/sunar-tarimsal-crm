@@ -23,6 +23,7 @@ type Contract = {
   status: string;
   surveyor_id: string | null;
   port_id: string | null;
+  loading_port_id: string | null;
   carrier_id: string | null;
   agent_id: string | null;
   assigned_to: string | null;
@@ -147,6 +148,9 @@ export function ShipOpsPage({
   // Gemiye gözetim / liman / nakliyeci / acente atama
   const [surveyorId, setSurveyorId] = useState("");
   const [portId,     setPortId]     = useState("");
+  // Yükleme (menşe) limanı — port_id (boşaltma/varış) ile aynı liman havuzundan
+  // seçilir. FOB sözleşmelerde yükleme organizasyonunu biz yaptığımızdan burada.
+  const [loadingPortId, setLoadingPortId] = useState("");
   const [carrierId,  setCarrierId]  = useState("");
   const [agentId,    setAgentId]    = useState("");
   const [shipBrokerId, setShipBrokerId] = useState("");
@@ -189,7 +193,7 @@ export function ShipOpsPage({
   useEffect(() => {
     (async () => {
       const CONTRACT_COLS =
-        "id,contract_no,vessel,product_id,supplier_id,quantity,unit,eta,status,surveyor_id,port_id,carrier_id,agent_id,assigned_to,ship_broker_id";
+        "id,contract_no,vessel,product_id,supplier_id,quantity,unit,eta,status,surveyor_id,port_id,loading_port_id,carrier_id,agent_id,assigned_to,ship_broker_id";
       const [c0, w, p, co, pn, { data: au }] = await Promise.all([
         supabase
           .from("purchase_contracts")
@@ -222,6 +226,7 @@ export function ShipOpsPage({
       setCompanies((co.data as CompanyRef[]) || []);
       setSurveyorId(cd?.surveyor_id ?? "");
       setPortId(cd?.port_id ?? "");
+      setLoadingPortId(cd?.loading_port_id ?? "");
       setCarrierId(cd?.carrier_id ?? "");
       setAgentId(cd?.agent_id ?? "");
       setShipBrokerId(cd?.ship_broker_id ?? "");
@@ -269,6 +274,7 @@ export function ShipOpsPage({
   const partiesDirty =
     surveyorId !== (contract?.surveyor_id ?? "") ||
     portId     !== (contract?.port_id ?? "") ||
+    loadingPortId !== (contract?.loading_port_id ?? "") ||
     carrierId  !== (contract?.carrier_id ?? "") ||
     agentId    !== (contract?.agent_id ?? "") ||
     shipBrokerId !== (contract?.ship_broker_id ?? "");
@@ -455,6 +461,7 @@ export function ShipOpsPage({
       p_agent_id:    agentId || null,
       p_assigned_to: null,
       p_ship_broker_id: shipBrokerId || null,
+      p_loading_port_id: loadingPortId || null,
     });
     if (rpcResult.error) { setAssignSaving(false); setAssignErr(translateDbError(rpcResult.error)); return; }
     const parties = {
@@ -463,6 +470,7 @@ export function ShipOpsPage({
       carrier_id:  carrierId || null,
       agent_id:    agentId || null,
       ship_broker_id: shipBrokerId || null,
+      loading_port_id: loadingPortId || null,
     };
     setContract(prev => prev ? { ...prev, ...parties } : prev);
     setAssignSaving(false);
@@ -582,7 +590,17 @@ export function ShipOpsPage({
               <div className="rounded-lg border border-border bg-gray-50 px-3 py-2 text-sm">{cName(contract.surveyor_id)}</div>
             )}
           </Field>
-          <Field label="Liman">
+          <Field label="Yükleme Limanı">
+            {canWrite ? (
+              <Select value={loadingPortId} onChange={e => setLoadingPortId(e.target.value)}>
+                <option value="">Seçiniz...</option>
+                {ports.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </Select>
+            ) : (
+              <div className="rounded-lg border border-border bg-gray-50 px-3 py-2 text-sm">{cName(contract.loading_port_id)}</div>
+            )}
+          </Field>
+          <Field label="Boşaltma Limanı">
             {canWrite ? (
               <Select value={portId} onChange={e => setPortId(e.target.value)}>
                 <option value="">Seçiniz...</option>

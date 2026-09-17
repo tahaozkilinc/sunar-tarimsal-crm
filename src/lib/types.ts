@@ -125,7 +125,8 @@ export interface PurchaseContract {
   contract_file_url: string | null;
   assigned_to: string | null;
   surveyor_id: string | null;
-  port_id: string | null;
+  port_id: string | null; // boşaltma/varış limanı
+  loading_port_id: string | null; // yükleme/menşe limanı — port_id ile aynı desen, ship-ops'tan atanır (FOB'da biz ayarlarız)
   carrier_id: string | null;
   agent_id: string | null; // yurtdışı yükleme takip acentesi
   broker_id: string | null; // Hammadde Brokeri — sözleşme açılışında seçilir
