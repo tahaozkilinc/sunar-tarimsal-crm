@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { ResourceManager } from "./resource-manager";
@@ -15,6 +16,23 @@ import { baseRole } from "@/lib/nav";
 
 const OPS_PARTNER_TYPES = new Set(["surveyor", "port", "carrier", "agent", "broker", "ship_broker"]);
 type DetailTab = "contacts" | "activities" | "warehouses" | "pricing" | "summary";
+
+// CRM listesindeki hangi sekmeden buraya gelindiyse ("from" query param,
+// bkz. crm-tabs.tsx rowHref) "CRM'e dön" oraya götürür — doğrudan bir
+// linkle/yer imiyle (from yok) açıldıysa firma türünden en makul sekme
+// tahmin edilir. "both" (tedarikçi + müşteri) için sabit bir tercih yok,
+// satın alma tarafı öncelikli sayılır (modulesForRole'daki sıralamayla aynı).
+const TYPE_TO_CRM_TAB: Record<Company["type"], string> = {
+  supplier: "purchasing",
+  customer: "sales",
+  both: "purchasing",
+  surveyor: "surveyor",
+  port: "port",
+  carrier: "carrier",
+  agent: "agent",
+  broker: "broker",
+  ship_broker: "ship_broker",
+};
 
 // Bir firmanın aktiviteleri artık CRM'in ortak/havuz sekmesinde değil, doğrudan
 // bu sayfada (bkz. crm-tabs.tsx — aktivite sekmesi kaldırıldı). crm_activities
@@ -70,6 +88,7 @@ function Info({ label, value }: { label: string; value: string | null }) {
 export function CompanyDetailView({ company, role }: { company: Company; role: Role }) {
   const typeOpt = COMPANY_TYPE_OPTIONS.find((o) => o.value === company.type);
   const [tab, setTab] = useState<DetailTab>("contacts");
+  const backTab = useSearchParams().get("from") || TYPE_TO_CRM_TAB[company.type];
 
   // Bu sayfada firma sabit -> kişi formunda firma alanı gizli, otomatik atanır.
   const contactsConfig = {
@@ -121,7 +140,7 @@ export function CompanyDetailView({ company, role }: { company: Company; role: R
     <div className="space-y-5">
       <div>
         <Link
-          href="/crm"
+          href={`/crm?tab=${backTab}`}
           className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700"
         >
           <ArrowLeft className="h-4 w-4" /> CRM&apos;e dön
