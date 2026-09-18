@@ -9,7 +9,7 @@ import { PhotoGallery } from "./photo-gallery";
 import { formatDate, formatNumber } from "@/lib/format";
 import { translateDbError } from "@/lib/db-errors";
 import { CONTRACT_STATUS_OPTIONS, SALES_STATUS_OPTIONS, STOCK_STATUS_OPTIONS } from "@/lib/resources";
-import { ArrowLeft, Camera, CheckCircle, Download, Leaf, Printer, Trash2 } from "lucide-react";
+import { ArrowDownToLine, ArrowLeft, ArrowUpToLine, Camera, CheckCircle, Download, Leaf, Printer, Trash2 } from "lucide-react";
 
 type Contract = {
   id: string;
@@ -58,6 +58,34 @@ type SaleRow = {
   status: string;
   delivery_date: string | null;
 };
+
+// Gözetim/Liman gibi yükleme-boşaltma ikilisi olan alanlarda tek satıra
+// sığdırmak için küçük ikonlu geçiş — kullanıcı isteği: "iki alan yerine
+// küçük ikonla ayrı ayrı seçeyim, satır fazla oluyor". Aktif taraf (loading/
+// discharge) her alan için ayrı state'te tutulur; Select tek kalır, hangi
+// tarafın değerini gösterip yazdığı bu state'e göre değişir.
+function SideToggle({ side, onChange }: { side: "loading" | "discharge"; onChange: (s: "loading" | "discharge") => void }) {
+  return (
+    <div className="inline-flex overflow-hidden rounded-md border border-border">
+      <button
+        type="button"
+        onClick={() => onChange("loading")}
+        title="Yükleme"
+        className={`flex items-center px-1.5 py-0.5 ${side === "loading" ? "bg-brand text-white" : "text-gray-400 hover:bg-gray-100"}`}
+      >
+        <ArrowUpToLine className="h-3 w-3" />
+      </button>
+      <button
+        type="button"
+        onClick={() => onChange("discharge")}
+        title="Boşaltma"
+        className={`flex items-center border-l border-border px-1.5 py-0.5 ${side === "discharge" ? "bg-brand text-white" : "text-gray-400 hover:bg-gray-100"}`}
+      >
+        <ArrowDownToLine className="h-3 w-3" />
+      </button>
+    </div>
+  );
+}
 
 // Bir araç en fazla 40 ton (40.000 kg) yük taşıyabilir.
 const MAX_TON = 40;
@@ -162,6 +190,9 @@ export function ShipOpsPage({
   const [assignSaving, setAssignSaving] = useState(false);
   const [assignErr, setAssignErr] = useState<string | null>(null);
   const [assignFlash, setAssignFlash] = useState<string | null>(null);
+  // Gözetim/Liman kartında hangi taraf (yükleme/boşaltma) gösteriliyor — bkz. SideToggle.
+  const [gozetimSide, setGozetimSide] = useState<"loading" | "discharge">("loading");
+  const [limanSide,   setLimanSide]   = useState<"loading" | "discharge">("loading");
 
   const loadPhotos = useCallback(
     async (ids: string[]) => {
@@ -589,46 +620,48 @@ export function ShipOpsPage({
           <span className="text-sm font-semibold">Operasyon Tarafları</span>
         </div>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          <Field label="Yükleme Gözetim">
+          <div>
+            <div className="mb-1 flex items-center gap-2">
+              <span className="text-sm font-medium text-gray-700">
+                Gözetim <span className="font-normal text-gray-400">({gozetimSide === "loading" ? "Yükleme" : "Boşaltma"})</span>
+              </span>
+              <SideToggle side={gozetimSide} onChange={setGozetimSide} />
+            </div>
             {canWrite ? (
-              <Select value={loadingSurveyorId} onChange={e => setLoadingSurveyorId(e.target.value)}>
+              <Select
+                value={gozetimSide === "loading" ? loadingSurveyorId : surveyorId}
+                onChange={e => (gozetimSide === "loading" ? setLoadingSurveyorId : setSurveyorId)(e.target.value)}
+              >
                 <option value="">Seçiniz...</option>
                 {surveyors.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
               </Select>
             ) : (
-              <div className="rounded-lg border border-border bg-gray-50 px-3 py-2 text-sm">{cName(contract.loading_surveyor_id)}</div>
+              <div className="rounded-lg border border-border bg-gray-50 px-3 py-2 text-sm">
+                {cName(gozetimSide === "loading" ? contract.loading_surveyor_id : contract.surveyor_id)}
+              </div>
             )}
-          </Field>
-          <Field label="Boşaltma Gözetim">
+          </div>
+          <div>
+            <div className="mb-1 flex items-center gap-2">
+              <span className="text-sm font-medium text-gray-700">
+                Liman <span className="font-normal text-gray-400">({limanSide === "loading" ? "Yükleme" : "Boşaltma"})</span>
+              </span>
+              <SideToggle side={limanSide} onChange={setLimanSide} />
+            </div>
             {canWrite ? (
-              <Select value={surveyorId} onChange={e => setSurveyorId(e.target.value)}>
-                <option value="">Seçiniz...</option>
-                {surveyors.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-              </Select>
-            ) : (
-              <div className="rounded-lg border border-border bg-gray-50 px-3 py-2 text-sm">{cName(contract.surveyor_id)}</div>
-            )}
-          </Field>
-          <Field label="Yükleme Limanı">
-            {canWrite ? (
-              <Select value={loadingPortId} onChange={e => setLoadingPortId(e.target.value)}>
-                <option value="">Seçiniz...</option>
-                {ports.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-              </Select>
-            ) : (
-              <div className="rounded-lg border border-border bg-gray-50 px-3 py-2 text-sm">{cName(contract.loading_port_id)}</div>
-            )}
-          </Field>
-          <Field label="Boşaltma Limanı">
-            {canWrite ? (
-              <Select value={portId} onChange={e => setPortId(e.target.value)}>
+              <Select
+                value={limanSide === "loading" ? loadingPortId : portId}
+                onChange={e => (limanSide === "loading" ? setLoadingPortId : setPortId)(e.target.value)}
+              >
                 <option value="">Seçiniz...</option>
                 {ports.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
               </Select>
             ) : (
-              <div className="rounded-lg border border-border bg-gray-50 px-3 py-2 text-sm">{cName(contract.port_id)}</div>
+              <div className="rounded-lg border border-border bg-gray-50 px-3 py-2 text-sm">
+                {cName(limanSide === "loading" ? contract.loading_port_id : contract.port_id)}
+              </div>
             )}
-          </Field>
+          </div>
           <Field label="Nakliyeci">
             {canWrite ? (
               <Select value={carrierId} onChange={e => setCarrierId(e.target.value)}>
