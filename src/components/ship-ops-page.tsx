@@ -22,6 +22,7 @@ type Contract = {
   eta: string | null;
   status: string;
   surveyor_id: string | null;
+  loading_surveyor_id: string | null;
   port_id: string | null;
   loading_port_id: string | null;
   carrier_id: string | null;
@@ -147,6 +148,10 @@ export function ShipOpsPage({
 
   // Gemiye gözetim / liman / nakliyeci / acente atama
   const [surveyorId, setSurveyorId] = useState("");
+  // Yükleme (menşe) gözetim firması — surveyor_id (boşaltma/varış) ile aynı
+  // gözetim havuzundan seçilir. Yükleme ve boşaltmada farklı gözetim
+  // firmaları olabiliyor (ör. menşede bir firma, varışta başka bir firma).
+  const [loadingSurveyorId, setLoadingSurveyorId] = useState("");
   const [portId,     setPortId]     = useState("");
   // Yükleme (menşe) limanı — port_id (boşaltma/varış) ile aynı liman havuzundan
   // seçilir. FOB sözleşmelerde yükleme organizasyonunu biz yaptığımızdan burada.
@@ -193,7 +198,7 @@ export function ShipOpsPage({
   useEffect(() => {
     (async () => {
       const CONTRACT_COLS =
-        "id,contract_no,vessel,product_id,supplier_id,quantity,unit,eta,status,surveyor_id,port_id,loading_port_id,carrier_id,agent_id,assigned_to,ship_broker_id";
+        "id,contract_no,vessel,product_id,supplier_id,quantity,unit,eta,status,surveyor_id,loading_surveyor_id,port_id,loading_port_id,carrier_id,agent_id,assigned_to,ship_broker_id";
       const [c0, w, p, co, pn, { data: au }] = await Promise.all([
         supabase
           .from("purchase_contracts")
@@ -225,6 +230,7 @@ export function ShipOpsPage({
       setProducts((p.data as Ref[]) || []);
       setCompanies((co.data as CompanyRef[]) || []);
       setSurveyorId(cd?.surveyor_id ?? "");
+      setLoadingSurveyorId(cd?.loading_surveyor_id ?? "");
       setPortId(cd?.port_id ?? "");
       setLoadingPortId(cd?.loading_port_id ?? "");
       setCarrierId(cd?.carrier_id ?? "");
@@ -273,6 +279,7 @@ export function ShipOpsPage({
   const shipBrokers = useMemo(() => companies.filter(c => c.type === "ship_broker"), [companies]);
   const partiesDirty =
     surveyorId !== (contract?.surveyor_id ?? "") ||
+    loadingSurveyorId !== (contract?.loading_surveyor_id ?? "") ||
     portId     !== (contract?.port_id ?? "") ||
     loadingPortId !== (contract?.loading_port_id ?? "") ||
     carrierId  !== (contract?.carrier_id ?? "") ||
@@ -462,6 +469,7 @@ export function ShipOpsPage({
       p_assigned_to: null,
       p_ship_broker_id: shipBrokerId || null,
       p_loading_port_id: loadingPortId || null,
+      p_loading_surveyor_id: loadingSurveyorId || null,
     });
     if (rpcResult.error) { setAssignSaving(false); setAssignErr(translateDbError(rpcResult.error)); return; }
     const parties = {
@@ -471,6 +479,7 @@ export function ShipOpsPage({
       agent_id:    agentId || null,
       ship_broker_id: shipBrokerId || null,
       loading_port_id: loadingPortId || null,
+      loading_surveyor_id: loadingSurveyorId || null,
     };
     setContract(prev => prev ? { ...prev, ...parties } : prev);
     setAssignSaving(false);
@@ -580,7 +589,17 @@ export function ShipOpsPage({
           <span className="text-sm font-semibold">Operasyon Tarafları</span>
         </div>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          <Field label="Gözetim Şirketi">
+          <Field label="Yükleme Gözetim">
+            {canWrite ? (
+              <Select value={loadingSurveyorId} onChange={e => setLoadingSurveyorId(e.target.value)}>
+                <option value="">Seçiniz...</option>
+                {surveyors.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+              </Select>
+            ) : (
+              <div className="rounded-lg border border-border bg-gray-50 px-3 py-2 text-sm">{cName(contract.loading_surveyor_id)}</div>
+            )}
+          </Field>
+          <Field label="Boşaltma Gözetim">
             {canWrite ? (
               <Select value={surveyorId} onChange={e => setSurveyorId(e.target.value)}>
                 <option value="">Seçiniz...</option>

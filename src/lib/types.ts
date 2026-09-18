@@ -124,7 +124,8 @@ export interface PurchaseContract {
   principal_id: string | null;
   contract_file_url: string | null;
   assigned_to: string | null;
-  surveyor_id: string | null;
+  surveyor_id: string | null; // boşaltma/varış gözetim firması
+  loading_surveyor_id: string | null; // yükleme/menşe gözetim firması — surveyor_id ile aynı desen, yükleme/boşaltmada farklı firmalar olabiliyor
   port_id: string | null; // boşaltma/varış limanı
   loading_port_id: string | null; // yükleme/menşe limanı — port_id ile aynı desen, ship-ops'tan atanır (FOB'da biz ayarlarız)
   carrier_id: string | null;
