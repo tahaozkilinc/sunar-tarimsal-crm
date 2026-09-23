@@ -636,6 +636,56 @@ export const principalsResource: ResourceConfig = {
   ],
 };
 
+// WASDE (USDA) raporu — TÜİK dış ticaret verisinden BAĞIMSIZ, ayrı bir kaynak
+// (GTİP ile ilişkilendirilmez). Ürün/bölge/kalem serbest metin + öneri listesi
+// (select_other): WASDE tablolarında listelenmeyen bir kalem/ürün çıkarsa da
+// elle yazılabilsin diye.
+export const WASDE_COMMODITY_OPTIONS: SelectOption[] = [
+  { value: "Soya Fasulyesi", label: "Soya Fasulyesi" },
+  { value: "Soya Yağı", label: "Soya Yağı" },
+  { value: "Soya Küspesi", label: "Soya Küspesi" },
+  { value: "Mısır", label: "Mısır" },
+  { value: "Buğday", label: "Buğday" },
+  { value: "Pamuk", label: "Pamuk" },
+  { value: "Şeker", label: "Şeker" },
+  { value: "Pirinç", label: "Pirinç" },
+];
+
+export const WASDE_METRIC_OPTIONS: SelectOption[] = [
+  { value: "Üretim", label: "Üretim" },
+  { value: "Son Stok", label: "Son Stok" },
+  { value: "İhracat", label: "İhracat" },
+  { value: "İthalat", label: "İthalat" },
+  { value: "Tüketim/Kullanım", label: "Tüketim/Kullanım" },
+  { value: "Ezme (Crush)", label: "Ezme (Crush)" },
+  { value: "Ekili Alan", label: "Ekili Alan" },
+  { value: "Verim", label: "Verim" },
+];
+
+export const wasdeReportsResource: ResourceConfig = {
+  table: "wasde_reports",
+  title: "WASDE Raporu",
+  singular: "WASDE Kalemi",
+  writeRoles: ["admin", "purchasing"],
+  orderBy: { column: "report_date", ascending: false },
+  limitToRecent: true,
+  listFields: ["report_date", "commodity", "metric", "region", "marketing_year", "value", "unit"],
+  fields: [
+    { name: "report_date", label: "Rapor Tarihi", type: "date", required: true },
+    { name: "commodity", label: "Ürün", type: "select_other", options: WASDE_COMMODITY_OPTIONS, required: true },
+    { name: "metric", label: "Kalem", type: "select_other", options: WASDE_METRIC_OPTIONS, required: true },
+    { name: "region", label: "Bölge", type: "text", placeholder: "Dünya / ABD / ..." },
+    { name: "marketing_year", label: "Pazarlama Yılı", type: "text", placeholder: "2026/27" },
+    { name: "value", label: "Değer", type: "number", required: true },
+    { name: "unit", label: "Birim", type: "text", required: true, placeholder: "milyon ton", inlineAfter: true },
+    // Bir önceki ayın aynı kalemi — ay bazında artış/azalış karşılaştırması için.
+    { name: "prev_value", label: "Önceki Ay", type: "number" },
+    { name: "source_url", label: "Kaynak (WASDE Raporu)", type: "url" },
+    { name: "notes", label: "Notlar", type: "textarea" },
+    { name: "created_by", label: "Giren", type: "reference", ref: { table: "profile_names", labelField: "full_name" }, readOnly: true },
+  ],
+};
+
 // Sözleşmedeki "Alıcı" alanı artık sabit bir dizi değil, bu yönetilebilir
 // listeden seçiliyor — principalsResource ile birebir aynı desen (0068).
 export const buyersResource: ResourceConfig = {

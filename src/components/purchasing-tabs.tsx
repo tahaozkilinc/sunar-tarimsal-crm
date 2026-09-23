@@ -6,7 +6,7 @@ import { ResourceManager } from "./resource-manager";
 import { ShipmentSchedule } from "./shipment-schedule";
 import { BaglantiSummary } from "./function-summary";
 import { ContractDocuments } from "./contract-documents";
-import { purchaseContractsResource } from "@/lib/resources";
+import { purchaseContractsResource, wasdeReportsResource } from "@/lib/resources";
 import type { Role } from "@/lib/types";
 
 export function PurchasingTabs({ role }: { role: Role }) {
@@ -21,6 +21,7 @@ export function PurchasingTabs({ role }: { role: Role }) {
           { key: "ozet", label: "Özet" },
           { key: "contracts", label: "Sözleşmeler" },
           { key: "schedule", label: "Sevkiyat" },
+          { key: "wasde", label: "WASDE" },
         ]}
       />
       {tab === "ozet" && <BaglantiSummary />}
@@ -33,6 +34,7 @@ export function PurchasingTabs({ role }: { role: Role }) {
         />
       )}
       {tab === "schedule" && <ShipmentSchedule />}
+      {tab === "wasde" && <ResourceManager config={wasdeReportsResource} role={role} hideTitle />}
     </div>
   );
 }
