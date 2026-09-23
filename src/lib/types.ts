@@ -33,8 +33,9 @@ export interface Company {
   id: string;
   name: string;
   // broker = Hammadde Brokeri (satın alma, sözleşme aracısı), ship_broker =
-  // Gemi Brokeri (operasyon, navlun/gemi aracısı) — ikisi ayrı roller.
-  type: "supplier" | "customer" | "both" | "surveyor" | "port" | "carrier" | "agent" | "broker" | "ship_broker";
+  // Gemi Brokeri (operasyon, navlun/gemi aracısı), customs_broker = Gümrükçü
+  // (operasyon, gümrük işlemleri) — üçü ayrı roller.
+  type: "supplier" | "customer" | "both" | "surveyor" | "port" | "carrier" | "agent" | "broker" | "ship_broker" | "customs_broker";
   city: string | null;
   country: string | null;
   phone: string | null;

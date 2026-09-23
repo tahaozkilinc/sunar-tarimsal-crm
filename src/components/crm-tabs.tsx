@@ -8,12 +8,17 @@ import { companiesResource, warehousesResource } from "@/lib/resources";
 import type { Role } from "@/lib/types";
 import { baseRole } from "@/lib/nav";
 
-type CrmModule = "purchasing" | "sales" | "surveyor" | "port" | "carrier" | "agent" | "ship_broker" | "broker" | "warehouses";
+type CrmModule = "purchasing" | "sales" | "surveyor" | "port" | "carrier" | "agent" | "ship_broker" | "customs_broker" | "broker" | "warehouses";
 
 // Operasyon iş ortakları artık tek modül değil; gözetim/liman/nakliyeci/acente/
 // Gemi Brokeri ayrı. Aktiviteler artık burada değil, doğrudan her firmanın
 // kendi detay sayfasında (bkz. company-detail-view.tsx) — bu yüzden burada
 // modül bazlı bir aktivite kovası ayrımına gerek kalmadı.
+// Gümrükçü BİLEREK burada değil: OperationPartnerStats (gemi/tonaj istatiği)
+// purchase_contracts'ta atanmış bir kolon (surveyor_id/port_id/... gibi)
+// gerektiriyor — gümrükçü için henüz öyle bir kolon yok (yalnızca CRM
+// kataloğu). Eklenirse company-ship-stats.tsx'teki OpsType/PARTY_FIELD'e de
+// eklenmeli.
 const OPERATIONS_MODULES: CrmModule[] = ["surveyor", "port", "carrier", "agent", "ship_broker"];
 
 const MODULE_META: Record<
@@ -76,6 +81,14 @@ const MODULE_META: Record<
     companyType: "ship_broker",
     typeFilter: ["ship_broker"],
   },
+  // Gümrükçü: operasyon tarafı — gümrük işlemlerini yürüten firma. Şimdilik
+  // yalnızca CRM kataloğu (ship-ops'ta bir atama kolonu yok, bkz. yukarıdaki not).
+  customs_broker: {
+    toggleLabel: "Gümrükçü",
+    companyLabel: "Gümrükçüler",
+    companyType: "customs_broker",
+    typeFilter: ["customs_broker"],
+  },
   // Depolar companies değil warehouses tablosu üzerinde çalışır — companies
   // deseni buraya uymaz, kendi ayrı dalı var (aşağıda, effModule ===
   // "warehouses" erken dönüşü). Buradaki alanların toggleLabel DIŞINDAKİ
@@ -89,18 +102,19 @@ const MODULE_META: Record<
 };
 
 // Rol başına görünür CRM modülleri. admin/viewer hepsini; satış kendi modülünü;
-// operasyon beş iş ortağı türünü (gözetim/liman/nakliyeci/acente/Gemi Brokeri)
-// + Depolar'ı ayrı ayrı görür (depo yönetimi zaten operasyonun işi, bkz.
-// warehouses_write); satın alma kendi modülüne ek olarak Hammadde Brokeri'ni
-// görür (bağlantı açılırken seçildiği için satın almaya ait, operasyona değil);
-// maliyet yalnızca Liman + Depolar'ı görür (anlaşmalı fiyat/tarife girişi için
-// ihtiyacı olan tek alan bu — bkz. pricing_agreements writeRoles).
+// operasyon altı iş ortağı türünü (gözetim/liman/nakliyeci/acente/Gemi
+// Brokeri/Gümrükçü) + Depolar'ı ayrı ayrı görür (depo yönetimi zaten
+// operasyonun işi, bkz. warehouses_write); satın alma kendi modülüne ek
+// olarak Hammadde Brokeri'ni görür (bağlantı açılırken seçildiği için satın
+// almaya ait, operasyona değil); maliyet yalnızca Liman + Depolar'ı görür
+// (anlaşmalı fiyat/tarife girişi için ihtiyacı olan tek alan bu — bkz.
+// pricing_agreements writeRoles).
 function modulesForRole(role: Role): CrmModule[] {
   const base = baseRole(role);
   if (base === "admin" || base === "viewer")
-    return ["purchasing", "sales", "surveyor", "port", "carrier", "agent", "ship_broker", "broker", "warehouses"];
+    return ["purchasing", "sales", "surveyor", "port", "carrier", "agent", "ship_broker", "customs_broker", "broker", "warehouses"];
   if (base === "sales") return ["sales"];
-  if (base === "operations") return ["surveyor", "port", "carrier", "agent", "ship_broker", "warehouses"];
+  if (base === "operations") return ["surveyor", "port", "carrier", "agent", "ship_broker", "customs_broker", "warehouses"];
   if (base === "purchasing") return ["purchasing", "broker"];
   if (base === "maliyet") return ["port", "warehouses"];
   return ["purchasing"];

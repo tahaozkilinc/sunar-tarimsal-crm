@@ -147,6 +147,11 @@ export const COMPANY_TYPE_OPTIONS: SelectOption[] = [
   // aracısı — gözetim/liman/nakliyeci/acente gibi ship-ops'tan atanır).
   { value: "broker", label: "Hammadde Brokeri", color: "green" },
   { value: "ship_broker", label: "Gemi Brokeri", color: "blue" },
+  // Gümrükçü: operasyon tarafı — gümrük işlemlerini yürüten firma. Diğer
+  // operasyon iş ortakları (gözetim/liman/nakliyeci/acente/Gemi Brokeri) ile
+  // aynı CRM desenini paylaşır — bkz. crm-tabs.tsx. Bu kümedeki tek boşta
+  // renk "green" olduğundan (yellow/gray/red/purple/blue zaten kümede var).
+  { value: "customs_broker", label: "Gümrükçü", color: "green" },
 ];
 
 export const LOCATION_TYPE_OPTIONS: SelectOption[] = [

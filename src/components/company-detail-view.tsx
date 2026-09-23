@@ -14,6 +14,9 @@ import { COMPANY_TYPE_OPTIONS, activitiesResource, contactsResource, pricingAgre
 import type { Company, Role } from "@/lib/types";
 import { baseRole } from "@/lib/nav";
 
+// customs_broker BİLEREK burada değil: "Operasyonel Özet" bu tür için gemi/
+// tonaj istatiği (CompanyShipStats) değil, genel rapora (CompanyReport)
+// düşer — purchase_contracts'ta atanmış bir kolonu yok (bkz. crm-tabs.tsx).
 const OPS_PARTNER_TYPES = new Set(["surveyor", "port", "carrier", "agent", "broker", "ship_broker"]);
 type DetailTab = "contacts" | "activities" | "warehouses" | "pricing" | "summary";
 
@@ -32,6 +35,7 @@ const TYPE_TO_CRM_TAB: Record<Company["type"], string> = {
   agent: "agent",
   broker: "broker",
   ship_broker: "ship_broker",
+  customs_broker: "customs_broker",
 };
 
 // Bir firmanın aktiviteleri artık CRM'in ortak/havuz sekmesinde değil, doğrudan
@@ -49,7 +53,7 @@ function activityModuleFor(type: Company["type"], role: Role): "purchasing" | "s
   if (base === "purchasing") return type === "broker" ? "broker" : "purchasing";
   if (type === "broker") return "broker";
   if (type === "customer") return "sales";
-  if (type === "surveyor" || type === "port" || type === "carrier" || type === "agent" || type === "ship_broker") return "operations";
+  if (type === "surveyor" || type === "port" || type === "carrier" || type === "agent" || type === "ship_broker" || type === "customs_broker") return "operations";
   return "purchasing"; // supplier / both
 }
 
