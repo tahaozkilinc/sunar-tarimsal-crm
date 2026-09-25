@@ -380,7 +380,7 @@ export const purchaseContractsResource: ResourceConfig = {
     // atanır (bkz. assign_ship_parties, 0057). formHidden -> formdan gizli
     // ama Detay görünümünde ve DB'de kalır (bkz. resource-manager.tsx).
     { name: "assigned_to", label: "Operasyon Sorumlusu", type: "reference", ref: { table: "profiles", labelField: "full_name", filter: { role: ["operations"] } }, formHidden: true },
-    { name: "agent_id", label: "Acente (Yükleme Takibi)", type: "reference", ref: { table: "companies", labelField: "name", filter: { type: ["agent"] } }, formHidden: true },
+    { name: "agent_id", label: "Acente (Boşaltma)", type: "reference", ref: { table: "companies", labelField: "name", filter: { type: ["agent"] } }, formHidden: true },
     // Gemi Brokeri: gözetim/liman/nakliyeci/acente gibi sözleşme açılışında
     // DEĞİL, gemi netleştikçe ship-ops'taki "Operasyon Tarafları" kartından atanır.
     { name: "ship_broker_id", label: "Gemi Brokeri", type: "reference", ref: { table: "companies", labelField: "name", filter: { type: ["ship_broker"] } }, formHidden: true },
