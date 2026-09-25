@@ -27,6 +27,7 @@ type Contract = {
   loading_port_id: string | null;
   carrier_id: string | null;
   agent_id: string | null;
+  loading_agent_id: string | null;
   assigned_to: string | null;
   ship_broker_id: string | null;
 };
@@ -186,13 +187,17 @@ export function ShipOpsPage({
   const [loadingPortId, setLoadingPortId] = useState("");
   const [carrierId,  setCarrierId]  = useState("");
   const [agentId,    setAgentId]    = useState("");
+  // Yükleme (menşe) acentesi — agent_id (boşaltma/varış) ile aynı acente
+  // havuzundan seçilir. Yükleme ve boşaltmada farklı acenteler olabiliyor.
+  const [loadingAgentId, setLoadingAgentId] = useState("");
   const [shipBrokerId, setShipBrokerId] = useState("");
   const [assignSaving, setAssignSaving] = useState(false);
   const [assignErr, setAssignErr] = useState<string | null>(null);
   const [assignFlash, setAssignFlash] = useState<string | null>(null);
-  // Gözetim/Liman kartında hangi taraf (yükleme/boşaltma) gösteriliyor — bkz. SideToggle.
+  // Gözetim/Liman/Acente kartında hangi taraf (yükleme/boşaltma) gösteriliyor — bkz. SideToggle.
   const [gozetimSide, setGozetimSide] = useState<"loading" | "discharge">("loading");
   const [limanSide,   setLimanSide]   = useState<"loading" | "discharge">("loading");
+  const [acenteSide,  setAcenteSide]  = useState<"loading" | "discharge">("loading");
 
   const loadPhotos = useCallback(
     async (ids: string[]) => {
@@ -229,7 +234,7 @@ export function ShipOpsPage({
   useEffect(() => {
     (async () => {
       const CONTRACT_COLS =
-        "id,contract_no,vessel,product_id,supplier_id,quantity,unit,eta,status,surveyor_id,loading_surveyor_id,port_id,loading_port_id,carrier_id,agent_id,assigned_to,ship_broker_id";
+        "id,contract_no,vessel,product_id,supplier_id,quantity,unit,eta,status,surveyor_id,loading_surveyor_id,port_id,loading_port_id,carrier_id,agent_id,loading_agent_id,assigned_to,ship_broker_id";
       const [c0, w, p, co, pn, { data: au }] = await Promise.all([
         supabase
           .from("purchase_contracts")
@@ -266,6 +271,7 @@ export function ShipOpsPage({
       setLoadingPortId(cd?.loading_port_id ?? "");
       setCarrierId(cd?.carrier_id ?? "");
       setAgentId(cd?.agent_id ?? "");
+      setLoadingAgentId(cd?.loading_agent_id ?? "");
       setShipBrokerId(cd?.ship_broker_id ?? "");
       const pnRows = (pn.data as { id: string; full_name: string | null; role: string | null }[] | null) || [];
       const names: Record<string, string> = {};
@@ -315,6 +321,7 @@ export function ShipOpsPage({
     loadingPortId !== (contract?.loading_port_id ?? "") ||
     carrierId  !== (contract?.carrier_id ?? "") ||
     agentId    !== (contract?.agent_id ?? "") ||
+    loadingAgentId !== (contract?.loading_agent_id ?? "") ||
     shipBrokerId !== (contract?.ship_broker_id ?? "");
 
   const totalDrawn = useMemo(
@@ -501,6 +508,7 @@ export function ShipOpsPage({
       p_ship_broker_id: shipBrokerId || null,
       p_loading_port_id: loadingPortId || null,
       p_loading_surveyor_id: loadingSurveyorId || null,
+      p_loading_agent_id: loadingAgentId || null,
     });
     if (rpcResult.error) { setAssignSaving(false); setAssignErr(translateDbError(rpcResult.error)); return; }
     const parties = {
@@ -511,6 +519,7 @@ export function ShipOpsPage({
       ship_broker_id: shipBrokerId || null,
       loading_port_id: loadingPortId || null,
       loading_surveyor_id: loadingSurveyorId || null,
+      loading_agent_id: loadingAgentId || null,
     };
     setContract(prev => prev ? { ...prev, ...parties } : prev);
     setAssignSaving(false);
@@ -672,16 +681,27 @@ export function ShipOpsPage({
               <div className="rounded-lg border border-border bg-gray-50 px-3 py-2 text-sm">{cName(contract.carrier_id)}</div>
             )}
           </Field>
-          <Field label="Acente">
+          <div>
+            <div className="mb-1 flex items-center gap-2">
+              <span className="text-sm font-medium text-gray-700">
+                Acente <span className="font-normal text-gray-400">({acenteSide === "loading" ? "Yükleme" : "Boşaltma"})</span>
+              </span>
+              <SideToggle side={acenteSide} onChange={setAcenteSide} />
+            </div>
             {canWrite ? (
-              <Select value={agentId} onChange={e => setAgentId(e.target.value)}>
+              <Select
+                value={acenteSide === "loading" ? loadingAgentId : agentId}
+                onChange={e => (acenteSide === "loading" ? setLoadingAgentId : setAgentId)(e.target.value)}
+              >
                 <option value="">Seçiniz...</option>
                 {agents.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
               </Select>
             ) : (
-              <div className="rounded-lg border border-border bg-gray-50 px-3 py-2 text-sm">{cName(contract.agent_id)}</div>
+              <div className="rounded-lg border border-border bg-gray-50 px-3 py-2 text-sm">
+                {cName(acenteSide === "loading" ? contract.loading_agent_id : contract.agent_id)}
+              </div>
             )}
-          </Field>
+          </div>
           <Field label="Gemi Brokeri">
             {canWrite ? (
               <Select value={shipBrokerId} onChange={e => setShipBrokerId(e.target.value)}>

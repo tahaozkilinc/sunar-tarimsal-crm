@@ -130,7 +130,8 @@ export interface PurchaseContract {
   port_id: string | null; // boşaltma/varış limanı
   loading_port_id: string | null; // yükleme/menşe limanı — port_id ile aynı desen, ship-ops'tan atanır (FOB'da biz ayarlarız)
   carrier_id: string | null;
-  agent_id: string | null; // yurtdışı yükleme takip acentesi
+  agent_id: string | null; // boşaltma/varış acentesi
+  loading_agent_id: string | null; // yükleme/menşe acentesi — agent_id ile aynı desen, yükleme/boşaltmada farklı acenteler olabiliyor
   broker_id: string | null; // Hammadde Brokeri — sözleşme açılışında seçilir
   ship_broker_id: string | null; // Gemi Brokeri — ship-ops'tan sonradan atanır
   created_at: string;
