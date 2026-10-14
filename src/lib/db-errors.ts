@@ -41,6 +41,9 @@ const CONSTRAINT_MESSAGES: Record<string, string> = {
   ck_wh_lng: "Boylam -180 ile 180 arasında olmalı.",
   ck_wh_latlng_pair: "Haritadan konum seçerken enlem ve boylamın ikisi de girilmeli.",
   warehouses_parent_not_self: "Bir depo kendi kendisinin ana deposu (antrepo) olamaz.",
+
+  // companies (0095)
+  ck_companies_types_nonempty: "Firma için en az bir tür seçilmeli.",
 };
 
 // Ham bir Postgres sistem mesajının "tipik" kalıpları — yalnızca bunlara

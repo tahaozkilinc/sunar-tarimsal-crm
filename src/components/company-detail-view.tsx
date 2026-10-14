@@ -11,7 +11,7 @@ import { CompanyReport } from "./company-report";
 import { CompanyShipStats } from "./company-ship-stats";
 import { Badge, Card, Tabs } from "./ui";
 import { COMPANY_TYPE_OPTIONS, activitiesResource, contactsResource, pricingAgreementsResource, warehousesResource } from "@/lib/resources";
-import type { Company, Role } from "@/lib/types";
+import type { Company, CompanyTypeValue, Role } from "@/lib/types";
 import { baseRole } from "@/lib/nav";
 
 // customs_broker BİLEREK burada değil: "Operasyonel Özet" bu tür için gemi/
@@ -22,13 +22,11 @@ type DetailTab = "contacts" | "activities" | "warehouses" | "pricing" | "summary
 
 // CRM listesindeki hangi sekmeden buraya gelindiyse ("from" query param,
 // bkz. crm-tabs.tsx rowHref) "CRM'e dön" oraya götürür — doğrudan bir
-// linkle/yer imiyle (from yok) açıldıysa firma türünden en makul sekme
-// tahmin edilir. "both" (tedarikçi + müşteri) için sabit bir tercih yok,
-// satın alma tarafı öncelikli sayılır (modulesForRole'daki sıralamayla aynı).
-const TYPE_TO_CRM_TAB: Record<Company["type"], string> = {
+// linkle/yer imiyle (from yok) açıldıysa firmanın İLK türünden en makul
+// sekme tahmin edilir (firma birden fazla tür taşıyabiliyor, bkz. types.ts).
+const TYPE_TO_CRM_TAB: Record<CompanyTypeValue, string> = {
   supplier: "purchasing",
   customer: "sales",
-  both: "purchasing",
   surveyor: "surveyor",
   port: "port",
   carrier: "carrier",
@@ -43,18 +41,18 @@ const TYPE_TO_CRM_TAB: Record<Company["type"], string> = {
 // hâlâ 'module' bazlı RLS ile korunuyor (purchasing/sales/operations/broker) —
 // yeni kayıt oluştururken hangi modülün kullanılacağını, mevcut rolün YAZMA
 // yetkisi kesin geçsin diye önce görüntüleyen rolden, o mümkün değilse
-// (admin/viewer) firma türünden çıkarıyoruz. ship_broker (Gemi Brokeri)
+// (admin/viewer) firma türlerinden çıkarıyoruz. ship_broker (Gemi Brokeri)
 // operasyona ait olduğundan module='operations' kovasını paylaşır; module='broker'
 // kovası yalnızca broker (Hammadde Brokeri) içindir.
-function activityModuleFor(type: Company["type"], role: Role): "purchasing" | "sales" | "operations" | "broker" {
+function activityModuleFor(types: CompanyTypeValue[], role: Role): "purchasing" | "sales" | "operations" | "broker" {
   const base = baseRole(role);
   if (base === "sales") return "sales";
   if (base === "operations") return "operations";
-  if (base === "purchasing") return type === "broker" ? "broker" : "purchasing";
-  if (type === "broker") return "broker";
-  if (type === "customer") return "sales";
-  if (type === "surveyor" || type === "port" || type === "carrier" || type === "agent" || type === "ship_broker" || type === "customs_broker") return "operations";
-  return "purchasing"; // supplier / both
+  if (base === "purchasing") return types.includes("broker") ? "broker" : "purchasing";
+  if (types.includes("broker")) return "broker";
+  if (types.some((t) => t === "surveyor" || t === "port" || t === "carrier" || t === "agent" || t === "ship_broker" || t === "customs_broker")) return "operations";
+  if (types.includes("customer")) return "sales";
+  return "purchasing"; // supplier (veya tanınmayan tür)
 }
 
 // Firma logosu: private kovadan imzalı URL ile gösterilir; yoksa baş harf.
@@ -90,9 +88,9 @@ function Info({ label, value }: { label: string; value: string | null }) {
 }
 
 export function CompanyDetailView({ company, role }: { company: Company; role: Role }) {
-  const typeOpt = COMPANY_TYPE_OPTIONS.find((o) => o.value === company.type);
+  const typeOpts = company.types.map((t) => COMPANY_TYPE_OPTIONS.find((o) => o.value === t)).filter((o) => !!o);
   const [tab, setTab] = useState<DetailTab>("contacts");
-  const backTab = useSearchParams().get("from") || TYPE_TO_CRM_TAB[company.type];
+  const backTab = useSearchParams().get("from") || TYPE_TO_CRM_TAB[company.types[0]];
 
   // Bu sayfada firma sabit -> kişi formunda firma alanı gizli, otomatik atanır.
   const contactsConfig = {
@@ -112,7 +110,7 @@ export function CompanyDetailView({ company, role }: { company: Company; role: R
       f.name === "company_id" ? { ...f, formHidden: true } : f,
     ),
   };
-  const activityModule = activityModuleFor(company.type, role);
+  const activityModule = activityModuleFor(company.types, role);
 
   // Liman ise: gümrüklü sahasındaki depolar buradan görülüp eklenebilir —
   // firma alanı sabit -> formda gizli, otomatik bu limana atanır.
@@ -123,7 +121,13 @@ export function CompanyDetailView({ company, role }: { company: Company; role: R
       f.name === "port_id" ? { ...f, formHidden: true } : f,
     ),
   };
-  const isPort = company.type === "port";
+  const isPort = company.types.includes("port");
+  // Operasyon iş ortağı türlerinden HER biri için ayrı bir gemi/tonaj özeti
+  // gösterilir (bir firma örn. hem Nakliyeci hem Acente olabiliyor); hiçbiri
+  // yoksa genel rapora (CompanyReport) düşülür.
+  const opsTypes = company.types.filter(
+    (t): t is "surveyor" | "port" | "carrier" | "agent" | "broker" | "ship_broker" => OPS_PARTNER_TYPES.has(t),
+  );
 
   // Liman ile anlaşmalı fiyat (elleçleme ücreti vb.) — firma alanı sabit,
   // formda gizli, otomatik bu limana atanır. Hizmet kalemi (Gemi Tahliye/
@@ -152,7 +156,7 @@ export function CompanyDetailView({ company, role }: { company: Company; role: R
         <div className="mt-1 flex flex-wrap items-center gap-3">
           <CompanyLogo path={company.logo_url} name={company.name} />
           <h1 className="text-xl font-bold">{company.name}</h1>
-          {typeOpt && <Badge color={typeOpt.color}>{typeOpt.label}</Badge>}
+          {typeOpts.map((o) => <Badge key={o.value} color={o.color}>{o.label}</Badge>)}
         </div>
       </div>
 
@@ -234,8 +238,10 @@ export function CompanyDetailView({ company, role }: { company: Company; role: R
       )}
 
       {tab === "summary" &&
-        (OPS_PARTNER_TYPES.has(company.type) ? (
-          <CompanyShipStats companyId={company.id} companyType={company.type as "surveyor" | "port" | "carrier" | "agent" | "broker" | "ship_broker"} />
+        (opsTypes.length > 0 ? (
+          <div className="space-y-4">
+            {opsTypes.map((t) => <CompanyShipStats key={t} companyId={company.id} companyType={t} />)}
+          </div>
         ) : (
           <CompanyReport companyId={company.id} />
         ))}

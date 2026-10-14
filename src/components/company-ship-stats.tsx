@@ -196,7 +196,7 @@ export function OperationPartnerStats({ companyType }: { companyType: OpsType })
     (async () => {
       setLoading(true);
       const [co, pc] = await Promise.all([
-        supabase.from("companies").select("id,name").eq("type", companyType),
+        supabase.from("companies").select("id,name").contains("types", [companyType]),
         supabase
           .from("purchase_contracts")
           .select(`${field},quantity,status`)

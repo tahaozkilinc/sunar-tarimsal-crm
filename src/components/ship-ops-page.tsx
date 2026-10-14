@@ -48,7 +48,7 @@ type Movement = {
   created_by: string | null;
 };
 type Ref = { id: string; name: string };
-type CompanyRef = { id: string; name: string; type: string };
+type CompanyRef = { id: string; name: string; types: string[] };
 // Fiyat İÇERMEZ: bu bağlantıdan otomatik karşılanan satışlar (bkz.
 // fn_sales_order_autofill_contract, 0048) — yalnızca admin/operasyona,
 // nakliyeci/gözetim/acente gibi dış rollere gösterilmez.
@@ -251,7 +251,7 @@ export function ShipOpsPage({
         // Boşaltma hedefi yurtiçi depo/fabrikadır; yurtdışı depolar bu listede yer almaz.
         supabase.from("warehouses").select("id,name").eq("is_active", true).neq("type", "foreign").order("name"),
         supabase.from("products").select("id,name"),
-        supabase.from("companies").select("id,name,type").order("name"),
+        supabase.from("companies").select("id,name,types").order("name"),
         supabase.from("profile_names").select("id,full_name,role"),
         supabase.auth.getUser(),
       ]);
@@ -318,11 +318,11 @@ export function ShipOpsPage({
   const creatorName = (id: string | null) => (id && creatorNames[id]) || "—";
   const statusOptOf = (v: string | null) => STOCK_STATUS_OPTIONS.find(o => o.value === v);
 
-  const surveyors   = useMemo(() => companies.filter(c => c.type === "surveyor"), [companies]);
-  const ports       = useMemo(() => companies.filter(c => c.type === "port"), [companies]);
-  const carriers    = useMemo(() => companies.filter(c => c.type === "carrier"), [companies]);
-  const agents      = useMemo(() => companies.filter(c => c.type === "agent"), [companies]);
-  const shipBrokers = useMemo(() => companies.filter(c => c.type === "ship_broker"), [companies]);
+  const surveyors   = useMemo(() => companies.filter(c => c.types.includes("surveyor")), [companies]);
+  const ports       = useMemo(() => companies.filter(c => c.types.includes("port")), [companies]);
+  const carriers    = useMemo(() => companies.filter(c => c.types.includes("carrier")), [companies]);
+  const agents      = useMemo(() => companies.filter(c => c.types.includes("agent")), [companies]);
+  const shipBrokers = useMemo(() => companies.filter(c => c.types.includes("ship_broker")), [companies]);
   const partiesDirty =
     surveyorId !== (contract?.surveyor_id ?? "") ||
     loadingSurveyorId !== (contract?.loading_surveyor_id ?? "") ||

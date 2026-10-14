@@ -26,6 +26,14 @@ import { Download, Eye, Filter, MapPin, Paperclip, Pencil, Plus, Trash2, X } fro
 
 type Row = Record<string, unknown>;
 
+// ref.filter eşleşmesi: hedef kolon DİZİ ise (ör. multi_select/companies.types)
+// KESİŞİM (en az bir ortak değer) yeterli; skaler ise birebir eşitlik.
+function matchesRefFilter(row: Row, col: string, vals: string[]): boolean {
+  const v = row[col];
+  if (Array.isArray(v)) return v.some((x) => vals.includes(String(x)));
+  return vals.includes(String(v));
+}
+
 // Sayfa açılışında varsayılan olarak yalnızca bu kadar kayıt çekilir/render
 // edilir (performans); "Daha Fazla Göster" ile kullanıcı isterse tümünü açar.
 const ROW_LIMIT = 20;
@@ -629,8 +637,10 @@ export function ResourceManager({
       string,
       string | number | boolean | string[]
     >;
-    for (const [k, v] of Object.entries(f))
-      query = Array.isArray(v) ? query.in(k, v) : query.eq(k, v);
+    for (const [k, v] of Object.entries(f)) {
+      const isArrayColumn = config.fields.find((fd) => fd.name === k)?.type === "multi_select";
+      query = Array.isArray(v) ? (isArrayColumn ? query.overlaps(k, v) : query.in(k, v)) : query.eq(k, v);
+    }
     if (config.orderBy)
       query = query.order(config.orderBy.column, {
         ascending: config.orderBy.ascending ?? false,
@@ -650,6 +660,7 @@ export function ResourceManager({
       setRows(all);
     }
     setLoading(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [supabase, config.table, config.orderBy, config.limitToRecent, filterKey, expanded, hasActiveFilter]);
 
   // Filtre değişince tekrar sınırlı (hızlı) görünüme dön — beklenmedik şekilde
@@ -822,6 +833,18 @@ export function ResourceManager({
           </a>
         );
       }
+      case "multi_select": {
+        const vals = Array.isArray(value) ? (value as string[]) : [];
+        if (vals.length === 0) return <span className="text-gray-400">-</span>;
+        return (
+          <div className="flex flex-wrap gap-1">
+            {vals.map((v) => {
+              const opt = field.options?.find((o) => o.value === v);
+              return <Badge key={v} color={opt?.color || "gray"}>{opt?.label || v}</Badge>;
+            })}
+          </div>
+        );
+      }
       case "tags": {
         const tags = Array.isArray(value) ? (value as string[]) : [];
         if (tags.length === 0) return <span className="text-gray-400">-</span>;
@@ -864,6 +887,10 @@ export function ResourceManager({
         const lng = row[field.pairField!];
         return lng !== null && lng !== undefined && lng !== "" ? `${value}, ${lng}` : String(value);
       }
+      case "multi_select":
+        return Array.isArray(value)
+          ? (value as string[]).map((v) => field.options?.find((o) => o.value === v)?.label || v).join(", ")
+          : String(value);
       case "tags":
         return Array.isArray(value) ? (value as string[]).join(", ") : String(value);
       default:
@@ -888,6 +915,8 @@ export function ResourceManager({
       }
       if (f.type === "select" || f.type === "select_other")
         return f.options?.find((o) => o.value === v)?.label || String(v);
+      if (f.type === "multi_select")
+        return Array.isArray(v) ? (v as string[]).map((x) => f.options?.find((o) => o.value === x)?.label || x).join(" ") : String(v);
       if (f.type === "tags") return Array.isArray(v) ? (v as string[]).join(" ") : String(v);
       return String(v);
     };
@@ -975,6 +1004,9 @@ export function ResourceManager({
         payload[field.pairField!] = pv === "" || pv === undefined || pv === null ? null : Number(pv);
       } else if (field.type === "boolean") {
         v = !!v;
+      } else if (field.type === "multi_select") {
+        // Boş dizi = seçim yapılmamış; "required" kontrolü (altta) null bekliyor.
+        v = Array.isArray(v) && v.length > 0 ? v : null;
       } else {
         if (typeof v === "string") v = v.trim();
         if (v === "" || v === undefined || v === null) v = null;
@@ -1209,7 +1241,8 @@ export function ResourceManager({
         f.type === "email" ||
         f.type === "tel" ||
         f.type === "url" ||
-        f.type === "tags") &&
+        f.type === "tags" ||
+        f.type === "multi_select") &&
       !isLockedToSingleValue(f.name),
   );
   const hasFilterUI =
@@ -1233,7 +1266,7 @@ export function ResourceManager({
       return (refData[field.ref.table] || [])
         .filter((o) => {
           const flt = field.ref!.filter;
-          return !flt || Object.entries(flt).every(([col, vals]) => vals.includes(String(o[col])));
+          return !flt || Object.entries(flt).every(([col, vals]) => matchesRefFilter(o, col, vals));
         })
         .map((r) => ({
           value: String(r.id),
@@ -1806,6 +1839,30 @@ export function ResourceManager({
           ))}
         </Select>
       );
+    if (f.type === "multi_select") {
+      const selected = Array.isArray(value) ? (value as string[]) : [];
+      return (
+        <div className="flex flex-wrap gap-3">
+          {f.options?.map((o) => (
+            <label key={o.value} className="flex items-center gap-1.5 text-sm">
+              <input
+                type="checkbox"
+                checked={selected.includes(o.value)}
+                onChange={(e) => {
+                  const next = e.target.checked
+                    ? [...selected, o.value]
+                    : selected.filter((v) => v !== o.value);
+                  setField(f.name, next);
+                }}
+                disabled={!canWrite}
+                className="h-4 w-4 rounded border-border text-brand focus:ring-brand"
+              />
+              {o.label}
+            </label>
+          ))}
+        </div>
+      );
+    }
     if (f.type === "select_other")
       return (
         <SelectOtherInput
@@ -1846,7 +1903,7 @@ export function ResourceManager({
               const flt = f.ref!.filter;
               return (
                 !flt ||
-                Object.entries(flt).every(([col, vals]) => vals.includes(String(o[col])))
+                Object.entries(flt).every(([col, vals]) => matchesRefFilter(o, col, vals))
               );
             })
             .map((o) => (

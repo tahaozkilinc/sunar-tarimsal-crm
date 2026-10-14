@@ -32,6 +32,7 @@ export interface FieldDef {
     | "time"
     | "select"
     | "select_other" // sabit seçenekler + "Diğer" seçilirse serbest metin kutusu açılır
+    | "multi_select" // sabit seçeneklerden BİRDEN FAZLA işaretlenebilir — DB'de dizi (ör. company_type[])
     | "reference"
     | "boolean"
     | "email"
@@ -137,7 +138,8 @@ export const INCOTERM_OPTIONS: SelectOption[] = [
 export const COMPANY_TYPE_OPTIONS: SelectOption[] = [
   { value: "supplier", label: "Tedarikçi", color: "blue" },
   { value: "customer", label: "Müşteri", color: "green" },
-  { value: "both", label: "İkisi de", color: "purple" },
+  // "İkisi de" (both) KALDIRILDI — artık çok-seçimli (types[]) olduğundan
+  // bir firma doğrudan Tedarikçi + Müşteri ikisini birden işaretleyebiliyor.
   { value: "surveyor", label: "Gözetim Şirketi", color: "yellow" },
   { value: "port", label: "Liman", color: "gray" },
   { value: "carrier", label: "Nakliyeci", color: "red" },
@@ -252,10 +254,10 @@ export const companiesResource: ResourceConfig = {
   writeRoles: ["admin", "purchasing", "sales", "operations"],
   orderBy: { column: "name", ascending: true },
   uppercaseText: true,
-  listFields: ["name", "type", "city", "phone", "product_tags"],
+  listFields: ["name", "types", "city", "phone", "product_tags"],
   fields: [
     { name: "name", label: "Firma Adı", type: "text", required: true, unique: true },
-    { name: "type", label: "Tür", type: "select", options: COMPANY_TYPE_OPTIONS, required: true },
+    { name: "types", label: "Türler", type: "multi_select", options: COMPANY_TYPE_OPTIONS, required: true },
     { name: "city", label: "Şehir", type: "text" },
     { name: "country", label: "Ülke", type: "text" },
     // Özellikle Liman türü için: haritadan tam konum işaretlenebilir (ör.
@@ -351,10 +353,10 @@ export const purchaseContractsResource: ResourceConfig = {
     // ister — 0035_data_integrity.sql — yani boş bırakmak hâlâ güvenli).
     { name: "contract_no", label: "Sözleşme No", type: "text", unique: true },
     { name: "contract_date", label: "Sözleşme Tarihi", type: "date", required: true },
-    { name: "supplier_id", label: "Tedarikçi", type: "reference", ref: { table: "companies", labelField: "name", filter: { type: ["supplier", "both"] } }, required: true },
+    { name: "supplier_id", label: "Tedarikçi", type: "reference", ref: { table: "companies", labelField: "name", filter: { types: ["supplier"] } }, required: true },
     // Hammadde Brokeri: sözleşme açılışında seçilir. Gemi Brokeri (ship_broker_id)
     // BUNUN AYRISI — aşağıda, agent_id ile birlikte formHidden (ship-ops'tan atanır).
-    { name: "broker_id", label: "Hammadde Brokeri", type: "reference", ref: { table: "companies", labelField: "name", filter: { type: ["broker"] } } },
+    { name: "broker_id", label: "Hammadde Brokeri", type: "reference", ref: { table: "companies", labelField: "name", filter: { types: ["broker"] } } },
     { name: "product_id", label: "Ürün (Yağlı Tohum)", type: "reference", ref: { table: "products", labelField: "name", filter: { is_active: ["true"] } } },
     { name: "quantity", label: "Miktar", type: "number", required: true, positive: true },
     { name: "unit", label: "Birim", type: "select", options: UNIT_OPTIONS, required: true, inlineAfter: true },
@@ -380,10 +382,10 @@ export const purchaseContractsResource: ResourceConfig = {
     // atanır (bkz. assign_ship_parties, 0057). formHidden -> formdan gizli
     // ama Detay görünümünde ve DB'de kalır (bkz. resource-manager.tsx).
     { name: "assigned_to", label: "Operasyon Sorumlusu", type: "reference", ref: { table: "profiles", labelField: "full_name", filter: { role: ["operations"] } }, formHidden: true },
-    { name: "agent_id", label: "Acente (Boşaltma)", type: "reference", ref: { table: "companies", labelField: "name", filter: { type: ["agent"] } }, formHidden: true },
+    { name: "agent_id", label: "Acente (Boşaltma)", type: "reference", ref: { table: "companies", labelField: "name", filter: { types: ["agent"] } }, formHidden: true },
     // Gemi Brokeri: gözetim/liman/nakliyeci/acente gibi sözleşme açılışında
     // DEĞİL, gemi netleştikçe ship-ops'taki "Operasyon Tarafları" kartından atanır.
-    { name: "ship_broker_id", label: "Gemi Brokeri", type: "reference", ref: { table: "companies", labelField: "name", filter: { type: ["ship_broker"] } }, formHidden: true },
+    { name: "ship_broker_id", label: "Gemi Brokeri", type: "reference", ref: { table: "companies", labelField: "name", filter: { types: ["ship_broker"] } }, formHidden: true },
     { name: "payment_due_date", label: "Öngörülen Ödeme Tarihi", type: "date" },
     // Alıcı artık sabit dizi değil, Yönetim -> Alıcılar'dan düzenlenebilir liste
     // (principals -- "Kimin Adına" -- ile AYNI desen, bkz. buyersResource).
@@ -451,7 +453,7 @@ export const salesOrdersResource: ResourceConfig = {
   // burada ayrıca istemci tarafı kota kontrolüne gerek kalmadı.
   fields: [
     { name: "order_no", label: "Satış No", type: "text", unique: true },
-    { name: "customer_id", label: "Müşteri", type: "reference", ref: { table: "companies", labelField: "name", filter: { type: ["customer", "both"] } }, required: true },
+    { name: "customer_id", label: "Müşteri", type: "reference", ref: { table: "companies", labelField: "name", filter: { types: ["customer"] } }, required: true },
     { name: "sale_type", label: "Satış Tipi", type: "select_other", options: SALE_TYPE_OPTIONS, required: true },
     // Şehir: depoların bulunduğu şehirler otomatik listelenir (optionsSource);
     // listede yoksa "Diğer" ile serbest yazılabilir (büyük harfe çevrilir). "Diğer"
@@ -544,7 +546,7 @@ export const warehousesResource: ResourceConfig = {
     { name: "parent_id", label: "Bağlı Olduğu Ana Depo (Antrepo)", type: "reference", ref: { table: "warehouses", labelField: "name" } },
     // Ürün bazen limanın kendi gümrüklü sahasında bekler — bu depo/bölüm
     // fiilen bir limanın içindeyse buradan işaretlenir (opsiyonel).
-    { name: "port_id", label: "Bulunduğu Liman (Gümrüklü Saha)", type: "reference", ref: { table: "companies", labelField: "name", filter: { type: ["port"] } } },
+    { name: "port_id", label: "Bulunduğu Liman (Gümrüklü Saha)", type: "reference", ref: { table: "companies", labelField: "name", filter: { types: ["port"] } } },
     { name: "city", label: "Şehir", type: "text" },
     { name: "country", label: "Ülke", type: "text", placeholder: "Yurtdışı depo için" },
     // Tek widget: haritaya tıkla ya da "Konumumu Kullan" ile tam enlem/boylam
@@ -614,7 +616,7 @@ export const pricingAgreementsResource: ResourceConfig = {
   fields: [
     { name: "target_type", label: "Hedef", type: "select", options: [{ value: "warehouse", label: "Depo" }, { value: "port", label: "Liman" }], formHidden: true },
     { name: "warehouse_id", label: "Depo", type: "reference", ref: { table: "warehouses", labelField: "name" }, formHidden: true },
-    { name: "port_id", label: "Liman", type: "reference", ref: { table: "companies", labelField: "name", filter: { type: ["port"] } }, formHidden: true },
+    { name: "port_id", label: "Liman", type: "reference", ref: { table: "companies", labelField: "name", filter: { types: ["port"] } }, formHidden: true },
     // Yalnızca liman anlaşmalarında görünür/zorunlu — bkz. company-detail-view.tsx
     // (port embed: required) / warehouse-detail-view.tsx (depo embed: formHidden).
     { name: "service_item", label: "Hizmet Kalemi", type: "select_other", options: PRICING_SERVICE_ITEM_OPTIONS },

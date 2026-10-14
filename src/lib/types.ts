@@ -29,13 +29,17 @@ export interface Profile {
   created_at: string;
 }
 
+export type CompanyTypeValue = "supplier" | "customer" | "surveyor" | "port" | "carrier" | "agent" | "broker" | "ship_broker" | "customs_broker";
+
 export interface Company {
   id: string;
   name: string;
   // broker = Hammadde Brokeri (satın alma, sözleşme aracısı), ship_broker =
   // Gemi Brokeri (operasyon, navlun/gemi aracısı), customs_broker = Gümrükçü
-  // (operasyon, gümrük işlemleri) — üçü ayrı roller.
-  type: "supplier" | "customer" | "both" | "surveyor" | "port" | "carrier" | "agent" | "broker" | "ship_broker" | "customs_broker";
+  // (operasyon, gümrük işlemleri) — üçü ayrı roller. Bir firma BİRDEN FAZLA
+  // tür taşıyabilir (ör. hem alıcı hem satıcı) — eski tekil "both" değeri
+  // kaldırıldı, artık doğrudan ["supplier","customer"] gibi yazılıyor.
+  types: CompanyTypeValue[];
   city: string | null;
   country: string | null;
   phone: string | null;

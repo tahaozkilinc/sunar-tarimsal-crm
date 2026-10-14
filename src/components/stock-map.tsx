@@ -112,7 +112,7 @@ export function StockMap() {
       const [inv, wh, ports] = await Promise.all([
         supabase.from("inventory").select("warehouse_id,product_name,available_qty"),
         supabase.from("warehouses").select("id,name,type,city,country,lat,lng,is_active,port_id"),
-        supabase.from("companies").select("id,name,city,country,lat,lng").eq("type", "port"),
+        supabase.from("companies").select("id,name,city,country,lat,lng").contains("types", ["port"]),
       ]);
       if (inv.error) { setError(translateDbError(inv.error)); setLoading(false); return; }
       setRows((inv.data as InvRow[]) || []);
