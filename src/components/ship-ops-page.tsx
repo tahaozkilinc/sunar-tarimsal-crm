@@ -20,6 +20,7 @@ type Contract = {
   supplier_id: string | null;
   quantity: number | null;
   unit: string | null;
+  etd: string | null;
   eta: string | null;
   status: string;
   surveyor_id: string | null;
@@ -119,9 +120,15 @@ function dtFmt(iso: string): string {
 export function ShipOpsPage({
   contractId,
   embedded = false,
+  phase,
 }: {
   contractId: string;
   embedded?: boolean;
+  // "loading" iken boşaltmaya özgü bölümler (tonaj istatistikleri, Toplu Depo
+  // Girişi/Hızlı Araç Girişi) gizlenir — gemi henüz varmadan bu bölümler
+  // kafa karıştırıyordu (kullanıcı isteği: "yükleme kısmı kullanışlı değil").
+  // Belirtilmezse (bağımsız /operations/[id] rotası, dış roller) hepsi gösterilir.
+  phase?: "loading" | "discharge";
 }) {
   const supabase = useMemo(() => createClient(), []);
 
@@ -200,9 +207,13 @@ export function ShipOpsPage({
   const [gozetimSide, setGozetimSide] = useState<"loading" | "discharge">("loading");
   const [limanSide,   setLimanSide]   = useState<"loading" | "discharge">("loading");
   const [acenteSide,  setAcenteSide]  = useState<"loading" | "discharge">("loading");
-  // ETA (operasyon sayfasından güncellenebilir, bkz. assign_ship_parties) ve
-  // Yükleme Tonajı (menşede fiilen yüklenen — sözleşme/boşaltma tonajından
-  // ayrı; ödeme üçü arasındaki farka göre yapılabiliyor, bkz. Finalizasyon).
+  // ETD (yükleme limanından tahmini kalkış) ve ETA (boşaltma limanına tahmini
+  // varış) — ikisi de operasyon sayfasından güncellenebilir (bkz.
+  // assign_ship_parties). Ayrı tutuluyor: yükleme fazında ETA'nın bir önemi
+  // yok, ETD gerekiyor; boşaltma fazında ise tam tersi (kullanıcı isteği).
+  // Yükleme Tonajı: menşede fiilen yüklenen — sözleşme/boşaltma tonajından
+  // ayrı; ödeme üçü arasındaki farka göre yapılabiliyor, bkz. Finalizasyon.
+  const [etdDate, setEtdDate] = useState("");
   const [etaDate, setEtaDate] = useState("");
   const [loadingTonnage, setLoadingTonnage] = useState<number | "">("");
 
@@ -241,7 +252,7 @@ export function ShipOpsPage({
   useEffect(() => {
     (async () => {
       const CONTRACT_COLS =
-        "id,contract_no,vessel,product_id,supplier_id,quantity,unit,eta,status,surveyor_id,loading_surveyor_id,port_id,loading_port_id,carrier_id,agent_id,loading_agent_id,assigned_to,ship_broker_id,loading_tonnage";
+        "id,contract_no,vessel,product_id,supplier_id,quantity,unit,etd,eta,status,surveyor_id,loading_surveyor_id,port_id,loading_port_id,carrier_id,agent_id,loading_agent_id,assigned_to,ship_broker_id,loading_tonnage";
       const [c0, w, p, co, pn, { data: au }] = await Promise.all([
         supabase
           .from("purchase_contracts")
@@ -280,6 +291,7 @@ export function ShipOpsPage({
       setAgentId(cd?.agent_id ?? "");
       setLoadingAgentId(cd?.loading_agent_id ?? "");
       setShipBrokerId(cd?.ship_broker_id ?? "");
+      setEtdDate(cd?.etd ?? "");
       setEtaDate(cd?.eta ?? "");
       setLoadingTonnage(cd?.loading_tonnage ?? "");
       const pnRows = (pn.data as { id: string; full_name: string | null; role: string | null }[] | null) || [];
@@ -332,6 +344,7 @@ export function ShipOpsPage({
     agentId    !== (contract?.agent_id ?? "") ||
     loadingAgentId !== (contract?.loading_agent_id ?? "") ||
     shipBrokerId !== (contract?.ship_broker_id ?? "") ||
+    etdDate !== (contract?.etd ?? "") ||
     etaDate !== (contract?.eta ?? "") ||
     loadingTonnage !== (contract?.loading_tonnage ?? "");
 
@@ -525,6 +538,7 @@ export function ShipOpsPage({
       p_loading_agent_id: loadingAgentId || null,
       p_eta: etaDate || null,
       p_loading_tonnage: loadingTonnage === "" ? null : loadingTonnage,
+      p_etd: etdDate || null,
     });
     if (rpcResult.error) { setAssignSaving(false); setAssignErr(translateDbError(rpcResult.error)); return; }
     const parties = {
@@ -538,6 +552,7 @@ export function ShipOpsPage({
       loading_agent_id: loadingAgentId || null,
       eta: etaDate || null,
       loading_tonnage: loadingTonnage === "" ? null : loadingTonnage,
+      etd: etdDate || null,
     };
     setContract(prev => prev ? { ...prev, ...parties } : prev);
     setAssignSaving(false);
@@ -630,7 +645,8 @@ export function ShipOpsPage({
               {pName(contract.product_id)}
               {contract.contract_no && ` · Söz. ${contract.contract_no}`}
               {contract.supplier_id && ` · ${cName(contract.supplier_id)}`}
-              {contract.eta && ` · ETA ${formatDate(contract.eta)}`}
+              {phase !== "discharge" && contract.etd && ` · ETD ${formatDate(contract.etd)}`}
+              {phase !== "loading" && contract.eta && ` · ETA ${formatDate(contract.eta)}`}
             </div>
           </div>
           {statusOpt && <Badge color={statusOpt.color}>{statusOpt.label}</Badge>}
@@ -730,7 +746,14 @@ export function ShipOpsPage({
               <div className="rounded-lg border border-border bg-gray-50 px-3 py-2 text-sm">{cName(contract.ship_broker_id)}</div>
             )}
           </Field>
-          <Field label="ETA (Tahmini Varış)">
+          <Field label="ETD (Yükleme Limanından Tahmini Kalkış)">
+            {canWrite ? (
+              <Input type="date" value={etdDate} onChange={e => setEtdDate(e.target.value)} />
+            ) : (
+              <div className="rounded-lg border border-border bg-gray-50 px-3 py-2 text-sm">{formatDate(contract.etd)}</div>
+            )}
+          </Field>
+          <Field label="ETA (Boşaltma Limanına Tahmini Varış)">
             {canWrite ? (
               <Input type="date" value={etaDate} onChange={e => setEtaDate(e.target.value)} />
             ) : (
@@ -819,7 +842,10 @@ export function ShipOpsPage({
         />
       </Card>
 
-      {/* ── Operasyon durumu banner ── */}
+      {/* ── Operasyon durumu banner + özet istatistik kartları — boşaltmaya
+          özgü (çekilen/bekleyen tonaj), "Yükleme" fazında gösterilmez. ── */}
+      {phase !== "loading" && (
+      <>
       {movements.length > 0 && contract.status !== "completed" && (
         <div className={`rounded-xl px-4 py-3 text-sm font-semibold flex items-center justify-between gap-3 ${
           remaining <= 0
@@ -837,7 +863,6 @@ export function ShipOpsPage({
         </div>
       )}
 
-      {/* ── Özet istatistik kartları ── */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Card className="p-3">
           <div className="text-[11px] uppercase text-gray-500">Sözleşme</div>
@@ -895,6 +920,8 @@ export function ShipOpsPage({
             </Card>
           ))}
         </div>
+      )}
+      </>
       )}
 
       {/* ── Araç listesi + hızlı giriş formu ── */}
@@ -1087,7 +1114,7 @@ export function ShipOpsPage({
               (+ stok durumuna) yazan toplu giriş. Nakliyeci/Gözetim (dış roller)
               için araç bazlı hızlı giriş aynen kalır — DB 100 ton/kayıt limiti
               zaten onlara özel (bkz. 0046 fn_sm_guard). */}
-          {canManage && contract.status !== "completed" && (
+          {canManage && contract.status !== "completed" && phase !== "loading" && (
             <div>
               <div className="mb-2 text-sm font-semibold">Toplu Depo Girişi</div>
               {!etaReady ? (
@@ -1335,7 +1362,7 @@ export function ShipOpsPage({
                 );
               })()}
 
-              {canManage && (
+              {canManage && phase !== "loading" && (
                 <Button
                   onClick={finishShip}
                   disabled={contract.status === "completed"}

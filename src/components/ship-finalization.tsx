@@ -2,11 +2,10 @@
 
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { Card, EmptyState, Spinner } from "./ui";
+import { Badge, Card, EmptyState, Input, Spinner } from "./ui";
 import { formatDate, formatNumber } from "@/lib/format";
 import { CONTRACT_STATUS_OPTIONS } from "@/lib/resources";
-import { Badge } from "./ui";
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { ChevronDown, ChevronRight, Search } from "lucide-react";
 
 type Contract = {
   id: string;
@@ -70,6 +69,11 @@ export function ShipFinalization() {
   const [drawn, setDrawn] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+  // Finalize olmuş (status=completed) ve bekleyenler (yolda/varmış/aktif —
+  // iptal hariç her şey) ayrı sekmeler: tek tabloda hepsi bir aradayken
+  // sayfa karışık oluyordu (kullanıcı isteği). Bekleyenler varsayılan sekme.
+  const [view, setView] = useState<"pending" | "done">("pending");
 
   useEffect(() => {
     (async () => {
@@ -98,6 +102,16 @@ export function ShipFinalization() {
   if (loading) return <div className="flex justify-center py-12"><Spinner /></div>;
   if (rows.length === 0) return <EmptyState message="Henüz bağlantı yok." />;
 
+  const q = search.trim().toLocaleLowerCase("tr");
+  const filteredRows = q
+    ? rows.filter((c) =>
+        [c.vessel, c.contract_no, productName(c.product_id)].some((v) => (v || "").toLocaleLowerCase("tr").includes(q)),
+      )
+    : rows;
+  const doneRows = filteredRows.filter((c) => c.status === "completed");
+  const pendingRows = filteredRows.filter((c) => c.status !== "completed");
+  const activeRows = view === "done" ? doneRows : pendingRows;
+
   return (
     <Card className="p-4">
       <div className="mb-1 text-sm font-medium">Finalizasyon</div>
@@ -105,6 +119,46 @@ export function ShipFinalization() {
         Sözleşme / Yükleme / Boşaltma tonajları ve aralarındaki farklar — ödeme bu farka göre yapılabiliyor.
         Detay için bir gemiye tıklayın.
       </div>
+
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <div className="inline-flex overflow-hidden rounded-lg border border-border text-sm">
+          <button
+            type="button"
+            onClick={() => setView("pending")}
+            className={`px-3 py-1.5 font-medium ${view === "pending" ? "bg-brand text-white" : "bg-white text-gray-600 hover:bg-gray-50"}`}
+          >
+            Finalizasyon Bekleyenler ({pendingRows.length})
+          </button>
+          <button
+            type="button"
+            onClick={() => setView("done")}
+            className={`border-l border-border px-3 py-1.5 font-medium ${view === "done" ? "bg-brand text-white" : "bg-white text-gray-600 hover:bg-gray-50"}`}
+          >
+            Finalize Olanlar ({doneRows.length})
+          </button>
+        </div>
+        <div className="relative w-full sm:w-64">
+          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+          <Input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Gemi, sözleşme no veya ürün ara..."
+            className="pl-8"
+          />
+        </div>
+      </div>
+
+      {activeRows.length === 0 ? (
+        <EmptyState
+          message={
+            q
+              ? "Aramayla eşleşen gemi yok."
+              : view === "done"
+                ? "Henüz finalize edilmiş gemi yok."
+                : "Finalizasyon bekleyen gemi yok."
+          }
+        />
+      ) : (
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
@@ -120,7 +174,7 @@ export function ShipFinalization() {
             </tr>
           </thead>
           <tbody>
-            {rows.map((c) => {
+            {activeRows.map((c) => {
               const unit = c.unit || "ton";
               const contracted = Number(c.quantity) || 0;
               const loaded = c.loading_tonnage != null ? Number(c.loading_tonnage) : null;
@@ -195,6 +249,7 @@ export function ShipFinalization() {
           </tbody>
         </table>
       </div>
+      )}
     </Card>
   );
 }
