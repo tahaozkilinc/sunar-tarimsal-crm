@@ -143,15 +143,6 @@ export interface PurchaseContract {
   notes: string | null;
 }
 
-// Aynı gemi/sevkiyata ait birden fazla sözleşmeyi BİLGİ amaçlı ilişkilendirir
-// (0092) — tonaj hesaplarını etkilemez, yalnızca referans/listeleme içindir.
-export interface ContractLink {
-  id: string;
-  contract_id: string;
-  related_contract_id: string;
-  created_at: string;
-}
-
 export interface Buyer {
   id: string;
   name: string;
