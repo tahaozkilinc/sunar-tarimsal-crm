@@ -43,7 +43,7 @@ const EXTERNAL_ROLE_COMPANY: Partial<Record<Role, { type: string; label: string;
   acente:    { type: "agent",    label: "Acente Firması",    hint: "Önce CRM'den Acente türünde bir firma ekleyin." },
 };
 
-type ExtCompany = { id: string; name: string; type: string };
+type ExtCompany = { id: string; name: string; types: string[] };
 
 export function UsersManager() {
   const supabase = useMemo(() => createClient(), []);
@@ -75,15 +75,15 @@ export function UsersManager() {
     load();
     supabase
       .from("companies")
-      .select("id,name,type")
-      .in("type", ["carrier", "surveyor", "agent"])
+      .select("id,name,types")
+      .overlaps("types", ["carrier", "surveyor", "agent"])
       .order("name")
       .then(({ data }) => setExtCompanies((data as ExtCompany[]) || []));
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const companiesForRole = (role: Role) => {
     const cfg = EXTERNAL_ROLE_COMPANY[role];
-    return cfg ? extCompanies.filter((c) => c.type === cfg.type) : [];
+    return cfg ? extCompanies.filter((c) => c.types.includes(cfg.type)) : [];
   };
 
   const createUser = async () => {

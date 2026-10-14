@@ -34,13 +34,15 @@ const MODULE_META: Record<
     toggleLabel: "Tedarikçiler (Bağlantı)",
     companyLabel: "Tedarikçiler",
     companyType: "supplier",
-    typeFilter: ["supplier", "both"],
+    // "both" artık yok — kesişim (overlap) filtresi olduğundan hem tedarikçi
+    // hem müşteri etiketli bir firma burada da ZATEN görünür.
+    typeFilter: ["supplier"],
   },
   sales: {
     toggleLabel: "Müşteriler (Satış)",
     companyLabel: "Müşteriler",
     companyType: "customer",
-    typeFilter: ["customer", "both"],
+    typeFilter: ["customer"],
   },
   surveyor: {
     toggleLabel: "Gözetim",
@@ -184,8 +186,8 @@ export function CrmTabs({ role }: { role: Role }) {
         key={`c-${effModule}`}
         config={companiesResource}
         role={role}
-        filter={{ type: meta.typeFilter }}
-        defaultValues={{ type: meta.companyType }}
+        filter={{ types: meta.typeFilter }}
+        defaultValues={{ types: meta.companyType ? [meta.companyType] : [] }}
         title={meta.companyLabel}
         hideTitle
         hideFilters
