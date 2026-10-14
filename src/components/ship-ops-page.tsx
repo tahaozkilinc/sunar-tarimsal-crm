@@ -455,7 +455,10 @@ export function ShipOpsPage({
     }
     setBulkFlash(`${formatNumber(q)} ${unit} eklendi`);
     setBulkQty("");
-    setBulkCustomsNo("");
+    // Beyanname/antrepo no BİLEREK temizlenmiyor — art arda aynı beyannameye
+    // ait birden fazla tonaj girilebiliyor, her girişte yeniden yazmaya
+    // gerek yok (kullanıcı isteği). Stok durumu değişince (yukarıda) hâlâ
+    // temizleniyor çünkü rejim kodu (IM/AN) uyuşmaz hâle gelir.
     setBulkSaving(false);
     await loadMovements();
     setTimeout(() => setBulkFlash(null), 1800);

@@ -45,7 +45,10 @@ const CONSTRAINT_MESSAGES: Record<string, string> = {
 
 // Ham bir Postgres sistem mesajının "tipik" kalıpları — yalnızca bunlara
 // uyanları çeviriyoruz; trigger'lardaki Türkçe raise exception mesajları bu
-// kalıplara uymadığından olduğu gibi geçer.
+// kalıplara uymadığından olduğu gibi geçer. Son iki kalıp Postgres DEĞİL,
+// Supabase STORAGE (dosya/döküman yükleme) hatalarına ait — ör. akreditif
+// gibi dökümanlar yüklenirken izin verilmeyen bir dosya türü/boyutu seçilince
+// ham İngilizce bir storage hatası dönüyordu, kullanıcı için anlamsızdı.
 const RAW_PATTERNS = [
   /violates check constraint/i,
   /violates unique constraint/i,
@@ -54,6 +57,8 @@ const RAW_PATTERNS = [
   /duplicate key value/i,
   /invalid input syntax/i,
   /value too long/i,
+  /mime type/i,
+  /exceeded the maximum allowed size|payload too large/i,
 ];
 
 function extract(pattern: RegExp, message: string): string | null {
@@ -89,6 +94,12 @@ export function translateDbError(error: DbErrorLike): string {
   }
   if (/value too long/i.test(message)) {
     return "Girilen metin izin verilenden uzun.";
+  }
+  if (/mime type/i.test(message)) {
+    return "Bu dosya türü desteklenmiyor. Yükleme alanındaki açıklamada belirtilen türlerden birini seçin (ör. PDF, Word, Excel, JPG, PNG).";
+  }
+  if (/exceeded the maximum allowed size|payload too large/i.test(message)) {
+    return "Dosya boyutu izin verilenden büyük. Daha küçük bir dosya seçin ya da sıkıştırıp tekrar deneyin.";
   }
 
   return message; // tanınmayan ham mesaj — son çare olarak olduğu gibi göster

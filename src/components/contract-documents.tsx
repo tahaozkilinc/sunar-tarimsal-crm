@@ -161,14 +161,14 @@ export function ContractDocuments({ contractId, role }: { contractId: string; ro
             <span className="text-sm text-gray-600">
               {busy ? "Yükleniyor..." : "Dosyaları sürükleyip bırakın veya seçmek için tıklayın"}
             </span>
-            <span className="text-xs text-gray-400">PDF, Word, Excel, JPG, PNG · en fazla 20 MB</span>
+            <span className="text-xs text-gray-400">PDF, Word, Excel, JPG, PNG, WEBP, HEIC · en fazla 20 MB</span>
           </div>
           <input
             ref={inputRef}
             type="file"
             multiple
             hidden
-            accept=".pdf,.doc,.docx,.xls,.xlsx,image/*"
+            accept=".pdf,.doc,.docx,.xls,.xlsx,image/jpeg,image/png,image/webp,image/heic,image/heif"
             onChange={(e) => {
               if (e.target.files?.length) upload(e.target.files);
             }}
