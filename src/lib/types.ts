@@ -134,8 +134,18 @@ export interface PurchaseContract {
   loading_agent_id: string | null; // yükleme/menşe acentesi — agent_id ile aynı desen, yükleme/boşaltmada farklı acenteler olabiliyor
   broker_id: string | null; // Hammadde Brokeri — sözleşme açılışında seçilir
   ship_broker_id: string | null; // Gemi Brokeri — ship-ops'tan sonradan atanır
+  loading_tonnage: number | null; // fiilen yüklenen tonaj (menşe) — quantity (sözleşme) ve fiilen boşaltılandan (stock_movements) farklı olabilir, ödeme buna göre
   created_at: string;
   notes: string | null;
+}
+
+// Aynı gemi/sevkiyata ait birden fazla sözleşmeyi BİLGİ amaçlı ilişkilendirir
+// (0092) — tonaj hesaplarını etkilemez, yalnızca referans/listeleme içindir.
+export interface ContractLink {
+  id: string;
+  contract_id: string;
+  related_contract_id: string;
+  created_at: string;
 }
 
 export interface Buyer {

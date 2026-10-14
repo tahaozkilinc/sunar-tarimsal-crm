@@ -26,7 +26,7 @@ type Ref = { id: string; name: string };
 
 const statusOpt = (s: string) => CONTRACT_STATUS_OPTIONS.find((o) => o.value === s);
 
-export function PendingArrivals({ role }: { role: Role }) {
+export function PendingArrivals({ role, phase }: { role: Role; phase?: "loading" | "discharge" }) {
   const supabase = useMemo(() => createClient(), []);
   const [rows, setRows] = useState<Contract[]>([]);
   const [products, setProducts] = useState<Ref[]>([]);
@@ -164,23 +164,29 @@ export function PendingArrivals({ role }: { role: Role }) {
 
   return (
     <div className="space-y-4">
-      <Card className="p-4">
-        <div className="mb-1 text-sm font-medium">Bekleyen Gelişler</div>
-        <div className="mb-2 text-xs text-gray-500">
-          Gemiye tıkla, operasyon paneli hemen altında açılır. Araç girişlerini, depo dağılımını ve
-          gözetim/liman/nakliyeci atamasını orada yönet.
-        </div>
-        {pending.length === 0 ? (
-          <EmptyState message="Bekleyen geliş yok." />
-        ) : (
-          pending.map(renderRow)
-        )}
-      </Card>
+      {phase !== "discharge" && (
+        <Card className="p-4">
+          <div className="mb-1 text-sm font-medium">Bekleyen Gelişler</div>
+          <div className="mb-2 text-xs text-gray-500">
+            Gemiye tıkla, operasyon paneli hemen altında açılır. Yükleme limanı/gözetim/acente ataması,
+            yükleme tonajı ve ilişkili sözleşmeleri orada yönet.
+          </div>
+          {pending.length === 0 ? (
+            <EmptyState message="Bekleyen geliş yok." />
+          ) : (
+            pending.map(renderRow)
+          )}
+        </Card>
+      )}
 
-      {arrived.length > 0 && (
+      {phase !== "loading" && (
         <Card className="p-4">
           <div className="mb-2 text-sm font-medium">Gelenler (devam eden operasyon)</div>
-          {arrived.map(renderRow)}
+          {arrived.length === 0 ? (
+            <EmptyState message="Devam eden boşaltma yok." />
+          ) : (
+            arrived.map(renderRow)
+          )}
         </Card>
       )}
     </div>

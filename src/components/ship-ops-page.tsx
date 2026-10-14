@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { Badge, Button, Card, EmptyState, Field, Input, Select, Spinner } from "./ui";
 import { MovementPhotos, type MovementPhoto } from "./movement-photos";
 import { PhotoGallery } from "./photo-gallery";
+import { ContractLinks } from "./contract-links";
 import { formatDate, formatNumber } from "@/lib/format";
 import { translateDbError } from "@/lib/db-errors";
 import { CONTRACT_STATUS_OPTIONS, SALES_STATUS_OPTIONS, STOCK_STATUS_OPTIONS } from "@/lib/resources";
@@ -30,6 +31,7 @@ type Contract = {
   loading_agent_id: string | null;
   assigned_to: string | null;
   ship_broker_id: string | null;
+  loading_tonnage: number | null;
 };
 type Movement = {
   id: string;
@@ -198,6 +200,11 @@ export function ShipOpsPage({
   const [gozetimSide, setGozetimSide] = useState<"loading" | "discharge">("loading");
   const [limanSide,   setLimanSide]   = useState<"loading" | "discharge">("loading");
   const [acenteSide,  setAcenteSide]  = useState<"loading" | "discharge">("loading");
+  // ETA (operasyon sayfasından güncellenebilir, bkz. assign_ship_parties) ve
+  // Yükleme Tonajı (menşede fiilen yüklenen — sözleşme/boşaltma tonajından
+  // ayrı; ödeme üçü arasındaki farka göre yapılabiliyor, bkz. Finalizasyon).
+  const [etaDate, setEtaDate] = useState("");
+  const [loadingTonnage, setLoadingTonnage] = useState("");
 
   const loadPhotos = useCallback(
     async (ids: string[]) => {
@@ -234,7 +241,7 @@ export function ShipOpsPage({
   useEffect(() => {
     (async () => {
       const CONTRACT_COLS =
-        "id,contract_no,vessel,product_id,supplier_id,quantity,unit,eta,status,surveyor_id,loading_surveyor_id,port_id,loading_port_id,carrier_id,agent_id,loading_agent_id,assigned_to,ship_broker_id";
+        "id,contract_no,vessel,product_id,supplier_id,quantity,unit,eta,status,surveyor_id,loading_surveyor_id,port_id,loading_port_id,carrier_id,agent_id,loading_agent_id,assigned_to,ship_broker_id,loading_tonnage";
       const [c0, w, p, co, pn, { data: au }] = await Promise.all([
         supabase
           .from("purchase_contracts")
@@ -273,6 +280,8 @@ export function ShipOpsPage({
       setAgentId(cd?.agent_id ?? "");
       setLoadingAgentId(cd?.loading_agent_id ?? "");
       setShipBrokerId(cd?.ship_broker_id ?? "");
+      setEtaDate(cd?.eta ?? "");
+      setLoadingTonnage(cd?.loading_tonnage != null ? String(cd.loading_tonnage) : "");
       const pnRows = (pn.data as { id: string; full_name: string | null; role: string | null }[] | null) || [];
       const names: Record<string, string> = {};
       pnRows.forEach((x) => { names[x.id] = x.full_name || "—"; });
@@ -322,7 +331,9 @@ export function ShipOpsPage({
     carrierId  !== (contract?.carrier_id ?? "") ||
     agentId    !== (contract?.agent_id ?? "") ||
     loadingAgentId !== (contract?.loading_agent_id ?? "") ||
-    shipBrokerId !== (contract?.ship_broker_id ?? "");
+    shipBrokerId !== (contract?.ship_broker_id ?? "") ||
+    etaDate !== (contract?.eta ?? "") ||
+    loadingTonnage !== (contract?.loading_tonnage != null ? String(contract.loading_tonnage) : "");
 
   const totalDrawn = useMemo(
     () => movements.reduce((a, m) => a + (Number(m.quantity) || 0), 0),
@@ -512,6 +523,8 @@ export function ShipOpsPage({
       p_loading_port_id: loadingPortId || null,
       p_loading_surveyor_id: loadingSurveyorId || null,
       p_loading_agent_id: loadingAgentId || null,
+      p_eta: etaDate || null,
+      p_loading_tonnage: loadingTonnage ? parseFloat(loadingTonnage.replace(",", ".")) : null,
     });
     if (rpcResult.error) { setAssignSaving(false); setAssignErr(translateDbError(rpcResult.error)); return; }
     const parties = {
@@ -523,6 +536,8 @@ export function ShipOpsPage({
       loading_port_id: loadingPortId || null,
       loading_surveyor_id: loadingSurveyorId || null,
       loading_agent_id: loadingAgentId || null,
+      eta: etaDate || null,
+      loading_tonnage: loadingTonnage ? parseFloat(loadingTonnage.replace(",", ".")) : null,
     };
     setContract(prev => prev ? { ...prev, ...parties } : prev);
     setAssignSaving(false);
@@ -715,11 +730,32 @@ export function ShipOpsPage({
               <div className="rounded-lg border border-border bg-gray-50 px-3 py-2 text-sm">{cName(contract.ship_broker_id)}</div>
             )}
           </Field>
+          <Field label="ETA (Tahmini Varış)">
+            {canWrite ? (
+              <Input type="date" value={etaDate} onChange={e => setEtaDate(e.target.value)} />
+            ) : (
+              <div className="rounded-lg border border-border bg-gray-50 px-3 py-2 text-sm">{formatDate(contract.eta)}</div>
+            )}
+          </Field>
+          <Field label="Yükleme Tonajı">
+            {canWrite ? (
+              <Input
+                type="number"
+                placeholder="ör. 24850.500"
+                value={loadingTonnage}
+                onChange={e => setLoadingTonnage(e.target.value)}
+              />
+            ) : (
+              <div className="rounded-lg border border-border bg-gray-50 px-3 py-2 text-sm">
+                {contract.loading_tonnage != null ? formatNumber(contract.loading_tonnage) : "-"}
+              </div>
+            )}
+          </Field>
         </div>
         {canWrite && (
           <div className="mt-3 flex items-center gap-3">
             <Button onClick={saveParties} disabled={assignSaving || !partiesDirty} size="sm">
-              {assignSaving ? "Kaydediliyor..." : "Atamaları Kaydet"}
+              {assignSaving ? "Kaydediliyor..." : "Kaydet"}
             </Button>
             {assignErr && <span className="text-sm text-red-600">{assignErr}</span>}
             {assignFlash && <span className="text-sm font-medium text-emerald-600">✓ {assignFlash}</span>}
@@ -732,6 +768,8 @@ export function ShipOpsPage({
         )}
       </Card>
       )}
+
+      {canManage && <ContractLinks contractId={contract.id} canWrite={canWrite} />}
 
       {/* ── Bu bağlantıdan karşılanan satışlar (gemi bazlı rapor, fiyatsız) ── */}
       {canManage && contractSales.length > 0 && (

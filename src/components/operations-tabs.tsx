@@ -6,6 +6,7 @@ import { ResourceManager } from "./resource-manager";
 import { OperasyonSummary } from "./function-summary";
 import { PendingArrivals } from "./pending-arrivals";
 import { OperationsFulfillmentPanel } from "./operations-fulfillment-panel";
+import { ShipFinalization } from "./ship-finalization";
 import { ForeignLoading } from "./foreign-loading";
 import { PendingExpenses } from "./pending-expenses";
 import { warehouseExpensesResource, stockMovementsResource } from "@/lib/resources";
@@ -14,11 +15,12 @@ import { L } from "@/lib/i18n";
 import type { Role } from "@/lib/types";
 
 export function OperationsTabs({ role, language }: { role: Role; language: "tr" | "en" }) {
-  const [tab, setTab] = useState("arrivals");
+  const [tab, setTab] = useState("yukleme");
   const base = baseRole(role);
   const isEn = language === "en";
 
-  // Nakliyeci / Gözetim yalnızca atandığı gemilerde tonaj girer: sadece "Bekleyen Gelişler".
+  // Nakliyeci / Gözetim yalnızca atandığı gemilerde tonaj girer: sadece "Bekleyen Gelişler"
+  // (yükleme/boşaltma ayrımı ve Finalizasyon onlar için anlamsız — tek liste yeterli).
   if (base === "nakliyeci" || base === "gozetim") {
     return (
       <div className="space-y-4">
@@ -45,19 +47,27 @@ export function OperationsTabs({ role, language }: { role: Role; language: "tr" 
         value={tab}
         onChange={setTab}
         tabs={[
-          { key: "arrivals", label: "Bekleyen Gelişler" },
+          { key: "yukleme", label: "Yükleme" },
+          { key: "bosaltma", label: "Boşaltma" },
+          { key: "finalizasyon", label: "Finalizasyon" },
           { key: "foreign", label: "Yurtdışı Yükleme" },
           { key: "ozet", label: "Özet" },
           { key: "movements", label: "Stok Hareketleri" },
           { key: "expenses", label: "Masraf Gir" },
         ]}
       />
-      {tab === "arrivals" && (
+      {/* Yükleme: henüz varmamış (status != arrived) gemiler — yükleme limanı/
+          gözetim/acente ataması, yükleme tonajı, ilişkili sözleşmeler burada
+          (gemiye tıklayınca açılan panelde, bkz. ship-ops-page.tsx). */}
+      {tab === "yukleme" && <PendingArrivals role={role} phase="loading" />}
+      {/* Boşaltma: varmış (status = arrived), fiilen boşaltılan gemiler. */}
+      {tab === "bosaltma" && (
         <div className="space-y-4">
           <OperationsFulfillmentPanel />
-          <PendingArrivals role={role} />
+          <PendingArrivals role={role} phase="discharge" />
         </div>
       )}
+      {tab === "finalizasyon" && <ShipFinalization />}
       {tab === "foreign" && <ForeignLoading role={role} language={language} />}
       {tab === "ozet" && <OperasyonSummary />}
       {tab === "movements" && (
