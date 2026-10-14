@@ -135,7 +135,7 @@ function numberToInput(value: unknown): string {
 
 // Türkçe binlik ayraçlı sayı girişi (ör. 12.340 / 1.000,5).
 // Görünümde gruplar; dışarıya ham sayı (number) ya da "" verir.
-function NumberInput({
+export function NumberInput({
   value,
   onChange,
   placeholder,

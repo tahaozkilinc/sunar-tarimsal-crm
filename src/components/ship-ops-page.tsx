@@ -6,7 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { Badge, Button, Card, EmptyState, Field, Input, Select, Spinner } from "./ui";
 import { MovementPhotos, type MovementPhoto } from "./movement-photos";
 import { PhotoGallery } from "./photo-gallery";
-import { ContractLinks } from "./contract-links";
+import { NumberInput } from "./resource-manager";
 import { formatDate, formatNumber } from "@/lib/format";
 import { translateDbError } from "@/lib/db-errors";
 import { CONTRACT_STATUS_OPTIONS, SALES_STATUS_OPTIONS, STOCK_STATUS_OPTIONS } from "@/lib/resources";
@@ -204,7 +204,7 @@ export function ShipOpsPage({
   // Yükleme Tonajı (menşede fiilen yüklenen — sözleşme/boşaltma tonajından
   // ayrı; ödeme üçü arasındaki farka göre yapılabiliyor, bkz. Finalizasyon).
   const [etaDate, setEtaDate] = useState("");
-  const [loadingTonnage, setLoadingTonnage] = useState("");
+  const [loadingTonnage, setLoadingTonnage] = useState<number | "">("");
 
   const loadPhotos = useCallback(
     async (ids: string[]) => {
@@ -281,7 +281,7 @@ export function ShipOpsPage({
       setLoadingAgentId(cd?.loading_agent_id ?? "");
       setShipBrokerId(cd?.ship_broker_id ?? "");
       setEtaDate(cd?.eta ?? "");
-      setLoadingTonnage(cd?.loading_tonnage != null ? String(cd.loading_tonnage) : "");
+      setLoadingTonnage(cd?.loading_tonnage ?? "");
       const pnRows = (pn.data as { id: string; full_name: string | null; role: string | null }[] | null) || [];
       const names: Record<string, string> = {};
       pnRows.forEach((x) => { names[x.id] = x.full_name || "—"; });
@@ -333,7 +333,7 @@ export function ShipOpsPage({
     loadingAgentId !== (contract?.loading_agent_id ?? "") ||
     shipBrokerId !== (contract?.ship_broker_id ?? "") ||
     etaDate !== (contract?.eta ?? "") ||
-    loadingTonnage !== (contract?.loading_tonnage != null ? String(contract.loading_tonnage) : "");
+    loadingTonnage !== (contract?.loading_tonnage ?? "");
 
   const totalDrawn = useMemo(
     () => movements.reduce((a, m) => a + (Number(m.quantity) || 0), 0),
@@ -524,7 +524,7 @@ export function ShipOpsPage({
       p_loading_surveyor_id: loadingSurveyorId || null,
       p_loading_agent_id: loadingAgentId || null,
       p_eta: etaDate || null,
-      p_loading_tonnage: loadingTonnage ? parseFloat(loadingTonnage.replace(",", ".")) : null,
+      p_loading_tonnage: loadingTonnage === "" ? null : loadingTonnage,
     });
     if (rpcResult.error) { setAssignSaving(false); setAssignErr(translateDbError(rpcResult.error)); return; }
     const parties = {
@@ -537,7 +537,7 @@ export function ShipOpsPage({
       loading_surveyor_id: loadingSurveyorId || null,
       loading_agent_id: loadingAgentId || null,
       eta: etaDate || null,
-      loading_tonnage: loadingTonnage ? parseFloat(loadingTonnage.replace(",", ".")) : null,
+      loading_tonnage: loadingTonnage === "" ? null : loadingTonnage,
     };
     setContract(prev => prev ? { ...prev, ...parties } : prev);
     setAssignSaving(false);
@@ -739,11 +739,10 @@ export function ShipOpsPage({
           </Field>
           <Field label="Yükleme Tonajı">
             {canWrite ? (
-              <Input
-                type="number"
-                placeholder="ör. 24850.500"
+              <NumberInput
+                placeholder="ör. 24.850,500"
                 value={loadingTonnage}
-                onChange={e => setLoadingTonnage(e.target.value)}
+                onChange={setLoadingTonnage}
               />
             ) : (
               <div className="rounded-lg border border-border bg-gray-50 px-3 py-2 text-sm">
@@ -768,8 +767,6 @@ export function ShipOpsPage({
         )}
       </Card>
       )}
-
-      {canManage && <ContractLinks contractId={contract.id} canWrite={canWrite} />}
 
       {/* ── Bu bağlantıdan karşılanan satışlar (gemi bazlı rapor, fiyatsız) ── */}
       {canManage && contractSales.length > 0 && (
