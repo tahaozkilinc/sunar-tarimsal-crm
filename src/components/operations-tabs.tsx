@@ -57,8 +57,9 @@ export function OperationsTabs({ role, language }: { role: Role; language: "tr" 
         ]}
       />
       {/* Yükleme: henüz varmamış (status != arrived) gemiler — yükleme limanı/
-          gözetim/acente ataması, yükleme tonajı, ilişkili sözleşmeler burada
-          (gemiye tıklayınca açılan panelde, bkz. ship-ops-page.tsx). */}
+          gözetim/acente ataması, ETD ve yükleme tonajı burada (gemiye
+          tıklayınca açılan panelde, bkz. ship-ops-page.tsx). Boşaltmaya özgü
+          istatistik/giriş formları bu fazda gizli (phase="loading"). */}
       {tab === "yukleme" && <PendingArrivals role={role} phase="loading" />}
       {/* Boşaltma: varmış (status = arrived), fiilen boşaltılan gemiler. */}
       {tab === "bosaltma" && (

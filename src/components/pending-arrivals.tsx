@@ -18,6 +18,7 @@ type Contract = {
   product_id: string | null;
   quantity: number | null;
   unit: string | null;
+  etd: string | null;
   eta: string | null;
   status: string;
   assigned_to: string | null;
@@ -46,11 +47,11 @@ export function PendingArrivals({ role, phase }: { role: Role; phase?: "loading"
     const contractQuery = isExternal
       ? supabase
           .from("external_contracts")
-          .select("id,contract_no,vessel,origin_country,product_id,quantity,unit,eta,status,assigned_to")
+          .select("id,contract_no,vessel,origin_country,product_id,quantity,unit,etd,eta,status,assigned_to")
           .order("eta", { ascending: true })
       : supabase
           .from("purchase_contracts")
-          .select("id,contract_no,vessel,origin_country,product_id,quantity,unit,eta,status,assigned_to")
+          .select("id,contract_no,vessel,origin_country,product_id,quantity,unit,etd,eta,status,assigned_to")
           .order("eta", { ascending: true });
     const [c, p, m] = await Promise.all([
       contractQuery,
@@ -146,7 +147,9 @@ export function PendingArrivals({ role, phase }: { role: Role; phase?: "loading"
                 ? `Fazla ${formatNumber(-remaining)} ${unit}`
                 : `Kalan ${formatNumber(remaining)} ${unit}`}
             </span>
-            <span className="text-xs text-gray-500">ETA {formatDate(c.eta)}</span>
+            <span className="text-xs text-gray-500">
+              {phase === "loading" ? `ETD ${formatDate(c.etd)}` : `ETA ${formatDate(c.eta)}`}
+            </span>
             {role === "operations" && c.assigned_to === userId && (
               <Badge color="purple">Sana Atandı</Badge>
             )}
@@ -155,7 +158,7 @@ export function PendingArrivals({ role, phase }: { role: Role; phase?: "loading"
         </button>
         {isOpen && (
           <div className="border-t border-border bg-gray-50/50 px-1 py-4 sm:px-3">
-            <ShipOpsPage contractId={c.id} embedded />
+            <ShipOpsPage contractId={c.id} embedded phase={phase} />
           </div>
         )}
       </div>
@@ -166,10 +169,13 @@ export function PendingArrivals({ role, phase }: { role: Role; phase?: "loading"
     <div className="space-y-4">
       {phase !== "discharge" && (
         <Card className="p-4">
-          <div className="mb-1 text-sm font-medium">Bekleyen Gelişler</div>
+          <div className="mb-1 text-sm font-medium">
+            {phase === "loading" ? "Yüklemesi Bekleyen Gemiler" : "Bekleyen Gelişler"}
+          </div>
           <div className="mb-2 text-xs text-gray-500">
-            Gemiye tıkla, operasyon paneli hemen altında açılır. Yükleme limanı/gözetim/acente ataması,
-            yükleme tonajı ve ilişkili sözleşmeleri orada yönet.
+            {phase === "loading"
+              ? "Gemiye tıkla, operasyon paneli hemen altında açılır. Yükleme limanı/gözetim/acente ataması, ETD ve yükleme tonajını orada gir."
+              : "Gemiye tıkla, operasyon paneli hemen altında açılır. Yükleme limanı/gözetim/acente ataması ve yükleme tonajını orada yönet."}
           </div>
           {pending.length === 0 ? (
             <EmptyState message="Bekleyen geliş yok." />
