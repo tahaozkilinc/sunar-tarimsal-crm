@@ -7,35 +7,23 @@ import { OperasyonSummary } from "./function-summary";
 import { PendingArrivals } from "./pending-arrivals";
 import { OperationsFulfillmentPanel } from "./operations-fulfillment-panel";
 import { ShipFinalization } from "./ship-finalization";
-import { ForeignLoading } from "./foreign-loading";
 import { PendingExpenses } from "./pending-expenses";
 import { warehouseExpensesResource, stockMovementsResource } from "@/lib/resources";
 import { baseRole } from "@/lib/nav";
-import { L } from "@/lib/i18n";
 import type { Role } from "@/lib/types";
 
-export function OperationsTabs({ role, language }: { role: Role; language: "tr" | "en" }) {
+export function OperationsTabs({ role }: { role: Role }) {
   const [tab, setTab] = useState("yukleme");
   const base = baseRole(role);
-  const isEn = language === "en";
 
-  // Nakliyeci / Gözetim yalnızca atandığı gemilerde tonaj girer: sadece "Bekleyen Gelişler"
-  // (yükleme/boşaltma ayrımı ve Finalizasyon onlar için anlamsız — tek liste yeterli).
-  if (base === "nakliyeci" || base === "gozetim") {
+  // Nakliyeci / Gözetim / Acente yalnızca atandığı gemileri görür: sadece
+  // "Bekleyen Gelişler" (yükleme/boşaltma ayrımı ve Finalizasyon onlar için
+  // anlamsız — tek liste yeterli). Acente salt-okunur (canWrite'a dahil değil).
+  if (base === "nakliyeci" || base === "gozetim" || base === "acente") {
     return (
       <div className="space-y-4">
         <h1 className="text-xl font-bold">Operasyon</h1>
         <PendingArrivals role={role} />
-      </div>
-    );
-  }
-
-  // Acente: yalnızca yurtdışı yükleme ekranı (kendi bağlantıları, RLS).
-  if (base === "acente") {
-    return (
-      <div className="space-y-4">
-        <h1 className="text-xl font-bold">{L(isEn, "Yurtdışı Yükleme", "Overseas Loading")}</h1>
-        <ForeignLoading role={role} language={language} />
       </div>
     );
   }
@@ -50,7 +38,6 @@ export function OperationsTabs({ role, language }: { role: Role; language: "tr" 
           { key: "yukleme", label: "Yükleme" },
           { key: "bosaltma", label: "Boşaltma" },
           { key: "finalizasyon", label: "Finalizasyon" },
-          { key: "foreign", label: "Yurtdışı Yükleme" },
           { key: "ozet", label: "Özet" },
           { key: "movements", label: "Stok Hareketleri" },
           { key: "expenses", label: "Masraf Gir" },
@@ -69,7 +56,6 @@ export function OperationsTabs({ role, language }: { role: Role; language: "tr" 
         </div>
       )}
       {tab === "finalizasyon" && <ShipFinalization />}
-      {tab === "foreign" && <ForeignLoading role={role} language={language} />}
       {tab === "ozet" && <OperasyonSummary />}
       {tab === "movements" && (
         <ResourceManager config={stockMovementsResource} role={role} hideTitle />
