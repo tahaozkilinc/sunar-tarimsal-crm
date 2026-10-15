@@ -70,24 +70,28 @@ type SaleRow = {
 // küçük ikonla ayrı ayrı seçeyim, satır fazla oluyor". Aktif taraf (loading/
 // discharge) her alan için ayrı state'te tutulur; Select tek kalır, hangi
 // tarafın değerini gösterip yazdığı bu state'e göre değişir.
+// Yükleme=mavi, Boşaltma=amber — iki hâl de aynı (marka) renkte olunca
+// hangisinin seçili olduğu anlaşılmıyordu (kullanıcı isteği: "seçmek kolay
+// değil, renk değişebilir"). Bu renk eşlemesi aşağıdaki "(Yükleme)/
+// (Boşaltma)" etiketlerinde de aynen kullanılıyor — tutarlı olsun.
 function SideToggle({ side, onChange }: { side: "loading" | "discharge"; onChange: (s: "loading" | "discharge") => void }) {
   return (
-    <div className="inline-flex overflow-hidden rounded-md border border-border">
+    <div className="inline-flex overflow-hidden rounded-md border border-border text-[11px] font-semibold">
       <button
         type="button"
         onClick={() => onChange("loading")}
         title="Yükleme"
-        className={`flex items-center px-1.5 py-0.5 ${side === "loading" ? "bg-brand text-white" : "text-gray-400 hover:bg-gray-100"}`}
+        className={`flex items-center gap-1 px-1.5 py-1 ${side === "loading" ? "bg-blue-600 text-white" : "text-gray-400 hover:bg-gray-100"}`}
       >
-        <ArrowUpToLine className="h-3 w-3" />
+        <ArrowUpToLine className="h-3 w-3" /> Yük.
       </button>
       <button
         type="button"
         onClick={() => onChange("discharge")}
         title="Boşaltma"
-        className={`flex items-center border-l border-border px-1.5 py-0.5 ${side === "discharge" ? "bg-brand text-white" : "text-gray-400 hover:bg-gray-100"}`}
+        className={`flex items-center gap-1 border-l border-border px-1.5 py-1 ${side === "discharge" ? "bg-amber-600 text-white" : "text-gray-400 hover:bg-gray-100"}`}
       >
-        <ArrowDownToLine className="h-3 w-3" />
+        <ArrowDownToLine className="h-3 w-3" /> Boş.
       </button>
     </div>
   );
@@ -623,7 +627,7 @@ export function ShipOpsPage({
           <div>
             <div className="mb-1 flex items-center gap-2">
               <span className="text-sm font-medium text-gray-700">
-                Gözetim <span className="font-normal text-gray-400">({gozetimSide === "loading" ? "Yükleme" : "Boşaltma"})</span>
+                Gözetim <span className={`font-normal ${gozetimSide === "loading" ? "text-blue-600" : "text-amber-600"}`}>({gozetimSide === "loading" ? "Yükleme" : "Boşaltma"})</span>
               </span>
               <SideToggle side={gozetimSide} onChange={setGozetimSide} />
             </div>
@@ -644,7 +648,7 @@ export function ShipOpsPage({
           <div>
             <div className="mb-1 flex items-center gap-2">
               <span className="text-sm font-medium text-gray-700">
-                Liman <span className="font-normal text-gray-400">({limanSide === "loading" ? "Yükleme" : "Boşaltma"})</span>
+                Liman <span className={`font-normal ${limanSide === "loading" ? "text-blue-600" : "text-amber-600"}`}>({limanSide === "loading" ? "Yükleme" : "Boşaltma"})</span>
               </span>
               <SideToggle side={limanSide} onChange={setLimanSide} />
             </div>
@@ -675,7 +679,7 @@ export function ShipOpsPage({
           <div>
             <div className="mb-1 flex items-center gap-2">
               <span className="text-sm font-medium text-gray-700">
-                Acente <span className="font-normal text-gray-400">({acenteSide === "loading" ? "Yükleme" : "Boşaltma"})</span>
+                Acente <span className={`font-normal ${acenteSide === "loading" ? "text-blue-600" : "text-amber-600"}`}>({acenteSide === "loading" ? "Yükleme" : "Boşaltma"})</span>
               </span>
               <SideToggle side={acenteSide} onChange={setAcenteSide} />
             </div>
