@@ -4,8 +4,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { compressImage, isImagePath } from "@/lib/image";
 import { translateDbError } from "@/lib/db-errors";
-import { Spinner } from "./ui";
-import { FileText, Plus, Trash2 } from "lucide-react";
+import { Input, Select, Spinner } from "./ui";
+import { FileText, Trash2, UploadCloud } from "lucide-react";
 
 // Genel amaçlı fotoğraf galerisi. Kendi verisini yükler; bir üst kaydın
 // (gemi, araç vb.) fotoğraflarını gösterir/ekler/siler. Fotoğraflar tarayıcıda
@@ -16,8 +16,15 @@ import { FileText, Plus, Trash2 } from "lucide-react";
 // fkColumn: örn. "contract_id"
 // fkValue:  ilgili kaydın id'si
 // bucket:   örn. "contract-photos"
+//
+// Yükleme akışı: önce (zorunlu) belge türü seçilir, sonra dosya sürükle-
+// bırak ile (veya tıklayıp) eklenir — eskiden her tür için ayrı bir "+"
+// butonu vardı, sürükle-bırak yoktu (kullanıcı isteği: "sürükle bırak
+// olmadan kullanıcı yapamaz... yanına hemen dosya türü kısmı seçsin").
+// "Diğer" seçilirse türü kullanıcı kendi yazar.
 
 type Photo = { id: string; path: string; label: string | null };
+const OTHER = "__other__";
 
 export function PhotoGallery({
   bucket,
@@ -45,8 +52,11 @@ export function PhotoGallery({
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  const pendingLabel = useRef<string>(labels[0]);
   const mounted = useRef(true);
+  const [selectedLabel, setSelectedLabel] = useState("");
+  const [otherLabel, setOtherLabel] = useState("");
+  const [dragOver, setDragOver] = useState(false);
+  const effectiveLabel = selectedLabel === OTHER ? otherLabel.trim() : selectedLabel;
 
   useEffect(() => {
     mounted.current = true;
@@ -86,6 +96,7 @@ export function PhotoGallery({
   }, [load]);
 
   const handleFiles = async (files: FileList) => {
+    if (!effectiveLabel) { setErr("Önce belge türünü seçin."); return; }
     setBusy(true);
     setErr(null);
     try {
@@ -99,7 +110,7 @@ export function PhotoGallery({
         }
         const ins = await supabase
           .from(table)
-          .insert({ [fkColumn]: fkValue, path: key, label: pendingLabel.current });
+          .insert({ [fkColumn]: fkValue, path: key, label: effectiveLabel });
         if (ins.error) {
           await supabase.storage.from(bucket).remove([key]);
           setErr(translateDbError(ins.error));
@@ -114,8 +125,8 @@ export function PhotoGallery({
     }
   };
 
-  const trigger = (label: string) => {
-    pendingLabel.current = label;
+  const openPicker = () => {
+    if (!effectiveLabel) { setErr("Önce belge türünü seçin."); return; }
     inputRef.current?.click();
   };
 
@@ -132,20 +143,71 @@ export function PhotoGallery({
   return (
     <div className="space-y-2">
       {canWrite && (
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs font-medium text-gray-500">Foto / PDF ekle:</span>
-          {labels.map((l) => (
-            <button
-              key={l}
-              type="button"
-              onClick={() => trigger(l)}
-              disabled={busy}
-              className="inline-flex items-center gap-1 rounded-lg border border-border bg-white px-2.5 py-1 text-xs font-medium hover:bg-gray-50 disabled:opacity-50"
-            >
-              <Plus className="h-3.5 w-3.5" /> {l}
-            </button>
-          ))}
-          {busy && <span className="text-xs text-gray-500">İşleniyor...</span>}
+        <div className="space-y-2">
+          <div className="flex flex-wrap items-end gap-2">
+            <div className="min-w-[180px]">
+              <label className="mb-1 block text-xs font-medium text-gray-500">
+                Belge Türü <span className="text-red-500">*</span>
+              </label>
+              <Select
+                value={selectedLabel}
+                onChange={(e) => { setSelectedLabel(e.target.value); setErr(null); }}
+              >
+                <option value="">Seçiniz...</option>
+                {labels.map((l) => (
+                  <option key={l} value={l}>{l}</option>
+                ))}
+                <option value={OTHER}>Diğer</option>
+              </Select>
+            </div>
+            {selectedLabel === OTHER && (
+              <div className="min-w-[180px]">
+                <label className="mb-1 block text-xs font-medium text-gray-500">
+                  Türünü Yazın <span className="text-red-500">*</span>
+                </label>
+                <Input
+                  value={otherLabel}
+                  onChange={(e) => setOtherLabel(e.target.value)}
+                  placeholder="ör. Teknik Rapor"
+                />
+              </div>
+            )}
+          </div>
+
+          <div
+            onDragOver={(e) => { e.preventDefault(); if (effectiveLabel) setDragOver(true); }}
+            onDragLeave={() => setDragOver(false)}
+            onDrop={(e) => {
+              e.preventDefault();
+              setDragOver(false);
+              if (!effectiveLabel) { setErr("Önce belge türünü seçin."); return; }
+              if (e.dataTransfer.files?.length) handleFiles(e.dataTransfer.files);
+            }}
+            onClick={openPicker}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") openPicker(); }}
+            className={`flex flex-col items-center justify-center gap-1.5 rounded-xl border-2 border-dashed px-4 py-6 text-center transition-colors ${
+              busy
+                ? "cursor-wait border-border bg-gray-50 text-gray-400"
+                : !effectiveLabel
+                  ? "cursor-not-allowed border-border bg-gray-50 text-gray-400"
+                  : dragOver
+                    ? "cursor-pointer border-brand bg-brand/5 text-brand"
+                    : "cursor-pointer border-border bg-gray-50 text-gray-500 hover:border-brand/50 hover:bg-brand/5"
+            }`}
+          >
+            <UploadCloud className="h-6 w-6" />
+            <div className="text-sm font-medium">
+              {busy
+                ? "Yükleniyor..."
+                : !effectiveLabel
+                  ? "Önce belge türünü seçin"
+                  : "Dosyaları buraya sürükle bırak ya da tıkla"}
+            </div>
+            <div className="text-xs text-gray-400">Fotoğraf veya PDF</div>
+          </div>
+
           <input
             ref={inputRef}
             type="file"

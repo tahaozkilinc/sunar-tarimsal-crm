@@ -41,10 +41,10 @@ export function PendingArrivals({ role, phase }: { role: Role; phase?: "loading"
   const load = async (silent = false) => {
     if (!silent) setLoading(true);
     setError(null);
-    // Dış roller (nakliyeci/gozetim) fiyat içeren tabloyu okuyamaz; atandıkları
-    // gemileri güvenli kolonlu external_contracts görünümünden alırlar.
+    // Dış roller (nakliyeci/gozetim/acente) fiyat içeren tabloyu okuyamaz;
+    // atandıkları gemileri güvenli kolonlu external_contracts görünümünden alırlar.
     const base = role.endsWith("_view") ? role.slice(0, -"_view".length) : role;
-    const isExternal = base === "nakliyeci" || base === "gozetim";
+    const isExternal = base === "nakliyeci" || base === "gozetim" || base === "acente";
     const contractQuery = isExternal
       ? supabase
           .from("external_contracts")
