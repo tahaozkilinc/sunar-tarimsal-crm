@@ -22,6 +22,7 @@ type Contract = {
   eta: string | null;
   status: string;
   assigned_to: string | null;
+  loading_tonnage: number | null;
 };
 type Ref = { id: string; name: string };
 
@@ -47,11 +48,11 @@ export function PendingArrivals({ role, phase }: { role: Role; phase?: "loading"
     const contractQuery = isExternal
       ? supabase
           .from("external_contracts")
-          .select("id,contract_no,vessel,origin_country,product_id,quantity,unit,etd,eta,status,assigned_to")
+          .select("id,contract_no,vessel,origin_country,product_id,quantity,unit,etd,eta,status,assigned_to,loading_tonnage")
           .order("eta", { ascending: true })
       : supabase
           .from("purchase_contracts")
-          .select("id,contract_no,vessel,origin_country,product_id,quantity,unit,etd,eta,status,assigned_to")
+          .select("id,contract_no,vessel,origin_country,product_id,quantity,unit,etd,eta,status,assigned_to,loading_tonnage")
           .order("eta", { ascending: true });
     const [c, p, m] = await Promise.all([
       contractQuery,
@@ -102,8 +103,19 @@ export function PendingArrivals({ role, phase }: { role: Role; phase?: "loading"
       ? rows.filter((r) => (myAssigned ? r.assigned_to === userId : !r.assigned_to))
       : rows;
   const visible = accessible.filter((r) => r.status !== "cancelled" && r.status !== "completed");
-  const pending = visible.filter((c) => c.status !== "arrived");
-  const arrived = visible.filter((c) => c.status === "arrived");
+  // Admin/Operasyon sekmeleri (phase belirtilmiş): Yükleme/Boşaltma ayrımı
+  // artık durum (status) değil, yükleme tonajının girilip girilmediğine göre —
+  // yükleme tonajı kaydedilince gemi OTOMATİK olarak Boşaltma'ya geçer
+  // (kullanıcı isteği: "yükleme kısmına tonajı girdiğimde otomatik olarak
+  // boşaltma kısmına geçmesi gerekiyor"). Dış rol tek liste görünümünde
+  // (phase yok) bu ayrımın bir anlamı yok — onlar için eskisi gibi varış
+  // durumuna (status='arrived') bakılır.
+  const pending = phase
+    ? visible.filter((c) => c.loading_tonnage == null)
+    : visible.filter((c) => c.status !== "arrived");
+  const arrived = phase
+    ? visible.filter((c) => c.loading_tonnage != null)
+    : visible.filter((c) => c.status === "arrived");
 
   const renderRow = (c: Contract) => {
     const st = statusOpt(c.status);
@@ -158,7 +170,18 @@ export function PendingArrivals({ role, phase }: { role: Role; phase?: "loading"
         </button>
         {isOpen && (
           <div className="border-t border-border bg-gray-50/50 px-1 py-4 sm:px-3">
-            <ShipOpsPage contractId={c.id} embedded phase={phase} />
+            <ShipOpsPage
+              contractId={c.id}
+              embedded
+              phase={phase}
+              onPartiesSaved={() => {
+                // Yükleme tonajı (veya başka bir alan) kaydedildi — gemi artık
+                // başka bir sekmeye ait olabilir; paneli kapat ve listeyi
+                // tazele ki "otomatik geçiş" görünür olsun.
+                setExpandedId(null);
+                load(true);
+              }}
+            />
           </div>
         )}
       </div>

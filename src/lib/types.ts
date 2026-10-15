@@ -138,7 +138,8 @@ export interface PurchaseContract {
   loading_agent_id: string | null; // yükleme/menşe acentesi — agent_id ile aynı desen, yükleme/boşaltmada farklı acenteler olabiliyor
   broker_id: string | null; // Hammadde Brokeri — sözleşme açılışında seçilir
   ship_broker_id: string | null; // Gemi Brokeri — ship-ops'tan sonradan atanır
-  loading_tonnage: number | null; // fiilen yüklenen tonaj (menşe) — quantity (sözleşme) ve fiilen boşaltılandan (stock_movements) farklı olabilir, ödeme buna göre
+  loading_tonnage: number | null; // fiilen yüklenen tonaj (menşe) — quantity (sözleşme) ve fiilen boşaltılandan farklı olabilir, ödeme buna göre
+  discharge_tonnage: number | null; // fiilen boşaltılan tonaj — loading_tonnage ile aynı desen, elle girilen tek bir sayı (gemi bitince admin/operasyon yazar)
   created_at: string;
   notes: string | null;
 }
