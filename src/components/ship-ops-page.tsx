@@ -7,6 +7,7 @@ import { Badge, Button, Card, EmptyState, Field, Input, Select, Spinner } from "
 import { MovementPhotos, type MovementPhoto } from "./movement-photos";
 import { PhotoGallery } from "./photo-gallery";
 import { NumberInput } from "./resource-manager";
+import { Diff } from "./ship-finalization";
 import { formatDate, formatNumber } from "@/lib/format";
 import { translateDbError } from "@/lib/db-errors";
 import { CONTRACT_STATUS_OPTIONS, SALES_STATUS_OPTIONS, STOCK_STATUS_OPTIONS } from "@/lib/resources";
@@ -33,6 +34,7 @@ type Contract = {
   assigned_to: string | null;
   ship_broker_id: string | null;
   loading_tonnage: number | null;
+  discharge_tonnage: number | null;
 };
 type Movement = {
   id: string;
@@ -121,6 +123,7 @@ export function ShipOpsPage({
   contractId,
   embedded = false,
   phase,
+  onPartiesSaved,
 }: {
   contractId: string;
   embedded?: boolean;
@@ -129,6 +132,10 @@ export function ShipOpsPage({
   // kafa karıştırıyordu (kullanıcı isteği: "yükleme kısmı kullanışlı değil").
   // Belirtilmezse (bağımsız /operations/[id] rotası, dış roller) hepsi gösterilir.
   phase?: "loading" | "discharge";
+  // Taraf/tonaj kaydı başarıyla bittiğinde çağrılır — ebeveyn (pending-arrivals)
+  // bunu listeyi tazelemek için kullanır: yükleme tonajı girilince gemi
+  // otomatik olarak Boşaltma sekmesine "geçer" (kullanıcı isteği).
+  onPartiesSaved?: () => void;
 }) {
   const supabase = useMemo(() => createClient(), []);
 
@@ -171,19 +178,6 @@ export function ShipOpsPage({
   const [formErr, setFormErr] = useState<string | null>(null);
   const [flash, setFlash]   = useState<string | null>(null);
 
-  // Toplu depo girişi (admin/operasyon): araç bazlı değil, doğrudan toplam
-  // tonajı depoya + stok durumuna göre yazar. Aynı gemi için birden çok kez
-  // gönderilerek (ör. yarısı Milli / yarısı Antrepo) bölünebilir.
-  const [bulkWh, setBulkWh] = useState("");
-  const [bulkStatus, setBulkStatus] = useState(""); // "" | "MİLLİ" | "ANTREPO" | "__other__"
-  const [bulkStatusOther, setBulkStatusOther] = useState("");
-  const [bulkCustomsNo, setBulkCustomsNo] = useState("");
-  const [bulkQty, setBulkQty] = useState("");
-  const [bulkDate, setBulkDate] = useState(new Date().toISOString().slice(0, 10));
-  const [bulkSaving, setBulkSaving] = useState(false);
-  const [bulkErr, setBulkErr] = useState<string | null>(null);
-  const [bulkFlash, setBulkFlash] = useState<string | null>(null);
-
   // Gemiye gözetim / liman / nakliyeci / acente atama
   const [surveyorId, setSurveyorId] = useState("");
   // Yükleme (menşe) gözetim firması — surveyor_id (boşaltma/varış) ile aynı
@@ -216,6 +210,10 @@ export function ShipOpsPage({
   const [etdDate, setEtdDate] = useState("");
   const [etaDate, setEtaDate] = useState("");
   const [loadingTonnage, setLoadingTonnage] = useState<number | "">("");
+  // Boşaltma Tonajı — Yükleme Tonajı ile aynı desen: elle girilen tek bir
+  // sayı, gemi bitince admin/operasyon yazar (kullanıcı isteği: "araç araç
+  // yazma işini iptal et... gemi bitince biz boşaltma tonajını yazacağız").
+  const [dischargeTonnage, setDischargeTonnage] = useState<number | "">("");
 
   const loadPhotos = useCallback(
     async (ids: string[]) => {
@@ -252,7 +250,7 @@ export function ShipOpsPage({
   useEffect(() => {
     (async () => {
       const CONTRACT_COLS =
-        "id,contract_no,vessel,product_id,supplier_id,quantity,unit,etd,eta,status,surveyor_id,loading_surveyor_id,port_id,loading_port_id,carrier_id,agent_id,loading_agent_id,assigned_to,ship_broker_id,loading_tonnage";
+        "id,contract_no,vessel,product_id,supplier_id,quantity,unit,etd,eta,status,surveyor_id,loading_surveyor_id,port_id,loading_port_id,carrier_id,agent_id,loading_agent_id,assigned_to,ship_broker_id,loading_tonnage,discharge_tonnage";
       const [c0, w, p, co, pn, { data: au }] = await Promise.all([
         supabase
           .from("purchase_contracts")
@@ -294,6 +292,7 @@ export function ShipOpsPage({
       setEtdDate(cd?.etd ?? "");
       setEtaDate(cd?.eta ?? "");
       setLoadingTonnage(cd?.loading_tonnage ?? "");
+      setDischargeTonnage(cd?.discharge_tonnage ?? "");
       const pnRows = (pn.data as { id: string; full_name: string | null; role: string | null }[] | null) || [];
       const names: Record<string, string> = {};
       pnRows.forEach((x) => { names[x.id] = x.full_name || "—"; });
@@ -346,7 +345,8 @@ export function ShipOpsPage({
     shipBrokerId !== (contract?.ship_broker_id ?? "") ||
     etdDate !== (contract?.etd ?? "") ||
     etaDate !== (contract?.eta ?? "") ||
-    loadingTonnage !== (contract?.loading_tonnage ?? "");
+    loadingTonnage !== (contract?.loading_tonnage ?? "") ||
+    dischargeTonnage !== (contract?.discharge_tonnage ?? "");
 
   const totalDrawn = useMemo(
     () => movements.reduce((a, m) => a + (Number(m.quantity) || 0), 0),
@@ -438,56 +438,6 @@ export function ShipOpsPage({
     }, 1800);
   };
 
-  const addBulk = async () => {
-    if (!contract) return;
-    if (!bulkWh) { setBulkErr("Hedef depo / fabrika seçin."); return; }
-    const q = parseFloat(bulkQty.replace(",", "."));
-    if (!bulkQty || isNaN(q) || q <= 0) { setBulkErr("Geçerli bir tonaj girin."); return; }
-    const resolvedStatus = bulkStatus === "__other__" ? bulkStatusOther.trim() : bulkStatus;
-    if (bulkStatus === "__other__" && !resolvedStatus) {
-      setBulkErr("Stok durumunu yazın."); return;
-    }
-    // Beyanname no formatı: YY + Gümrük İdare Kodu (6) + Rejim Kodu (2: IM/AN) +
-    // Sıra No (8) = 18 hane; rejim kodu BAŞTA değil, 9-10. karakterde (ör.
-    // Milli: 26310100IM00018828, Antrepo: 26310100AN00018828 — kullanıcı örneği).
-    const customsNo = bulkCustomsNo.trim().toUpperCase();
-    if (bulkStatus === "MİLLİ" || bulkStatus === "ANTREPO") {
-      const regime = bulkStatus === "MİLLİ" ? "IM" : "AN";
-      const sample = `26310100${regime}00018828`;
-      if (!customsNo) { setBulkErr(`Gümrük beyanname no girin (ör. ${sample}).`); return; }
-      if (customsNo.length !== 18 || customsNo.slice(8, 10) !== regime) {
-        setBulkErr(`Beyanname no 18 haneli olmalı, 9-10. karakterleri "${regime}" olmalı (ör. ${sample}).`);
-        return;
-      }
-    }
-    setBulkSaving(true);
-    setBulkErr(null);
-    const { error: err } = await supabase.from("stock_movements").insert({
-      contract_id:   contract.id,
-      product_id:    contract.product_id,
-      warehouse_id:  bulkWh,
-      movement_type: "inbound",
-      quantity:      q,
-      unit:          contract.unit || unit,
-      stock_status:  resolvedStatus || null,
-      customs_declaration_no: customsNo || null,
-      movement_date: bulkDate,
-    });
-    if (err) { setBulkSaving(false); setBulkErr(translateDbError(err)); return; }
-    if (contract.status !== "arrived" && contract.status !== "completed") {
-      setContract(prev => prev ? { ...prev, status: "arrived" } : prev);
-    }
-    setBulkFlash(`${formatNumber(q)} ${unit} eklendi`);
-    setBulkQty("");
-    // Beyanname/antrepo no BİLEREK temizlenmiyor — art arda aynı beyannameye
-    // ait birden fazla tonaj girilebiliyor, her girişte yeniden yazmaya
-    // gerek yok (kullanıcı isteği). Stok durumu değişince (yukarıda) hâlâ
-    // temizleniyor çünkü rejim kodu (IM/AN) uyuşmaz hâle gelir.
-    setBulkSaving(false);
-    await loadMovements();
-    setTimeout(() => setBulkFlash(null), 1800);
-  };
-
   const deleteMov = async (id: string) => {
     if (!window.confirm("Bu çekim kaydı silinsin mi?")) return;
     // Önce DB silinir (RLS/koruma tetikleyicisi reddedebilir); ancak başarılıysa
@@ -511,8 +461,8 @@ export function ShipOpsPage({
 
   const finishShip = async () => {
     if (!contract) return;
-    if (remaining > 0 && !window.confirm(
-      `${formatNumber(remaining)} ${unit} hâlâ boşaltılmadı. Gemiyi tamamlandı olarak işaretlemek istiyor musunuz?`
+    if (dischargeTonnage === "" && !window.confirm(
+      "Boşaltma tonajı henüz girilmedi. Gemiyi tamamlandı olarak işaretlemek istiyor musunuz?"
     )) return;
     // Statü geçişi DEFINER RPC ile: pc_write operasyona kapalı olduğundan
     // doğrudan update RLS'te sessizce 0 satır güncelliyordu (görünmez hata).
@@ -539,6 +489,7 @@ export function ShipOpsPage({
       p_eta: etaDate || null,
       p_loading_tonnage: loadingTonnage === "" ? null : loadingTonnage,
       p_etd: etdDate || null,
+      p_discharge_tonnage: dischargeTonnage === "" ? null : dischargeTonnage,
     });
     if (rpcResult.error) { setAssignSaving(false); setAssignErr(translateDbError(rpcResult.error)); return; }
     const parties = {
@@ -553,11 +504,17 @@ export function ShipOpsPage({
       eta: etaDate || null,
       loading_tonnage: loadingTonnage === "" ? null : loadingTonnage,
       etd: etdDate || null,
+      discharge_tonnage: dischargeTonnage === "" ? null : dischargeTonnage,
     };
     setContract(prev => prev ? { ...prev, ...parties } : prev);
     setAssignSaving(false);
     setAssignFlash("Atamalar kaydedildi");
-    setTimeout(() => setAssignFlash(null), 1800);
+    setTimeout(() => {
+      setAssignFlash(null);
+      // Yükleme tonajı girildiyse gemi başka bir sekmeye "geçmiş" olabilir —
+      // ebeveyn listeyi tazelesin (kullanıcı isteği: otomatik geçiş).
+      onPartiesSaved?.();
+    }, 1800);
   };
 
   const exportCsv = () => {
@@ -773,6 +730,21 @@ export function ShipOpsPage({
               </div>
             )}
           </Field>
+          {phase !== "loading" && (
+            <Field label="Boşaltma Tonajı">
+              {canWrite ? (
+                <NumberInput
+                  placeholder="ör. 24.600,000"
+                  value={dischargeTonnage}
+                  onChange={setDischargeTonnage}
+                />
+              ) : (
+                <div className="rounded-lg border border-border bg-gray-50 px-3 py-2 text-sm">
+                  {contract.discharge_tonnage != null ? formatNumber(contract.discharge_tonnage) : "-"}
+                </div>
+              )}
+            </Field>
+          )}
         </div>
         {canWrite && (
           <div className="mt-3 flex items-center gap-3">
@@ -924,7 +896,58 @@ export function ShipOpsPage({
       </>
       )}
 
-      {/* ── Araç listesi + hızlı giriş formu ── */}
+      {/* ── Admin/Operasyon: 3 tonaj karşılaştırması + Gemiyi Bitir — araç/depo
+          bazlı giriş formları ve giriş listesi KALDIRILDI (kullanıcı isteği:
+          "araç araç yazma işini iptal et", "giriş listesi... kaldır").
+          Boşaltma Tonajı artık Yükleme Tonajı gibi doğrudan tek sayı olarak
+          Operasyon Tarafları kartından giriliyor, "Kaydet" ile yazılıyor. ── */}
+      {canManage && phase !== "loading" && (
+        <div>
+          <div className="mb-2 text-sm font-semibold">Tonaj Karşılaştırma</div>
+          <div className="grid grid-cols-3 gap-3">
+            <Card className="p-3">
+              <div className="text-[11px] uppercase text-gray-500">Sözleşme</div>
+              <div className="mt-0.5 text-xl font-bold">{formatNumber(contracted)}</div>
+              <div className="text-xs text-gray-400">{unit}</div>
+            </Card>
+            <Card className="p-3">
+              <div className="text-[11px] uppercase text-gray-500">Yükleme</div>
+              <div className="mt-0.5 text-xl font-bold">
+                {loadingTonnage !== "" ? formatNumber(Number(loadingTonnage)) : "—"}
+              </div>
+              <div className="text-xs text-gray-400">
+                {unit}
+                {loadingTonnage !== "" && <> · <Diff value={Number(loadingTonnage) - contracted} unit={unit} /></>}
+              </div>
+            </Card>
+            <Card className="p-3">
+              <div className="text-[11px] uppercase text-gray-500">Boşaltma</div>
+              <div className="mt-0.5 text-xl font-bold">
+                {dischargeTonnage !== "" ? formatNumber(Number(dischargeTonnage)) : "—"}
+              </div>
+              <div className="text-xs text-gray-400">
+                {unit}
+                {dischargeTonnage !== "" && loadingTonnage !== "" && (
+                  <> · <Diff value={Number(dischargeTonnage) - Number(loadingTonnage)} unit={unit} /></>
+                )}
+              </div>
+            </Card>
+          </div>
+          <Button
+            onClick={finishShip}
+            disabled={contract.status === "completed"}
+            className="mt-3 w-full sm:w-auto"
+          >
+            <CheckCircle className="h-4 w-4" />
+            {contract.status === "completed" ? "✓ Tamamlandı" : "Gemiyi Bitir"}
+          </Button>
+        </div>
+      )}
+
+      {/* ── Dış roller (nakliyeci/gözetim): araç bazlı hızlı giriş + kendi
+          giriş listeleri — admin/operasyon tarafında kaldırıldı, ama onların
+          tek giriş mekanizması olduğundan burada değişmedi. ── */}
+      {!canManage && (
       <div className="grid gap-4 lg:grid-cols-[1fr_340px]">
 
         {/* Araç tablosu (sola / alta) */}
@@ -1110,95 +1133,6 @@ export function ShipOpsPage({
 
         {/* Sağ: form + tonaj farkı */}
         <div className="order-1 lg:order-2 space-y-4 print:hidden">
-          {/* Admin/Operasyon: araç araç değil, doğrudan toplam tonajı depoya
-              (+ stok durumuna) yazan toplu giriş. Nakliyeci/Gözetim (dış roller)
-              için araç bazlı hızlı giriş aynen kalır — DB 100 ton/kayıt limiti
-              zaten onlara özel (bkz. 0046 fn_sm_guard). */}
-          {canManage && contract.status !== "completed" && phase !== "loading" && (
-            <div>
-              <div className="mb-2 text-sm font-semibold">Toplu Depo Girişi</div>
-              {!etaReady ? (
-                <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
-                  ETA ({formatDate(contract.eta)}) gelmeden operasyon başlatılamaz.
-                </div>
-              ) : (
-                <Card className="space-y-3 p-4">
-                  <p className="text-xs text-gray-500">
-                    Araç araç değil, doğrudan toplam tonajı yazın. Aynı gemi farklı
-                    depolara / stok durumlarına bölünecekse (ör. yarısı Milli,
-                    yarısı Antrepo) bu formu birden çok kez gönderin.
-                  </p>
-                  <Field label="Depo / Fabrika" required>
-                    <Select value={bulkWh} onChange={e => setBulkWh(e.target.value)}>
-                      <option value="">Seçiniz...</option>
-                      {warehouses.map(w => (
-                        <option key={w.id} value={w.id}>{w.name}</option>
-                      ))}
-                    </Select>
-                  </Field>
-                  <Field label="Stok Durumu">
-                    <Select
-                      value={bulkStatus}
-                      onChange={e => { setBulkStatus(e.target.value); setBulkCustomsNo(""); }}
-                    >
-                      <option value="">Belirtilmedi</option>
-                      {STOCK_STATUS_OPTIONS.map(o => (
-                        <option key={o.value} value={o.value}>{o.label}</option>
-                      ))}
-                      <option value="__other__">Diğer</option>
-                    </Select>
-                  </Field>
-                  {bulkStatus === "__other__" && (
-                    <Field label="Durumu Yazın" required>
-                      <Input
-                        value={bulkStatusOther}
-                        onChange={e => setBulkStatusOther(e.target.value.toUpperCase())}
-                        placeholder="Ör. TRANSİT"
-                      />
-                    </Field>
-                  )}
-                  {(bulkStatus === "MİLLİ" || bulkStatus === "ANTREPO") && (
-                    <Field label="Gümrük Beyanname No (18 Hane)" required>
-                      <Input
-                        value={bulkCustomsNo}
-                        onChange={e => setBulkCustomsNo(e.target.value.toUpperCase())}
-                        placeholder={bulkStatus === "MİLLİ" ? "26310100IM00018828" : "26310100AN00018828"}
-                        maxLength={18}
-                      />
-                    </Field>
-                  )}
-                  <Field label={`Tonaj (${unit})`} required>
-                    <Input
-                      id="ship-ops-bulk-qty"
-                      type="text"
-                      inputMode="decimal"
-                      value={bulkQty}
-                      onChange={e => setBulkQty(e.target.value.replace(",", ".").replace(/[^0-9.]/g, ""))}
-                      placeholder={remaining > 0 ? `Kalan: ${formatNumber(remaining)} ${unit}` : "Tonaj"}
-                      onKeyDown={e => { if (e.key === "Enter") addBulk(); }}
-                      autoFocus
-                    />
-                  </Field>
-                  <Field label="Tarih">
-                    <Input type="date" value={bulkDate} onChange={e => setBulkDate(e.target.value)} />
-                  </Field>
-                  {bulkErr && (
-                    <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-                      {bulkErr}
-                    </div>
-                  )}
-                  {bulkFlash && (
-                    <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-700">
-                      ✓ {bulkFlash}
-                    </div>
-                  )}
-                  <Button onClick={addBulk} disabled={bulkSaving} className="w-full">
-                    {bulkSaving ? "Ekleniyor..." : "Ekle"}
-                  </Button>
-                </Card>
-              )}
-            </div>
-          )}
           {canWrite && !canManage && contract.status !== "completed" && (
             <>
               <div>
@@ -1361,21 +1295,11 @@ export function ShipOpsPage({
                   </>
                 );
               })()}
-
-              {canManage && phase !== "loading" && (
-                <Button
-                  onClick={finishShip}
-                  disabled={contract.status === "completed"}
-                  className="mt-3 w-full"
-                >
-                  <CheckCircle className="h-4 w-4" />
-                  {contract.status === "completed" ? "✓ Tamamlandı" : "Gemiyi Bitir"}
-                </Button>
-              )}
             </div>
           )}
         </div>
       </div>
+      )}
 
       {/* ── Yazdırma: tonaj özeti + süre ── */}
       <div className="hidden print:block rounded-xl border border-border p-4 mt-4">
@@ -1401,6 +1325,16 @@ export function ShipOpsPage({
           <div>
             <div className="text-gray-500 text-xs">Giriş</div>
             <div className="font-bold">{movements.length} adet</div>
+          </div>
+        </div>
+        <div className="mt-3 grid grid-cols-2 gap-4 border-t border-border pt-2 text-sm">
+          <div>
+            <div className="text-gray-500 text-xs">Yükleme Tonajı</div>
+            <div className="font-bold">{loadingTonnage !== "" ? formatNumber(Number(loadingTonnage)) : "—"} {unit}</div>
+          </div>
+          <div>
+            <div className="text-gray-500 text-xs">Boşaltma Tonajı</div>
+            <div className="font-bold">{dischargeTonnage !== "" ? formatNumber(Number(dischargeTonnage)) : "—"} {unit}</div>
           </div>
         </div>
         {opStats && (
