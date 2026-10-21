@@ -369,12 +369,17 @@ export const purchaseContractsResource: ResourceConfig = {
     { name: "origin_country", label: "Menşe Ülke", type: "text" },
     { name: "loading_port", label: "Yükleme Limanı", type: "text" },
     { name: "vessel", label: "Gemi / Araç", type: "text" },
-    // Yolda geçen süreyi (Bağlantı -> Özet gantt'ı) laycan yerine gerçekten
-    // yansıtsın diye — laycan yükleme penceresidir, sefer süresi değil.
-    // Opsiyonel: boşsa gantt çubuğu doğrudan ETD'de (yoksa ETA'da, ince) başlar.
+    // Yükleme Limanına Tahmini Varış sözleşme açılışında girilebilir (gemi
+    // henüz netleşmeden de tahmin edilebiliyor) — ETD/ETA ise artık BURADAN
+    // GİRİLMİYOR (kullanıcı isteği: "bağlantı açılırken ETA ve ETD'leri
+    // oradan kaldır, gerek yok onlara"); ship-ops'taki Operasyon Tarafları
+    // kartından, gemi netleştikçe atanıyor (loading_eta ile aynı yerden,
+    // bkz. assign_ship_parties). formHidden -> formdan gizli ama listede/
+    // detayda ve Bağlantı -> Özet gantt'ında (yolda geçen süreyi laycan
+    // yerine bunlar üzerinden gösterir) kullanılmaya devam ediyor.
     { name: "loading_eta", label: "Yükleme Limanına Tahmini Varış", type: "date" },
-    { name: "etd", label: "ETD (Tahmini Kalkış)", type: "date" },
-    { name: "eta", label: "ETA (Tahmini Varış)", type: "date" },
+    { name: "etd", label: "ETD (Tahmini Kalkış)", type: "date", formHidden: true },
+    { name: "eta", label: "ETA (Tahmini Varış)", type: "date", formHidden: true },
     { name: "laycan_start", label: "Laycan Başlangıç", type: "date" },
     { name: "laycan_end", label: "Laycan Bitiş", type: "date" },
     { name: "status", label: "Durum", type: "select", options: CONTRACT_STATUS_OPTIONS, required: true },
