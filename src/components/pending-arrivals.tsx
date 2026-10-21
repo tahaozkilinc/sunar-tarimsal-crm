@@ -18,6 +18,7 @@ type Contract = {
   product_id: string | null;
   quantity: number | null;
   unit: string | null;
+  loading_eta: string | null;
   etd: string | null;
   eta: string | null;
   status: string;
@@ -48,11 +49,11 @@ export function PendingArrivals({ role, phase }: { role: Role; phase?: "loading"
     const contractQuery = isExternal
       ? supabase
           .from("external_contracts")
-          .select("id,contract_no,vessel,origin_country,product_id,quantity,unit,etd,eta,status,assigned_to,loading_tonnage")
+          .select("id,contract_no,vessel,origin_country,product_id,quantity,unit,loading_eta,etd,eta,status,assigned_to,loading_tonnage")
           .order("eta", { ascending: true })
       : supabase
           .from("purchase_contracts")
-          .select("id,contract_no,vessel,origin_country,product_id,quantity,unit,etd,eta,status,assigned_to,loading_tonnage")
+          .select("id,contract_no,vessel,origin_country,product_id,quantity,unit,loading_eta,etd,eta,status,assigned_to,loading_tonnage")
           .order("eta", { ascending: true });
     const [c, p, m] = await Promise.all([
       contractQuery,
@@ -160,7 +161,11 @@ export function PendingArrivals({ role, phase }: { role: Role; phase?: "loading"
                 : `Kalan ${formatNumber(remaining)} ${unit}`}
             </span>
             <span className="text-xs text-gray-500">
-              {phase === "loading" ? `ETD ${formatDate(c.etd)}` : `ETA ${formatDate(c.eta)}`}
+              {phase === "loading"
+                ? c.loading_eta
+                  ? `Varış ${formatDate(c.loading_eta)}`
+                  : `ETD ${formatDate(c.etd)}`
+                : `ETA ${formatDate(c.eta)}`}
             </span>
             {role === "operations" && c.assigned_to === userId && (
               <Badge color="purple">Sana Atandı</Badge>

@@ -85,6 +85,7 @@ type Contract = {
   created_at: string | null;
   contract_no: string | null;
   vessel: string | null;
+  loading_eta: string | null;
   etd: string | null;
   eta: string | null;
   product_id: string | null;
@@ -103,6 +104,9 @@ const GANTT_STATUS_COLOR: Record<string, string> = {
   active: "#3b82f6",
   in_transit: "#f59e0b",
 };
+// Yükleme limanında geçen süre (loading_eta -> ETD) — duruma göre değil,
+// sabit nötr bir renk; sefer süresinden (yukarıdaki durum renkleri) ayrı.
+const GANTT_LOADING_PORT_COLOR = "#94a3b8";
 const GANTT_MONTHS_TR = ["Oca", "Şub", "Mar", "Nis", "May", "Haz", "Tem", "Ağu", "Eyl", "Eki", "Kas", "Ara"];
 // Tarih-yalnızca (YYYY-MM-DD) string'ler "T00:00:00" olmadan new Date() ile
 // parse edilirse UTC gece yarısı sayılır — tarayıcı saat dilimi UTC'nin
@@ -152,7 +156,7 @@ export function BaglantiSummary() {
         supabase
           .from("purchase_contracts")
           .select(
-            "id,status,quantity,price,currency,created_at,contract_no,vessel,etd,eta,product_id,supplier_id,origin_country",
+            "id,status,quantity,price,currency,created_at,contract_no,vessel,loading_eta,etd,eta,product_id,supplier_id,origin_country",
           ),
         supabase.from("companies").select("id,name"),
       ]);
@@ -241,23 +245,28 @@ export function BaglantiSummary() {
     () => rows.filter((r) => r.status === "active" || r.status === "in_transit"),
     [rows],
   );
-  // Çubuk ETD -> ETA (fiilen "yolda" olunan süre) — laycan (yükleme penceresi,
-  // sefer değil) KULLANILMIYOR; ETD boşsa çubuk doğrudan ETA'da (ince) başlar
-  // (kullanıcı isteği — eskiden laycan_start kullanılınca gemi olduğundan çok
-  // daha uzun süredir yoldaymış gibi görünüyordu).
+  // Çubuk loading_eta -> ETD -> ETA (yükleme limanında geçen süre + fiilen
+  // "yolda" olunan süre) — laycan (yükleme penceresi, sefer değil)
+  // KULLANILMIYOR; loading_eta/ETD boşsa çubuk sıradaki dolu tarihte (ince)
+  // başlar (kullanıcı isteği — eskiden laycan_start kullanılınca gemi
+  // olduğundan çok daha uzun süredir yoldaymış gibi görünüyordu). "mid",
+  // loading_eta girilmişse ETD'nin yeri — çubuğu iki parçaya (limanda / yolda)
+  // böler, bkz. GANTT_LOADING_PORT_COLOR.
   const dated = useMemo(
     () =>
       ganttRows
         .map((c) => {
-          const startStr = c.etd || c.eta;
+          const startStr = c.loading_eta || c.etd || c.eta;
+          const midStr = c.loading_eta ? c.etd : null;
           const endStr = c.eta;
           return {
             c,
             start: startStr ? parseLocalDate(startStr) : null,
+            mid: midStr ? parseLocalDate(midStr) : null,
             end: endStr ? parseLocalDate(endStr) : null,
           };
         })
-        .filter((x): x is { c: Contract; start: Date; end: Date | null } => !!x.start && !isNaN(x.start.getTime()))
+        .filter((x): x is { c: Contract; start: Date; mid: Date | null; end: Date | null } => !!x.start && !isNaN(x.start.getTime()))
         .sort((a, b) => a.start.getTime() - b.start.getTime()),
     [ganttRows],
   );
@@ -344,11 +353,15 @@ export function BaglantiSummary() {
         </div>
       )}
 
-      {/* Yolda olan gemiler — Gantt zaman çizelgesi (ETA / Laycan) */}
+      {/* Yolda olan gemiler — Gantt zaman çizelgesi */}
       <Card className="p-4">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-          <h2 className="text-sm font-semibold">Yolda Olan Gemiler — Zaman Çizelgesi (ETA / Laycan)</h2>
+          <h2 className="text-sm font-semibold">Yolda Olan Gemiler — Zaman Çizelgesi</h2>
           <div className="flex flex-wrap gap-2 text-xs">
+            <span className="inline-flex items-center gap-1">
+              <span className="inline-block h-3 w-3 rounded-sm" style={{ background: GANTT_LOADING_PORT_COLOR }} />
+              Yükleme Limanında
+            </span>
             <span className="inline-flex items-center gap-1">
               <span className="inline-block h-3 w-3 rounded-sm" style={{ background: GANTT_STATUS_COLOR.active }} />
               Aktif
@@ -378,9 +391,10 @@ export function BaglantiSummary() {
               </div>
 
               {/* Satırlar */}
-              {dated.map(({ c, start, end }) => {
+              {dated.map(({ c, start, mid, end }) => {
                 const left = ganttPct(start);
                 const right = end ? ganttPct(end) : left;
+                const midPct = mid ? ganttPct(mid) : null;
                 const width = Math.max(right - left, 1.5);
                 return (
                   <div key={c.id} className="flex items-center border-b border-border last:border-0">
@@ -417,18 +431,48 @@ export function BaglantiSummary() {
                           ETA: {formatDate(c.eta)}
                         </div>
                       )}
-                      {/* bar */}
-                      <div
-                        className="absolute bottom-1 flex h-5 items-center justify-center rounded px-1 text-[10px] font-medium text-white"
-                        style={{
-                          left: `${left}%`,
-                          width: `${width}%`,
-                          background: GANTT_STATUS_COLOR[c.status || ""] || "#6b7280",
-                        }}
-                        title={`${sn(c.supplier_id)}${c.etd ? ` · ETD ${formatDate(c.etd)}` : ""} · ETA ${formatDate(c.eta)}${c.origin_country ? ` · ${c.origin_country}` : ""}`}
-                      >
-                        <span className="truncate">{formatNumber(c.quantity)}</span>
-                      </div>
+                      {/* bar — loading_eta girilmişse iki parçaya bölünür:
+                          yükleme limanında (nötr renk) + yolda (durum rengi) */}
+                      {(() => {
+                        const title = `${sn(c.supplier_id)}${c.loading_eta ? ` · Yük. Varış ${formatDate(c.loading_eta)}` : ""}${c.etd ? ` · ETD ${formatDate(c.etd)}` : ""} · ETA ${formatDate(c.eta)}${c.origin_country ? ` · ${c.origin_country}` : ""}`;
+                        if (midPct !== null) {
+                          const portWidth = Math.max(midPct - left, 1);
+                          const seaWidth = Math.max(right - midPct, 1.5);
+                          return (
+                            <>
+                              <div
+                                className="absolute bottom-1 h-5 rounded-l"
+                                style={{ left: `${left}%`, width: `${portWidth}%`, background: GANTT_LOADING_PORT_COLOR }}
+                                title={title}
+                              />
+                              <div
+                                className="absolute bottom-1 flex h-5 items-center justify-center rounded-r px-1 text-[10px] font-medium text-white"
+                                style={{
+                                  left: `${midPct}%`,
+                                  width: `${seaWidth}%`,
+                                  background: GANTT_STATUS_COLOR[c.status || ""] || "#6b7280",
+                                }}
+                                title={title}
+                              >
+                                <span className="truncate">{formatNumber(c.quantity)}</span>
+                              </div>
+                            </>
+                          );
+                        }
+                        return (
+                          <div
+                            className="absolute bottom-1 flex h-5 items-center justify-center rounded px-1 text-[10px] font-medium text-white"
+                            style={{
+                              left: `${left}%`,
+                              width: `${width}%`,
+                              background: GANTT_STATUS_COLOR[c.status || ""] || "#6b7280",
+                            }}
+                            title={title}
+                          >
+                            <span className="truncate">{formatNumber(c.quantity)}</span>
+                          </div>
+                        );
+                      })()}
                     </div>
                   </div>
                 );
