@@ -17,6 +17,7 @@ type Contract = {
   discharge_tonnage: number | null;
   unit: string | null;
   status: string;
+  loading_eta: string | null;
   etd: string | null;
   eta: string | null;
   surveyor_id: string | null;
@@ -32,7 +33,7 @@ type Ref = { id: string; name: string };
 
 const statusOpt = (s: string) => CONTRACT_STATUS_OPTIONS.find((o) => o.value === s);
 const CONTRACT_COLS =
-  "id,contract_no,vessel,product_id,quantity,loading_tonnage,discharge_tonnage,unit,status,etd,eta,surveyor_id,loading_surveyor_id,port_id,loading_port_id,carrier_id,agent_id,loading_agent_id,ship_broker_id";
+  "id,contract_no,vessel,product_id,quantity,loading_tonnage,discharge_tonnage,unit,status,loading_eta,etd,eta,surveyor_id,loading_surveyor_id,port_id,loading_port_id,carrier_id,agent_id,loading_agent_id,ship_broker_id";
 
 // Süreç sonucunda 3 farklı tonaj: Sözleşme (quantity), Yükleme (loading_tonnage)
 // ve Boşaltma (discharge_tonnage) — üçü de elle girilen, tek birer sayı (artık
@@ -206,6 +207,7 @@ export function ShipFinalization() {
                           <div>
                             <div className="mb-2 text-xs font-semibold uppercase text-gray-500">Tarihler</div>
                             <div className="space-y-1 text-sm">
+                              <div><span className="text-gray-500">Yükleme Limanına Varış:</span> {formatDate(c.loading_eta)}</div>
                               <div><span className="text-gray-500">ETD:</span> {formatDate(c.etd)}</div>
                               <div><span className="text-gray-500">ETA:</span> {formatDate(c.eta)}</div>
                             </div>

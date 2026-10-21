@@ -119,6 +119,7 @@ export interface PurchaseContract {
   origin_country: string | null;
   loading_port: string | null;
   vessel: string | null;
+  loading_eta: string | null; // yükleme limanına tahmini varış — ETD'den önceki aşama
   etd: string | null; // tahmini kalkış — gantt çubuğunun başlangıcı (laycan DEĞİL)
   eta: string | null;
   laycan_start: string | null;

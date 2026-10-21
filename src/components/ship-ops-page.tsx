@@ -21,6 +21,7 @@ type Contract = {
   supplier_id: string | null;
   quantity: number | null;
   unit: string | null;
+  loading_eta: string | null;
   etd: string | null;
   eta: string | null;
   status: string;
@@ -205,12 +206,14 @@ export function ShipOpsPage({
   const [gozetimSide, setGozetimSide] = useState<"loading" | "discharge">("loading");
   const [limanSide,   setLimanSide]   = useState<"loading" | "discharge">("loading");
   const [acenteSide,  setAcenteSide]  = useState<"loading" | "discharge">("loading");
-  // ETD (yükleme limanından tahmini kalkış) ve ETA (boşaltma limanına tahmini
-  // varış) — ikisi de operasyon sayfasından güncellenebilir (bkz.
-  // assign_ship_parties). Ayrı tutuluyor: yükleme fazında ETA'nın bir önemi
-  // yok, ETD gerekiyor; boşaltma fazında ise tam tersi (kullanıcı isteği).
+  // loading_eta (yükleme limanına tahmini varış) -> ETD (yükleme limanından
+  // tahmini kalkış) -> ETA (boşaltma limanına tahmini varış) — üçü de
+  // operasyon sayfasından güncellenebilir (bkz. assign_ship_parties). Ayrı
+  // tutuluyor: yükleme fazında ETA'nın bir önemi yok, loading_eta/ETD
+  // gerekiyor; boşaltma fazında ise tam tersi (kullanıcı isteği).
   // Yükleme Tonajı: menşede fiilen yüklenen — sözleşme/boşaltma tonajından
   // ayrı; ödeme üçü arasındaki farka göre yapılabiliyor, bkz. Finalizasyon.
+  const [loadingEtaDate, setLoadingEtaDate] = useState("");
   const [etdDate, setEtdDate] = useState("");
   const [etaDate, setEtaDate] = useState("");
   const [loadingTonnage, setLoadingTonnage] = useState<number | "">("");
@@ -254,7 +257,7 @@ export function ShipOpsPage({
   useEffect(() => {
     (async () => {
       const CONTRACT_COLS =
-        "id,contract_no,vessel,product_id,supplier_id,quantity,unit,etd,eta,status,surveyor_id,loading_surveyor_id,port_id,loading_port_id,carrier_id,agent_id,loading_agent_id,assigned_to,ship_broker_id,loading_tonnage,discharge_tonnage";
+        "id,contract_no,vessel,product_id,supplier_id,quantity,unit,loading_eta,etd,eta,status,surveyor_id,loading_surveyor_id,port_id,loading_port_id,carrier_id,agent_id,loading_agent_id,assigned_to,ship_broker_id,loading_tonnage,discharge_tonnage";
       const [c0, w, p, co, pn, { data: au }] = await Promise.all([
         supabase
           .from("purchase_contracts")
@@ -293,6 +296,7 @@ export function ShipOpsPage({
       setAgentId(cd?.agent_id ?? "");
       setLoadingAgentId(cd?.loading_agent_id ?? "");
       setShipBrokerId(cd?.ship_broker_id ?? "");
+      setLoadingEtaDate(cd?.loading_eta ?? "");
       setEtdDate(cd?.etd ?? "");
       setEtaDate(cd?.eta ?? "");
       setLoadingTonnage(cd?.loading_tonnage ?? "");
@@ -347,6 +351,7 @@ export function ShipOpsPage({
     agentId    !== (contract?.agent_id ?? "") ||
     loadingAgentId !== (contract?.loading_agent_id ?? "") ||
     shipBrokerId !== (contract?.ship_broker_id ?? "") ||
+    loadingEtaDate !== (contract?.loading_eta ?? "") ||
     etdDate !== (contract?.etd ?? "") ||
     etaDate !== (contract?.eta ?? "") ||
     loadingTonnage !== (contract?.loading_tonnage ?? "") ||
@@ -494,6 +499,7 @@ export function ShipOpsPage({
       p_loading_tonnage: loadingTonnage === "" ? null : loadingTonnage,
       p_etd: etdDate || null,
       p_discharge_tonnage: dischargeTonnage === "" ? null : dischargeTonnage,
+      p_loading_eta: loadingEtaDate || null,
     });
     if (rpcResult.error) { setAssignSaving(false); setAssignErr(translateDbError(rpcResult.error)); return; }
     const parties = {
@@ -509,6 +515,7 @@ export function ShipOpsPage({
       loading_tonnage: loadingTonnage === "" ? null : loadingTonnage,
       etd: etdDate || null,
       discharge_tonnage: dischargeTonnage === "" ? null : dischargeTonnage,
+      loading_eta: loadingEtaDate || null,
     };
     setContract(prev => prev ? { ...prev, ...parties } : prev);
     setAssignSaving(false);
@@ -606,6 +613,7 @@ export function ShipOpsPage({
               {pName(contract.product_id)}
               {contract.contract_no && ` · Söz. ${contract.contract_no}`}
               {contract.supplier_id && ` · ${cName(contract.supplier_id)}`}
+              {phase !== "discharge" && contract.loading_eta && ` · Yük. Varış ${formatDate(contract.loading_eta)}`}
               {phase !== "discharge" && contract.etd && ` · ETD ${formatDate(contract.etd)}`}
               {phase !== "loading" && contract.eta && ` · ETA ${formatDate(contract.eta)}`}
             </div>
@@ -705,6 +713,13 @@ export function ShipOpsPage({
               </Select>
             ) : (
               <div className="rounded-lg border border-border bg-gray-50 px-3 py-2 text-sm">{cName(contract.ship_broker_id)}</div>
+            )}
+          </Field>
+          <Field label="Yükleme Limanına Tahmini Varış">
+            {canWrite ? (
+              <Input type="date" value={loadingEtaDate} onChange={e => setLoadingEtaDate(e.target.value)} />
+            ) : (
+              <div className="rounded-lg border border-border bg-gray-50 px-3 py-2 text-sm">{formatDate(contract.loading_eta)}</div>
             )}
           </Field>
           <Field label="ETD (Yükleme Limanından Tahmini Kalkış)">
