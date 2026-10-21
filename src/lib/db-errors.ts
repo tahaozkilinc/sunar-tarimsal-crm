@@ -62,6 +62,12 @@ const RAW_PATTERNS = [
   /value too long/i,
   /mime type/i,
   /exceeded the maximum allowed size|payload too large/i,
+  // Fonksiyon aşırı yüklemesi (overload) belirsizliği — ör. bir RPC'ye yeni
+  // parametre eklenirken eski imza (overload) silinemeyip ortada kalınca,
+  // eski parametre setiyle çağrılan isteklerde Postgres hangi imzayı
+  // çalıştıracağına karar veremez. Kullanıcı hatası değil, sistem tarafında
+  // bir dağıtım/sürüm uyumsuzluğudur — genelde sayfa yenilenince geçer.
+  /could not choose .*candidate function/i,
 ];
 
 function extract(pattern: RegExp, message: string): string | null {
@@ -103,6 +109,9 @@ export function translateDbError(error: DbErrorLike): string {
   }
   if (/exceeded the maximum allowed size|payload too large/i.test(message)) {
     return "Dosya boyutu izin verilenden büyük. Daha küçük bir dosya seçin ya da sıkıştırıp tekrar deneyin.";
+  }
+  if (/could not choose .*candidate function/i.test(message)) {
+    return "Sistemde bir güncelleme uyumsuzluğu oluştu. Lütfen sayfayı yenileyip (F5) tekrar deneyin — sorun sürerse bildirin.";
   }
 
   return message; // tanınmayan ham mesaj — son çare olarak olduğu gibi göster
