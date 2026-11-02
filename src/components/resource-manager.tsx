@@ -793,7 +793,8 @@ export function ResourceManager({
     switch (field.type) {
       case "reference":
         return refLabel(field, value);
-      case "select": {
+      case "select":
+      case "select_other": {
         const opt = field.options?.find((o) => o.value === value);
         if (opt?.color) return <Badge color={opt.color}>{opt.label}</Badge>;
         return opt?.label || String(value);
