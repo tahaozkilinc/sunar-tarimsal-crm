@@ -7,7 +7,7 @@ import { WarehouseDetailExtra } from "./warehouse-detail-extra";
 import { ResourceManager } from "./resource-manager";
 import { PhotoGallery } from "./photo-gallery";
 import { Badge, Card, Tabs } from "./ui";
-import { LOCATION_TYPE_OPTIONS, pricingAgreementsResource, warehouseContactsResource, warehousesResource } from "@/lib/resources";
+import { LOCATION_TYPE_OPTIONS, WAREHOUSE_SERVICE_ITEM_OPTIONS, pricingAgreementsResource, warehouseContactsResource, warehousesResource } from "@/lib/resources";
 import { formatNumber } from "@/lib/format";
 import { baseRole } from "@/lib/nav";
 import type { Warehouse, Role } from "@/lib/types";
@@ -147,11 +147,17 @@ export function WarehouseDetailView({
         <ResourceManager
           config={{
             ...pricingAgreementsResource,
-            // Hizmet kalemi (Gemi Tahliye/Liman Tahliye) yalnızca liman
-            // anlaşmalarında anlamlı — depoda gizli kalır.
-            fields: pricingAgreementsResource.fields.map((f) =>
-              ["warehouse_id", "port_id", "target_type", "service_item"].includes(f.name) ? { ...f, formHidden: true } : f,
-            ),
+            // Hizmet kalemi artık depoda da seçiliyor (İndirme/Bindirme/
+            // Kepçe/Ardiye + Diğer) — liman'daki aynı desen (bkz.
+            // company-detail-view.tsx): aynı deponun farklı hizmetlerinin
+            // fiyatları birbirine karışmadan, listede de doğrudan görünür
+            // şekilde takip edilebilsin (kullanıcı isteği).
+            listFields: ["service_item", "pricing_model", "price", "currency", "valid_from", "valid_to"],
+            fields: pricingAgreementsResource.fields.map((f) => {
+              if (["warehouse_id", "port_id", "target_type"].includes(f.name)) return { ...f, formHidden: true };
+              if (f.name === "service_item") return { ...f, required: true, options: WAREHOUSE_SERVICE_ITEM_OPTIONS };
+              return f;
+            }),
           }}
           role={role}
           filter={{ warehouse_id: warehouse.id }}
